@@ -1,0 +1,90 @@
+@import "tailwindcss";
+
+:root {
+  --bg-primary: #0a0a0f;
+  --bg-secondary: #0d1117;
+  --bg-card: rgba(255, 255, 255, 0.03);
+  --border-subtle: rgba(255, 255, 255, 0.1);
+  --glow-indigo: rgba(99, 102, 241, 0.4);
+  --glow-red: rgba(239, 68, 68, 0.4);
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--bg-primary);
+  color: white;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+/* React Flow overrides */
+.react-flow__background {
+  background-color: var(--bg-primary) !important;
+}
+
+.react-flow__controls {
+  background: rgba(255, 255, 255, 0.05) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-radius: 8px !important;
+}
+
+.react-flow__controls-button {
+  background: transparent !important;
+  border: none !important;
+  color: white !important;
+  fill: white !important;
+}
+
+.react-flow__controls-button:hover {
+  background: rgba(255, 255, 255, 0.1) !important;
+}
+
+.react-flow__controls-button svg {
+  fill: white !important;
+}
+
+.react-flow__edge-path {
+  stroke-linecap: round;
+}
+
+/* Animated edge glow */
+.react-flow__edge.animated path {
+  animation: flowPulse 2s ease-in-out infinite;
+}
+
+@keyframes flowPulse {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
+/* Glow utilities */
+.glow-indigo {
+  box-shadow: 0 0 30px var(--glow-indigo);
+}
+
+.glow-red {
+  box-shadow: 0 0 60px var(--glow-red);
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
