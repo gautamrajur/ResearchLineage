@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { GraphCanvas } from './components/Flow/GraphCanvas';
+import { GraphCanvas } from './components/Flow/GraphBackend';
 
 export default function App() {
   const [view, setView] = useState<'pre' | 'post'>('post');

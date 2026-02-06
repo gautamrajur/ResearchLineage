@@ -12,6 +12,7 @@ MOCK_DATA = {
         "url": "https://arxiv.org/abs/1706.03762"
     },
     "references": [
+        # Depth 1 - Papers directly cited by the seed paper
         {
             "paperId": "seq2seq-2014",
             "title": "Sequence to Sequence Learning with Neural Networks",
@@ -19,7 +20,9 @@ MOCK_DATA = {
             "year": 2014,
             "citationCount": 20000,
             "abstract": "Deep Neural Networks (DNNs) are powerful models that have achieved excellent performance on difficult learning tasks.",
-            "venue": "NeurIPS"
+            "venue": "NeurIPS",
+            "depth": 1,
+            "parentId": "attention-2017"
         },
         {
             "paperId": "bahdanau-2015",
@@ -28,16 +31,9 @@ MOCK_DATA = {
             "year": 2015,
             "citationCount": 25000,
             "abstract": "Neural machine translation is a recently proposed approach to machine translation that builds a neural network that reads a sentence and outputs a correct translation.",
-            "venue": "ICLR"
-        },
-        {
-            "paperId": "lstm-1997",
-            "title": "Long Short-Term Memory",
-            "authors": ["Sepp Hochreiter", "Jurgen Schmidhuber"],
-            "year": 1997,
-            "citationCount": 75000,
-            "abstract": "Learning to store information over extended time intervals by recurrent backpropagation takes a very long time, mostly because of insufficient, decaying error backflow.",
-            "venue": "Neural Computation"
+            "venue": "ICLR",
+            "depth": 1,
+            "parentId": "attention-2017"
         },
         {
             "paperId": "dropout-2014",
@@ -46,7 +42,9 @@ MOCK_DATA = {
             "year": 2014,
             "citationCount": 35000,
             "abstract": "Deep neural nets with a large number of parameters are very powerful machine learning systems. However, overfitting is a serious problem in such networks.",
-            "venue": "JMLR"
+            "venue": "JMLR",
+            "depth": 1,
+            "parentId": "attention-2017"
         },
         {
             "paperId": "adam-2015",
@@ -55,7 +53,9 @@ MOCK_DATA = {
             "year": 2015,
             "citationCount": 120000,
             "abstract": "We introduce Adam, an algorithm for first-order gradient-based optimization of stochastic objective functions, based on adaptive estimates of lower-order moments.",
-            "venue": "ICLR"
+            "venue": "ICLR",
+            "depth": 1,
+            "parentId": "attention-2017"
         },
         {
             "paperId": "resnet-2016",
@@ -64,16 +64,22 @@ MOCK_DATA = {
             "year": 2016,
             "citationCount": 150000,
             "abstract": "Deeper neural networks are more difficult to train. We present a residual learning framework to ease the training of networks that are substantially deeper than those used previously.",
-            "venue": "CVPR"
+            "venue": "CVPR",
+            "depth": 1,
+            "parentId": "attention-2017"
         },
+        
+        # Depth 2 - Papers cited by depth 1 papers
         {
-            "paperId": "batchnorm-2015",
-            "title": "Batch Normalization: Accelerating Deep Network Training",
-            "authors": ["Sergey Ioffe", "Christian Szegedy"],
-            "year": 2015,
-            "citationCount": 45000,
-            "abstract": "Training Deep Neural Networks is complicated by the fact that the distribution of each layer's inputs changes during training.",
-            "venue": "ICML"
+            "paperId": "lstm-1997",
+            "title": "Long Short-Term Memory",
+            "authors": ["Sepp Hochreiter", "Jurgen Schmidhuber"],
+            "year": 1997,
+            "citationCount": 75000,
+            "abstract": "Learning to store information over extended time intervals by recurrent backpropagation takes a very long time, mostly because of insufficient, decaying error backflow.",
+            "venue": "Neural Computation",
+            "depth": 2,
+            "parentId": "seq2seq-2014"  # Cited by Seq2Seq
         },
         {
             "paperId": "word2vec-2013",
@@ -82,28 +88,48 @@ MOCK_DATA = {
             "year": 2013,
             "citationCount": 30000,
             "abstract": "The recently introduced continuous Skip-gram model is an efficient method for learning high-quality distributed vector representations that capture a large number of precise syntactic and semantic word relationships.",
-            "venue": "NeurIPS"
+            "venue": "NeurIPS",
+            "depth": 2,
+            "parentId": "seq2seq-2014"  # Cited by Seq2Seq
         },
         {
-            "paperId": "layernorm-2016",
-            "title": "Layer Normalization",
-            "authors": ["Jimmy Lei Ba", "Jamie Ryan Kiros", "Geoffrey E. Hinton"],
-            "year": 2016,
-            "citationCount": 12000,
-            "abstract": "Training state-of-the-art, deep neural networks is computationally expensive. One way to reduce the training time is to normalize the activities of the neurons.",
-            "venue": "arXiv"
+            "paperId": "batchnorm-2015",
+            "title": "Batch Normalization: Accelerating Deep Network Training",
+            "authors": ["Sergey Ioffe", "Christian Szegedy"],
+            "year": 2015,
+            "citationCount": 45000,
+            "abstract": "Training Deep Neural Networks is complicated by the fact that the distribution of each layer's inputs changes during training.",
+            "venue": "ICML",
+            "depth": 2,
+            "parentId": "resnet-2016"  # Cited by ResNet
         },
         {
-            "paperId": "convs2s-2017",
-            "title": "Convolutional Sequence to Sequence Learning",
-            "authors": ["Jonas Gehring", "Michael Auli", "David Grangier", "Denis Yarats", "Yann N. Dauphin"],
-            "year": 2017,
-            "citationCount": 3500,
-            "abstract": "The prevalent approach to sequence to sequence learning maps an input sequence to a variable length output sequence via recurrent neural networks.",
-            "venue": "ICML"
+            "paperId": "glorot-init-2010",
+            "title": "Understanding the difficulty of training deep feedforward neural networks",
+            "authors": ["Xavier Glorot", "Yoshua Bengio"],
+            "year": 2010,
+            "citationCount": 18000,
+            "abstract": "Whereas before 2006 it appears that deep multi-layer neural networks were not successfully trained, since then several algorithms have been shown to successfully train them.",
+            "venue": "AISTATS",
+            "depth": 2,
+            "parentId": "adam-2015"  # Cited by Adam
+        },
+        
+        # Depth 3 - Papers cited by depth 2 papers
+        {
+            "paperId": "backprop-1986",
+            "title": "Learning representations by back-propagating errors",
+            "authors": ["David E. Rumelhart", "Geoffrey E. Hinton", "Ronald J. Williams"],
+            "year": 1986,
+            "citationCount": 35000,
+            "abstract": "We describe a new learning procedure, back-propagation, for networks of neurone-like units.",
+            "venue": "Nature",
+            "depth": 3,
+            "parentId": "lstm-1997"  # Cited by LSTM
         }
     ],
     "citations": [
+        # Depth 1 - Papers that directly cite the seed paper
         {
             "paperId": "bert-2018",
             "title": "BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding",
@@ -111,7 +137,9 @@ MOCK_DATA = {
             "year": 2018,
             "citationCount": 80000,
             "abstract": "We introduce a new language representation model called BERT, which stands for Bidirectional Encoder Representations from Transformers.",
-            "venue": "NAACL"
+            "venue": "NAACL",
+            "depth": 1,
+            "parentId": "attention-2017"
         },
         {
             "paperId": "gpt2-2019",
@@ -120,16 +148,9 @@ MOCK_DATA = {
             "year": 2019,
             "citationCount": 15000,
             "abstract": "Natural language processing tasks, such as question answering, machine translation, reading comprehension, and summarization, are typically approached with supervised learning on task-specific datasets.",
-            "venue": "OpenAI"
-        },
-        {
-            "paperId": "gpt3-2020",
-            "title": "Language Models are Few-Shot Learners",
-            "authors": ["Tom Brown", "Benjamin Mann", "Nick Ryder", "Melanie Subbiah", "Jared Kaplan", "Prafulla Dhariwal", "Arvind Neelakantan", "Pranav Shyam", "Girish Sastry", "Amanda Askell"],
-            "year": 2020,
-            "citationCount": 25000,
-            "abstract": "We demonstrate that scaling up language models greatly improves task-agnostic, few-shot performance, sometimes even reaching competitiveness with prior state-of-the-art fine-tuning approaches.",
-            "venue": "NeurIPS"
+            "venue": "OpenAI",
+            "depth": 1,
+            "parentId": "attention-2017"
         },
         {
             "paperId": "vit-2020",
@@ -138,16 +159,9 @@ MOCK_DATA = {
             "year": 2020,
             "citationCount": 20000,
             "abstract": "While the Transformer architecture has become the de-facto standard for natural language processing tasks, its applications to computer vision remain limited.",
-            "venue": "ICLR"
-        },
-        {
-            "paperId": "roberta-2019",
-            "title": "RoBERTa: A Robustly Optimized BERT Pretraining Approach",
-            "authors": ["Yinhan Liu", "Myle Ott", "Naman Goyal", "Jingfei Du", "Mandar Joshi", "Danqi Chen", "Omer Levy", "Mike Lewis", "Luke Zettlemoyer", "Veselin Stoyanov"],
-            "year": 2019,
-            "citationCount": 12000,
-            "abstract": "Language model pretraining has led to significant performance gains but careful comparison between different approaches is challenging.",
-            "venue": "arXiv"
+            "venue": "ICLR",
+            "depth": 1,
+            "parentId": "attention-2017"
         },
         {
             "paperId": "t5-2020",
@@ -156,7 +170,9 @@ MOCK_DATA = {
             "year": 2020,
             "citationCount": 10000,
             "abstract": "Transfer learning, where a model is first pre-trained on a data-rich task before being fine-tuned on a downstream task, has emerged as a powerful technique in NLP.",
-            "venue": "JMLR"
+            "venue": "JMLR",
+            "depth": 1,
+            "parentId": "attention-2017"
         },
         {
             "paperId": "xlnet-2019",
@@ -165,70 +181,33 @@ MOCK_DATA = {
             "year": 2019,
             "citationCount": 8000,
             "abstract": "With the capability of modeling bidirectional contexts, denoising autoencoding based pretraining like BERT achieves better performance than pretraining approaches based on autoregressive language modeling.",
-            "venue": "NeurIPS"
+            "venue": "NeurIPS",
+            "depth": 1,
+            "parentId": "attention-2017"
         },
+        
+        # Depth 2 - Papers that cite depth 1 papers
         {
-            "paperId": "gpt4-2023",
-            "title": "GPT-4 Technical Report",
-            "authors": ["OpenAI"],
-            "year": 2023,
-            "citationCount": 5000,
-            "abstract": "We report the development of GPT-4, a large-scale, multimodal model which can accept image and text inputs and produce text outputs.",
-            "venue": "arXiv"
-        },
-        {
-            "paperId": "llama-2023",
-            "title": "LLaMA: Open and Efficient Foundation Language Models",
-            "authors": ["Hugo Touvron", "Thibaut Lavril", "Gautier Izacard", "Xavier Martinet", "Marie-Anne Lachaux", "Timothee Lacroix", "Baptiste Roziere", "Naman Goyal", "Eric Hambro", "Faisal Azhar"],
-            "year": 2023,
-            "citationCount": 4000,
-            "abstract": "We introduce LLaMA, a collection of foundation language models ranging from 7B to 65B parameters.",
-            "venue": "arXiv"
-        },
-        {
-            "paperId": "chatgpt-rlhf-2022",
-            "title": "Training language models to follow instructions with human feedback",
-            "authors": ["Long Ouyang", "Jeff Wu", "Xu Jiang", "Diogo Almeida", "Carroll L. Wainwright", "Pamela Mishkin", "Chong Zhang", "Sandhini Agarwal", "Katarina Slama", "Alex Ray"],
-            "year": 2022,
-            "citationCount": 6000,
-            "abstract": "Making language models bigger does not inherently make them better at following a user's intent.",
-            "venue": "NeurIPS"
-        },
-        {
-            "paperId": "clip-2021",
-            "title": "Learning Transferable Visual Models From Natural Language Supervision",
-            "authors": ["Alec Radford", "Jong Wook Kim", "Chris Hallacy", "Aditya Ramesh", "Gabriel Goh", "Sandhini Agarwal", "Girish Sastry", "Amanda Askell", "Pamela Mishkin", "Jack Clark"],
-            "year": 2021,
-            "citationCount": 9000,
-            "abstract": "State-of-the-art computer vision systems are trained to predict a fixed set of predetermined object categories.",
-            "venue": "ICML"
-        },
-        {
-            "paperId": "diffusion-2020",
-            "title": "Denoising Diffusion Probabilistic Models",
-            "authors": ["Jonathan Ho", "Ajay Jain", "Pieter Abbeel"],
+            "paperId": "gpt3-2020",
+            "title": "Language Models are Few-Shot Learners",
+            "authors": ["Tom Brown", "Benjamin Mann", "Nick Ryder", "Melanie Subbiah", "Jared Kaplan", "Prafulla Dhariwal", "Arvind Neelakantan", "Pranav Shyam", "Girish Sastry", "Amanda Askell"],
             "year": 2020,
-            "citationCount": 7000,
-            "abstract": "We present high quality image synthesis results using diffusion probabilistic models, a class of latent variable models inspired by considerations from nonequilibrium thermodynamics.",
-            "venue": "NeurIPS"
+            "citationCount": 25000,
+            "abstract": "We demonstrate that scaling up language models greatly improves task-agnostic, few-shot performance, sometimes even reaching competitiveness with prior state-of-the-art fine-tuning approaches.",
+            "venue": "NeurIPS",
+            "depth": 2,
+            "parentId": "gpt2-2019"  # Cites GPT-2
         },
         {
-            "paperId": "palm-2022",
-            "title": "PaLM: Scaling Language Modeling with Pathways",
-            "authors": ["Aakanksha Chowdhery", "Sharan Narang", "Jacob Devlin", "Maarten Bosma", "Gaurav Mishra", "Adam Roberts", "Paul Barham", "Hyung Won Chung", "Charles Sutton", "Sebastian Gehrmann"],
-            "year": 2022,
-            "citationCount": 3500,
-            "abstract": "Large language models have been shown to achieve remarkable performance across a variety of natural language tasks using few-shot learning.",
-            "venue": "arXiv"
-        },
-        {
-            "paperId": "codex-2021",
-            "title": "Evaluating Large Language Models Trained on Code",
-            "authors": ["Mark Chen", "Jerry Tworek", "Heewoo Jun", "Qiming Yuan", "Henrique Ponde de Oliveira Pinto", "Jared Kaplan", "Harri Edwards", "Yuri Burda", "Nicholas Joseph", "Greg Brockman"],
-            "year": 2021,
-            "citationCount": 2500,
-            "abstract": "We introduce Codex, a GPT language model fine-tuned on publicly available code from GitHub, and study its Python code-writing capabilities.",
-            "venue": "arXiv"
+            "paperId": "roberta-2019",
+            "title": "RoBERTa: A Robustly Optimized BERT Pretraining Approach",
+            "authors": ["Yinhan Liu", "Myle Ott", "Naman Goyal", "Jingfei Du", "Mandar Joshi", "Danqi Chen", "Omer Levy", "Mike Lewis", "Luke Zettlemoyer", "Veselin Stoyanov"],
+            "year": 2019,
+            "citationCount": 12000,
+            "abstract": "Language model pretraining has led to significant performance gains but careful comparison between different approaches is challenging.",
+            "venue": "arXiv",
+            "depth": 2,
+            "parentId": "bert-2018"  # Cites BERT
         },
         {
             "paperId": "swin-2021",
@@ -237,7 +216,55 @@ MOCK_DATA = {
             "year": 2021,
             "citationCount": 8000,
             "abstract": "This paper presents a new vision Transformer, called Swin Transformer, that capably serves as a general-purpose backbone for computer vision.",
-            "venue": "ICCV"
+            "venue": "ICCV",
+            "depth": 2,
+            "parentId": "vit-2020"  # Cites ViT
+        },
+        {
+            "paperId": "clip-2021",
+            "title": "Learning Transferable Visual Models From Natural Language Supervision",
+            "authors": ["Alec Radford", "Jong Wook Kim", "Chris Hallacy", "Aditya Ramesh", "Gabriel Goh", "Sandhini Agarwal", "Girish Sastry", "Amanda Askell", "Pamela Mishkin", "Jack Clark"],
+            "year": 2021,
+            "citationCount": 9000,
+            "abstract": "State-of-the-art computer vision systems are trained to predict a fixed set of predetermined object categories.",
+            "venue": "ICML",
+            "depth": 2,
+            "parentId": "vit-2020"  # Cites ViT
+        },
+        
+        # Depth 3 - Papers that cite depth 2 papers
+        {
+            "paperId": "gpt4-2023",
+            "title": "GPT-4 Technical Report",
+            "authors": ["OpenAI"],
+            "year": 2023,
+            "citationCount": 5000,
+            "abstract": "We report the development of GPT-4, a large-scale, multimodal model which can accept image and text inputs and produce text outputs.",
+            "venue": "arXiv",
+            "depth": 3,
+            "parentId": "gpt3-2020"  # Cites GPT-3
+        },
+        {
+            "paperId": "llama-2023",
+            "title": "LLaMA: Open and Efficient Foundation Language Models",
+            "authors": ["Hugo Touvron", "Thibaut Lavril", "Gautier Izacard", "Xavier Martinet", "Marie-Anne Lachaux", "Timothee Lacroix", "Baptiste Roziere", "Naman Goyal", "Eric Hambro", "Faisal Azhar"],
+            "year": 2023,
+            "citationCount": 4000,
+            "abstract": "We introduce LLaMA, a collection of foundation language models ranging from 7B to 65B parameters.",
+            "venue": "arXiv",
+            "depth": 3,
+            "parentId": "gpt3-2020"  # Cites GPT-3
+        },
+        {
+            "paperId": "chatgpt-rlhf-2022",
+            "title": "Training language models to follow instructions with human feedback",
+            "authors": ["Long Ouyang", "Jeff Wu", "Xu Jiang", "Diogo Almeida", "Carroll L. Wainwright", "Pamela Mishkin", "Chong Zhang", "Sandhini Agarwal", "Katarina Slama", "Alex Ray"],
+            "year": 2022,
+            "citationCount": 6000,
+            "abstract": "Making language models bigger does not inherently make them better at following a user's intent.",
+            "venue": "NeurIPS",
+            "depth": 3,
+            "parentId": "gpt3-2020"  # Cites GPT-3
         }
     ]
 }
