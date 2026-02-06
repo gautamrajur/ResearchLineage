@@ -1,57 +1,144 @@
 @import "tailwindcss";
 
-:root {
-  --bg-primary: #0a0a0f;
-  --bg-secondary: #0d1117;
-  --bg-card: rgba(255, 255, 255, 0.03);
-  --border-subtle: rgba(255, 255, 255, 0.1);
-  --glow-indigo: rgba(99, 102, 241, 0.4);
-  --glow-red: rgba(239, 68, 68, 0.4);
+@theme {
+  /* Backgrounds — near-black with blue tint, elevation via lightness */
+  --color-bg-page: #0B0D11;
+  --color-bg-card: #12141A;
+  --color-bg-popover: #1A1D25;
+  --color-bg-hover: #22262F;
+  --color-bg-active: #2A2F3A;
+
+  /* Text */
+  --color-text-primary: #EAEDF2;
+  --color-text-secondary: #8B95A5;
+  --color-text-muted: #5A6375;
+
+  /* Borders & rings */
+  --color-border-subtle: rgba(255, 255, 255, 0.06);
+  --color-border-default: rgba(255, 255, 255, 0.10);
+  --color-border-strong: rgba(255, 255, 255, 0.16);
+  --color-ring: #3B82F6;
+
+  /* Brand / accent */
+  --color-primary: #3B82F6;
+  --color-primary-muted: rgba(59, 130, 246, 0.15);
+
+  /* Chart palette — colorblind-safe, dark-mode optimized */
+  --color-chart-1: #60A5FA;
+  --color-chart-2: #F59E0B;
+  --color-chart-3: #34D399;
+  --color-chart-4: #F472B6;
+  --color-chart-5: #A78BFA;
+  --color-chart-6: #FB923C;
+
+  /* Semantic */
+  --color-success: #22C55E;
+  --color-success-muted: #0F2918;
+  --color-warning: #F59E0B;
+  --color-warning-muted: #2D1F05;
+  --color-error: #EF4444;
+  --color-error-muted: #2D0F0F;
+
+  /* Seed node accent */
+  --color-seed: #EF4444;
+  --color-seed-glow: rgba(239, 68, 68, 0.35);
+
+  /* Edge colors */
+  --color-edge-depth1: #6366F1;
+  --color-edge-depth2: #8B5CF6;
+
+  /* Shadows */
+  --shadow-glow: 0 0 12px rgba(59, 130, 246, 0.15);
+  --shadow-inner-light: inset 0 1px 0 0 rgba(255, 255, 255, 0.03);
+  --shadow-dark-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
+
+  /* Radius */
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+
+  /* Fonts */
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Geist Mono', ui-monospace, monospace;
+
+  /* Typography scale — snapped to 4px grid */
+  --text-display: 48px;
+  --text-title: 24px;
+  --text-heading: 18px;
+  --text-body: 14px;
+  --text-label: 13px;
+  --text-caption: 12px;
+  --text-overline: 11px;
 }
 
+/* ── Base styles ────────────────────────────────── */
 body {
   margin: 0;
   min-height: 100vh;
-  background: var(--bg-primary);
-  color: white;
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  background: var(--color-bg-page);
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--text-body);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+@supports (font-variation-settings: normal) {
+  body {
+    font-family: 'Inter var', system-ui, -apple-system, sans-serif;
+    font-variation-settings: 'opsz' 14;
+  }
 }
 
 #root {
   min-height: 100vh;
 }
 
-/* React Flow overrides */
+/* ── Typography rules ───────────────────────────── */
+h1, h2 { letter-spacing: -0.02em; }
+h3, h4 { letter-spacing: -0.01em; }
+
+/* Tabular figures on all data elements */
+[data-numeric], td, th, .metric, .tabular-nums {
+  font-variant-numeric: tabular-nums lining-nums slashed-zero;
+}
+
+/* ── React Flow overrides ───────────────────────── */
 .react-flow__background {
-  background-color: var(--bg-primary) !important;
+  background-color: var(--color-bg-page) !important;
 }
 
 .react-flow__controls {
-  background: rgba(255, 255, 255, 0.05) !important;
-  border: 1px solid rgba(255, 255, 255, 0.1) !important;
-  border-radius: 8px !important;
+  background: var(--color-bg-card) !important;
+  border: 1px solid var(--color-border-default) !important;
+  border-radius: var(--radius-md) !important;
+  box-shadow: var(--shadow-inner-light) !important;
 }
 
 .react-flow__controls-button {
   background: transparent !important;
   border: none !important;
-  color: white !important;
-  fill: white !important;
+  color: var(--color-text-secondary) !important;
+  fill: var(--color-text-secondary) !important;
 }
 
 .react-flow__controls-button:hover {
-  background: rgba(255, 255, 255, 0.1) !important;
+  background: var(--color-bg-hover) !important;
+  color: var(--color-text-primary) !important;
+  fill: var(--color-text-primary) !important;
 }
 
 .react-flow__controls-button svg {
-  fill: white !important;
+  fill: inherit !important;
 }
 
 .react-flow__edge-path {
   stroke-linecap: round;
 }
 
-/* Animated edge glow */
+/* Animated edge pulse */
 .react-flow__edge.animated path {
   animation: flowPulse 2s ease-in-out infinite;
 }
@@ -61,30 +148,21 @@ body {
   50% { opacity: 1; }
 }
 
-/* Glow utilities */
-.glow-indigo {
-  box-shadow: 0 0 30px var(--glow-indigo);
-}
-
-.glow-red {
-  box-shadow: 0 0 60px var(--glow-red);
-}
-
-/* Custom scrollbar */
+/* ── Scrollbar ──────────────────────────────────── */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, 0.05);
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.2);
-  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.2);
 }
