@@ -22,7 +22,7 @@ const SEED_WIDTH = 280;
 const SEED_HEIGHT = 90;
 
 // Backend API URL
-const API_BASE_URL = 'http://127.0.0.1:8000';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';;
 
 interface MockPaper {
   paperId: string;
