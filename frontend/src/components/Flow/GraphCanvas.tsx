@@ -47,20 +47,16 @@ const buildGraph = (
     marginy: 40,
   });
 
-  // Add seed node
   g.setNode(seed.id, { width: SEED_WIDTH, height: SEED_HEIGHT });
 
-  // Add paper nodes and edges
   papers.forEach((paper) => {
     g.setNode(paper.id, { width: NODE_WIDTH, height: NODE_HEIGHT });
 
     const depth = paper.depth || 1;
     if (view === 'pre') {
-      // References flow INTO seed: paper → parent or paper → seed
       const target = depth === 1 ? seed.id : paper.parentId!;
       g.setEdge(paper.id, target);
     } else {
-      // Citations flow OUT from seed: seed/parent → paper
       const source = depth === 1 ? seed.id : paper.parentId!;
       g.setEdge(source, paper.id);
     }
@@ -68,7 +64,6 @@ const buildGraph = (
 
   dagre.layout(g);
 
-  // Convert dagre output to React Flow nodes
   const nodes: Node[] = [];
   const edges: Edge[] = [];
 
@@ -98,10 +93,12 @@ const buildGraph = (
       id: `e-${paper.id}`,
       source: src,
       target: tgt,
-      animated: true,
+      type: 'smoothstep',
+      animated: false,
       style: {
-        stroke: depth === 1 ? '#6366F1' : '#8B5CF6',
-        strokeWidth: depth === 1 ? 2 : 1.5,
+        stroke: depth === 1 ? '#4ADE80' : '#38BDF8',
+        strokeWidth: depth === 1 ? 1.5 : 1,
+        opacity: 0.6,
       },
     });
   });
@@ -129,13 +126,17 @@ export function GraphCanvas({ view }: { view: 'pre' | 'post' }) {
   }, [init, initE, setNodes, setEdges]);
 
   return (
-    <div className="w-full h-screen" style={{ background: 'var(--color-bg-page)' }}>
+    <div className="w-full h-screen" style={{ background: '#0B0D11' }}>
       <ReactFlow
         nodes={nodes}
         edges={edges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         nodeTypes={nodeTypes}
+        defaultEdgeOptions={{
+          type: 'smoothstep',
+          style: { strokeWidth: 1.5, opacity: 0.6 },
+        }}
         fitView
         fitViewOptions={{ padding: 0.3 }}
         minZoom={0.2}

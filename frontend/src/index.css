@@ -1,120 +1,77 @@
 @import "tailwindcss";
 
 @theme {
-  /* Backgrounds — near-black with blue tint, elevation via lightness */
-  --color-bg-page: #0B0D11;
+  /* Backgrounds — blue-tinted near-black, NOT pure black */
+  --color-bg-base: #0B0D11;
   --color-bg-card: #12141A;
-  --color-bg-popover: #1A1D25;
+  --color-bg-elevated: #1A1D25;
   --color-bg-hover: #22262F;
-  --color-bg-active: #2A2F3A;
 
-  /* Text */
+  /* Text — softer than pure white */
   --color-text-primary: #EAEDF2;
   --color-text-secondary: #8B95A5;
   --color-text-muted: #5A6375;
 
-  /* Borders & rings */
-  --color-border-subtle: rgba(255, 255, 255, 0.06);
-  --color-border-default: rgba(255, 255, 255, 0.10);
-  --color-border-strong: rgba(255, 255, 255, 0.16);
-  --color-ring: #3B82F6;
+  /* Accent — warm teal instead of cold purple */
+  --color-accent: #2DD4BF;
+  --color-accent-muted: #14B8A6;
 
-  /* Brand / accent */
-  --color-primary: #3B82F6;
-  --color-primary-muted: rgba(59, 130, 246, 0.15);
+  /* Seed/Origin — coral, not harsh red */
+  --color-seed: #F97066;
+  --color-seed-muted: #DC5B50;
 
-  /* Chart palette — colorblind-safe, dark-mode optimized */
-  --color-chart-1: #60A5FA;
-  --color-chart-2: #F59E0B;
-  --color-chart-3: #34D399;
-  --color-chart-4: #F472B6;
-  --color-chart-5: #A78BFA;
-  --color-chart-6: #FB923C;
+  /* Borders — subtle, not stark */
+  --color-border: rgba(255, 255, 255, 0.06);
+  --color-border-hover: rgba(255, 255, 255, 0.12);
 
-  /* Semantic */
-  --color-success: #22C55E;
-  --color-success-muted: #0F2918;
-  --color-warning: #F59E0B;
-  --color-warning-muted: #2D1F05;
-  --color-error: #EF4444;
-  --color-error-muted: #2D0F0F;
-
-  /* Seed node accent */
-  --color-seed: #EF4444;
-  --color-seed-glow: rgba(239, 68, 68, 0.35);
-
-  /* Edge colors */
-  --color-edge-depth1: #6366F1;
-  --color-edge-depth2: #8B5CF6;
+  /* Edges */
+  --color-edge-direct: #4ADE80;
+  --color-edge-indirect: #38BDF8;
 
   /* Shadows */
-  --shadow-glow: 0 0 12px rgba(59, 130, 246, 0.15);
   --shadow-inner-light: inset 0 1px 0 0 rgba(255, 255, 255, 0.03);
-  --shadow-dark-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
-
-  /* Radius */
-  --radius-sm: 0.375rem;
-  --radius-md: 0.5rem;
-  --radius-lg: 0.75rem;
-  --radius-xl: 1rem;
 
   /* Fonts */
   --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
   --font-mono: 'JetBrains Mono', 'Geist Mono', ui-monospace, monospace;
-
-  /* Typography scale — snapped to 4px grid */
-  --text-display: 48px;
-  --text-title: 24px;
-  --text-heading: 18px;
-  --text-body: 14px;
-  --text-label: 13px;
-  --text-caption: 12px;
-  --text-overline: 11px;
 }
 
-/* ── Base styles ────────────────────────────────── */
+* { box-sizing: border-box; }
+
 body {
   margin: 0;
   min-height: 100vh;
-  background: var(--color-bg-page);
-  color: var(--color-text-primary);
-  font-family: var(--font-sans);
-  font-size: var(--text-body);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-size: 14px;
   line-height: 1.5;
+  background: var(--color-bg-base);
+  color: var(--color-text-primary);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-}
-
-@supports (font-variation-settings: normal) {
-  body {
-    font-family: 'Inter var', system-ui, -apple-system, sans-serif;
-    font-variation-settings: 'opsz' 14;
-  }
 }
 
 #root {
   min-height: 100vh;
 }
 
-/* ── Typography rules ───────────────────────────── */
+/* ── Typography ─────────────────────────────────── */
 h1, h2 { letter-spacing: -0.02em; }
 h3, h4 { letter-spacing: -0.01em; }
 
-/* Tabular figures on all data elements */
-[data-numeric], td, th, .metric, .tabular-nums {
+[data-numeric], td, th, .tabular-nums {
   font-variant-numeric: tabular-nums lining-nums slashed-zero;
 }
 
 /* ── React Flow overrides ───────────────────────── */
 .react-flow__background {
-  background-color: var(--color-bg-page) !important;
+  background-color: var(--color-bg-base) !important;
 }
 
 .react-flow__controls {
   background: var(--color-bg-card) !important;
-  border: 1px solid var(--color-border-default) !important;
-  border-radius: var(--radius-md) !important;
-  box-shadow: var(--shadow-inner-light) !important;
+  border: 1px solid rgba(255, 255, 255, 0.06) !important;
+  border-radius: 8px !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5) !important;
 }
 
 .react-flow__controls-button {
@@ -125,7 +82,7 @@ h3, h4 { letter-spacing: -0.01em; }
 }
 
 .react-flow__controls-button:hover {
-  background: var(--color-bg-hover) !important;
+  background: var(--color-bg-elevated) !important;
   color: var(--color-text-primary) !important;
   fill: var(--color-text-primary) !important;
 }
@@ -136,16 +93,6 @@ h3, h4 { letter-spacing: -0.01em; }
 
 .react-flow__edge-path {
   stroke-linecap: round;
-}
-
-/* Animated edge pulse */
-.react-flow__edge.animated path {
-  animation: flowPulse 2s ease-in-out infinite;
-}
-
-@keyframes flowPulse {
-  0%, 100% { opacity: 0.6; }
-  50% { opacity: 1; }
 }
 
 /* ── Scrollbar ──────────────────────────────────── */
@@ -159,10 +106,10 @@ h3, h4 { letter-spacing: -0.01em; }
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.1);
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.18);
 }
