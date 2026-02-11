@@ -314,3 +314,27 @@ def search_papers(query: str) -> list[dict]:
             results.append(paper)
 
     return results
+
+
+# ### References view (← pre):
+# Backprop (1986) → LSTM (1997) → Seq2Seq (2014) → Attention (2017) SEED
+#   depth 3          depth 2         depth 1
+  
+# Seq2Seq cites LSTM
+# LSTM cites Backprop
+#   ←────────── Going backwards in time
+
+
+# ### Citations view (→ post):
+# Attention (2017) SEED → BERT (2018) → RoBERTa (2019)
+#                         depth 1        depth 2
+
+# BERT cites Attention
+# RoBERTa cites BERT
+#   ──────────→ Going forward in time
+
+# The Logic:
+
+# Depth = distance from the seed paper
+# References: Going backward through what the seed cited, then what those papers cited, etc.
+# Citations: Going forward through what cited the seed, then what cited those papers, etc.

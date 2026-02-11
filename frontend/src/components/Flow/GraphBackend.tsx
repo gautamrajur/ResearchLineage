@@ -66,7 +66,7 @@ const buildGraph = (
   
   g.setGraph({
     rankdir: 'LR',
-    ranker: 'longest-path',
+    ranker: 'network-simplex',
     nodesep,
     ranksep,
     edgesep: 20,
@@ -74,38 +74,29 @@ const buildGraph = (
     marginy: 60,
   });
 
+  // Sort papers so children of the same parent are adjacent.
+  // This gives dagre's barycenter heuristic a better initial ordering,
+  // which dramatically reduces edge crossings.
+  const sorted = [...papers].sort((a, b) => {
+    if (a.depth !== b.depth) return a.depth - b.depth;
+    if (a.parentId !== b.parentId) return a.parentId.localeCompare(b.parentId);
+    return a.year - b.year;
+  });
+
   // Add seed node
-  g.setNode(seed.paperId, { 
-    width: SEED_WIDTH, 
-    height: SEED_HEIGHT,
-    rank: 0  // Seed is always at rank 0
+  g.setNode(seed.paperId, { width: SEED_WIDTH, height: SEED_HEIGHT });
+
+  // Add paper nodes — depth-sorted so dagre processes parent groups together
+  sorted.forEach((paper) => {
+    g.setNode(paper.paperId, { width: NODE_WIDTH, height: NODE_HEIGHT });
   });
 
-  // Add all paper nodes with their depth-based rank
-  papers.forEach((paper) => {
-    // For 'pre' view (references): deeper papers are further LEFT (negative rank)
-    // For 'post' view (citations): deeper papers are further RIGHT (positive rank)
-    const rank = view === 'pre' ? -paper.depth : paper.depth;
-    
-    g.setNode(paper.paperId, { 
-      width: NODE_WIDTH, 
-      height: NODE_HEIGHT,
-      rank: rank
-    });
-  });
-
-  // Add edges based on actual citation relationships
-  papers.forEach((paper) => {
-    // Each paper connects to its parent (the paper it cites or is cited by)
+  // Add edges — also in sorted order for consistent barycenter computation
+  sorted.forEach((paper) => {
     const parentId = paper.parentId;
-    
     if (view === 'pre') {
-      // References view: Papers cite their parents (edge goes LEFT to RIGHT)
-      // Paper A → Paper B means "A cites B"
       g.setEdge(paper.paperId, parentId);
     } else {
-      // Citations view: Parents cite papers (edge goes LEFT to RIGHT)
-      // Paper B → Paper A means "B cites A" (where B is parent)
       g.setEdge(parentId, paper.paperId);
     }
   });
