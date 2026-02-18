@@ -1,0 +1,61 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+*.egg-info/
+dist/
+build/
+
+# Poetry
+poetry.lock
+
+# Environment variables
+.env
+.env.local
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Data (tracked by DVC)
+data/raw/*
+data/processed/*
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+
+# Logs
+logs/*
+!logs/.gitkeep
+*.log
+
+# Cache
+data/cache/*
+!data/cache/.gitkeep
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Airflow
+airflow.db
+airflow.cfg
+airflow-webserver.pid
+
+# DVC
+.dvc/cache
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Database
+*.db
+*.sqlite
