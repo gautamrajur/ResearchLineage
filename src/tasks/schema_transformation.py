@@ -112,7 +112,7 @@ class SchemaTransformationTask:
                 authors.append(
                     {
                         "paper_id": paper_id,
-                        "author_id": author.get("authorId", str(uuid.uuid4())),
+                        "author_id": author.get("authorId") or str(uuid.uuid4()),
                         "author_name": author.get("name", ""),
                     }
                 )
