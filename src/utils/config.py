@@ -9,7 +9,8 @@ class Settings(BaseSettings):
     semantic_scholar_api_key: str = ""
     semantic_scholar_base_url: str = "https://api.semanticscholar.org/graph/v1"
     semantic_scholar_rate_limit: int = 100
-
+    arxiv_base_url: str = "http://export.arxiv.org/api/query"
+    openalex_base_url: str = "https://api.openalex.org"
     # Database settings
     postgres_host: str = "localhost"
     postgres_port: int = 5432

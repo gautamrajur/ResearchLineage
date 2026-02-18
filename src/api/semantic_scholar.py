@@ -130,7 +130,7 @@ class SemanticScholarClient(BaseAPIClient):
         references = (result or {}).get("data") or []
 
         # Cache result
-        if self.cache:
+        if self.cache and references:
             self.cache.set(cache_key, references)
 
         logger.info(f"Fetched {len(references)} references for paper {paper_id}")
@@ -155,7 +155,7 @@ class SemanticScholarClient(BaseAPIClient):
         # Check cache
         if self.cache:
             cached = self.cache.get(cache_key)
-            if cached:
+            if cached and len(cached) > 0:
                 logger.info(f"Cache hit for citations of {paper_id}")
                 return cached
 
@@ -180,7 +180,7 @@ class SemanticScholarClient(BaseAPIClient):
         citations = (result or {}).get("data") or []
 
         # Cache result
-        if self.cache:
+        if self.cache and citations:
             self.cache.set(cache_key, citations)
 
         logger.info(f"Fetched {len(citations)} citations for paper {paper_id}")

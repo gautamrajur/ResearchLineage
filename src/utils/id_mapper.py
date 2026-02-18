@@ -1,0 +1,77 @@
+"""ID mapping utilities for cross-API paper identification."""
+import logging
+from typing import Optional, Dict, Any
+
+logger = logging.getLogger(__name__)
+
+
+class IDMapper:
+    """Map paper IDs between different APIs."""
+
+    @staticmethod
+    def extract_doi(paper_data: Dict[str, Any]) -> Optional[str]:
+        """
+        Extract DOI from paper data.
+
+        Args:
+            paper_data: Paper metadata from any API
+
+        Returns:
+            DOI string or None
+        """
+        # Semantic Scholar format
+        external_ids = paper_data.get("externalIds", {})
+        if external_ids and external_ids.get("DOI"):
+            return external_ids["DOI"]
+
+        # OpenAlex format
+        doi = paper_data.get("doi", "")
+        if doi:
+            return doi.replace("https://doi.org/", "")
+
+        return None
+
+    @staticmethod
+    def extract_arxiv_id(paper_data: Dict[str, Any]) -> Optional[str]:
+        """
+        Extract ArXiv ID from paper data.
+
+        Args:
+            paper_data: Paper metadata from any API
+
+        Returns:
+            ArXiv ID or None
+        """
+        # Semantic Scholar format
+        external_ids = paper_data.get("externalIds", {})
+        if external_ids and external_ids.get("ArXiv"):
+            return external_ids["ArXiv"]
+
+        # OpenAlex format - check IDs list
+        for identifier in paper_data.get("ids", {}).get("arxiv", []):
+            return identifier
+
+        return None
+
+    @staticmethod
+    def get_openalex_id(paper_data: Dict[str, Any]) -> Optional[str]:
+        """
+        Extract OpenAlex ID from paper data.
+
+        Args:
+            paper_data: Paper metadata
+
+        Returns:
+            OpenAlex ID or None
+        """
+        # From OpenAlex response
+        openalex_url = paper_data.get("id", "")
+        if openalex_url.startswith("https://openalex.org/"):
+            return openalex_url.split("/")[-1]
+
+        # From Semantic Scholar externalIds
+        external_ids = paper_data.get("externalIds", {})
+        if external_ids and external_ids.get("OpenAlex"):
+            return external_ids["OpenAlex"]
+
+        return None
