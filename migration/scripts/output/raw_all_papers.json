@@ -1,0 +1,1328 @@
+[
+  {
+    "paperId": "204e3073870fae3d05bcbc2f6a8e263d9b72e776",
+    "externalIds": {
+      "DBLP": "journals/corr/VaswaniSPUJGKP17",
+      "MAG": "2963403868",
+      "ArXiv": "1706.03762",
+      "CorpusId": 13756489
+    },
+    "url": "https://www.semanticscholar.org/paper/204e3073870fae3d05bcbc2f6a8e263d9b72e776",
+    "title": "Attention is All you Need",
+    "venue": "Neural Information Processing Systems",
+    "year": 2017,
+    "citationCount": 165837,
+    "influentialCitationCount": 19234,
+    "isOpenAccess": false,
+    "openAccessPdf": {
+      "url": "",
+      "status": null,
+      "license": null,
+      "disclaimer": "Notice: Paper or abstract available at https://arxiv.org/abs/1706.03762, which is subject to the license by the author or copyright owner provided with this content. Please go to the source to verify the license and copyright information for your use."
+    },
+    "publicationDate": "2017-06-12",
+    "authors": [
+      {
+        "authorId": "40348417",
+        "name": "Ashish Vaswani"
+      },
+      {
+        "authorId": "1846258",
+        "name": "Noam Shazeer"
+      },
+      {
+        "authorId": "3877127",
+        "name": "Niki Parmar"
+      },
+      {
+        "authorId": "39328010",
+        "name": "Jakob Uszkoreit"
+      },
+      {
+        "authorId": "145024664",
+        "name": "Llion Jones"
+      },
+      {
+        "authorId": "19177000",
+        "name": "Aidan N. Gomez"
+      },
+      {
+        "authorId": "40527594",
+        "name": "Lukasz Kaiser"
+      },
+      {
+        "authorId": "3443442",
+        "name": "I. Polosukhin"
+      }
+    ],
+    "abstract": "The dominant sequence transduction models are based on complex recurrent or convolutional neural networks in an encoder-decoder configuration. The best performing models also connect the encoder and decoder through an attention mechanism. We propose a new simple network architecture, the Transformer, based solely on attention mechanisms, dispensing with recurrence and convolutions entirely. Experiments on two machine translation tasks show these models to be superior in quality while being more parallelizable and requiring significantly less time to train. Our model achieves 28.4 BLEU on the WMT 2014 English-to-German translation task, improving over the existing best results, including ensembles by over 2 BLEU. On the WMT 2014 English-to-French translation task, our model establishes a new single-model state-of-the-art BLEU score of 41.8 after training for 3.5 days on eight GPUs, a small fraction of the training costs of the best models from the literature. We show that the Transformer generalizes well to other tasks by applying it successfully to English constituency parsing both with large and limited training data."
+  },
+  {
+    "paperId": "2c03df8b48bf3fa39054345bafabfeff15bfd11d",
+    "externalIds": {
+      "DBLP": "conf/cvpr/HeZRS16",
+      "MAG": "2949650786",
+      "ArXiv": "1512.03385",
+      "DOI": "10.1109/cvpr.2016.90",
+      "CorpusId": 206594692
+    },
+    "url": "https://www.semanticscholar.org/paper/2c03df8b48bf3fa39054345bafabfeff15bfd11d",
+    "title": "Deep Residual Learning for Image Recognition",
+    "venue": "Computer Vision and Pattern Recognition",
+    "year": 2015,
+    "citationCount": 220221,
+    "influentialCitationCount": 31617,
+    "isOpenAccess": true,
+    "publicationDate": "2015-12-10",
+    "authors": [
+      {
+        "authorId": "39353098",
+        "name": "Kaiming He"
+      },
+      {
+        "authorId": "1771551",
+        "name": "X. Zhang"
+      },
+      {
+        "authorId": "3080683",
+        "name": "Shaoqing Ren"
+      },
+      {
+        "authorId": null,
+        "name": "Jian Sun"
+      }
+    ],
+    "abstract": "Deeper neural networks are more difficult to train. We present a residual learning framework to ease the training of networks that are substantially deeper than those used previously. We explicitly reformulate the layers as learning residual functions with reference to the layer inputs, instead of learning unreferenced functions. We provide comprehensive empirical evidence showing that these residual networks are easier to optimize, and can gain accuracy from considerably increased depth. On the ImageNet dataset we evaluate residual nets with a depth of up to 152 layers - 8\u00d7 deeper than VGG nets [40] but still having lower complexity. An ensemble of these residual nets achieves 3.57% error on the ImageNet test set. This result won the 1st place on the ILSVRC 2015 classification task. We also present analysis on CIFAR-10 with 100 and 1000 layers. The depth of representations is of central importance for many visual recognition tasks. Solely due to our extremely deep representations, we obtain a 28% relative improvement on the COCO object detection dataset. Deep residual nets are foundations of our submissions to ILSVRC & COCO 2015 competitions1, where we also won the 1st places on the tasks of ImageNet detection, ImageNet localization, COCO detection, and COCO segmentation."
+  },
+  {
+    "paperId": "abd1c342495432171beb7ca8fd9551ef13cbd0ff",
+    "externalIds": {
+      "DBLP": "conf/nips/KrizhevskySH12",
+      "MAG": "2618530766",
+      "DOI": "10.1145/3065386",
+      "CorpusId": 195908774
+    },
+    "url": "https://www.semanticscholar.org/paper/abd1c342495432171beb7ca8fd9551ef13cbd0ff",
+    "title": "ImageNet classification with deep convolutional neural networks",
+    "venue": "Communications of the ACM",
+    "year": 2012,
+    "citationCount": 126784,
+    "influentialCitationCount": 13284,
+    "isOpenAccess": true,
+    "publicationDate": "2012-12-03",
+    "authors": [
+      {
+        "authorId": "2064160",
+        "name": "A. Krizhevsky"
+      },
+      {
+        "authorId": "1701686",
+        "name": "I. Sutskever"
+      },
+      {
+        "authorId": "1695689",
+        "name": "Geoffrey E. Hinton"
+      }
+    ]
+  },
+  {
+    "paperId": "eb42cf88027de515750f230b23b1a057dc782108",
+    "externalIds": {
+      "MAG": "2949429431",
+      "ArXiv": "1409.1556",
+      "DBLP": "journals/corr/SimonyanZ14a",
+      "CorpusId": 14124313
+    },
+    "url": "https://www.semanticscholar.org/paper/eb42cf88027de515750f230b23b1a057dc782108",
+    "title": "Very Deep Convolutional Networks for Large-Scale Image Recognition",
+    "venue": "International Conference on Learning Representations",
+    "year": 2014,
+    "citationCount": 109136,
+    "influentialCitationCount": 14406,
+    "isOpenAccess": false,
+    "publicationDate": "2014-09-04",
+    "authors": [
+      {
+        "authorId": "34838386",
+        "name": "K. Simonyan"
+      },
+      {
+        "authorId": "1688869",
+        "name": "Andrew Zisserman"
+      }
+    ],
+    "abstract": "In this work we investigate the effect of the convolutional network depth on its accuracy in the large-scale image recognition setting. Our main contribution is a thorough evaluation of networks of increasing depth using an architecture with very small (3x3) convolution filters, which shows that a significant improvement on the prior-art configurations can be achieved by pushing the depth to 16-19 weight layers. These findings were the basis of our ImageNet Challenge 2014 submission, where our team secured the first and the second places in the localisation and classification tracks respectively. We also show that our representations generalise well to other datasets, where they achieve state-of-the-art results. We have made our two best-performing ConvNet models publicly available to facilitate further research on the use of deep visual representations in computer vision."
+  },
+  {
+    "paperId": "bc6dff14a130c57a91d5a21339c23471faf1d46f",
+    "externalIds": {
+      "DOI": "10.1136/ebmh.11.4.102",
+      "CorpusId": 11759366,
+      "PubMed": "22365577"
+    },
+    "url": "https://www.semanticscholar.org/paper/bc6dff14a130c57a91d5a21339c23471faf1d46f",
+    "title": "Et al",
+    "venue": "Archives de p\u00e9diatrie",
+    "year": 2008,
+    "citationCount": 74096,
+    "influentialCitationCount": 7894,
+    "isOpenAccess": true,
+    "publicationDate": "2008-10-24",
+    "authors": [
+      {
+        "authorId": "2059358552",
+        "name": "P. Cochat"
+      },
+      {
+        "authorId": "13267685",
+        "name": "L. Vaucoret"
+      },
+      {
+        "authorId": "2097644863",
+        "name": "J. Sarles"
+      }
+    ]
+  },
+  {
+    "paperId": "a6cb366736791bcccc5c8639de5a8f9636bf87e8",
+    "externalIds": {
+      "MAG": "2964121744",
+      "DBLP": "journals/corr/KingmaB14",
+      "ArXiv": "1412.6980",
+      "CorpusId": 6628106
+    },
+    "url": "https://www.semanticscholar.org/paper/a6cb366736791bcccc5c8639de5a8f9636bf87e8",
+    "title": "Adam: A Method for Stochastic Optimization",
+    "venue": "International Conference on Learning Representations",
+    "year": 2014,
+    "citationCount": 162762,
+    "influentialCitationCount": 25883,
+    "isOpenAccess": false,
+    "publicationDate": "2014-12-22",
+    "authors": [
+      {
+        "authorId": "1726807",
+        "name": "Diederik P. Kingma"
+      },
+      {
+        "authorId": "2503659",
+        "name": "Jimmy Ba"
+      }
+    ],
+    "abstract": "We introduce Adam, an algorithm for first-order gradient-based optimization of stochastic objective functions, based on adaptive estimates of lower-order moments. The method is straightforward to implement, is computationally efficient, has little memory requirements, is invariant to diagonal rescaling of the gradients, and is well suited for problems that are large in terms of data and/or parameters. The method is also appropriate for non-stationary objectives and problems with very noisy and/or sparse gradients. The hyper-parameters have intuitive interpretations and typically require little tuning. Some connections to related algorithms, on which Adam was inspired, are discussed. We also analyze the theoretical convergence properties of the algorithm and provide a regret bound on the convergence rate that is comparable to the best known results under the online convex optimization framework. Empirical results demonstrate that Adam works well in practice and compares favorably to other stochastic optimization methods. Finally, we discuss AdaMax, a variant of Adam based on the infinity norm."
+  },
+  {
+    "paperId": "5f5dc5b9a2ba710937e2c413b37b053cd673df02",
+    "externalIds": {
+      "DBLP": "journals/corr/KingmaW13",
+      "MAG": "2951004968",
+      "ArXiv": "1312.6114",
+      "CorpusId": 216078090
+    },
+    "url": "https://www.semanticscholar.org/paper/5f5dc5b9a2ba710937e2c413b37b053cd673df02",
+    "title": "Auto-Encoding Variational Bayes",
+    "venue": "International Conference on Learning Representations",
+    "year": 2013,
+    "citationCount": 17178,
+    "influentialCitationCount": 3154,
+    "isOpenAccess": false,
+    "publicationDate": "2013-12-20",
+    "authors": [
+      {
+        "authorId": "1726807",
+        "name": "Diederik P. Kingma"
+      },
+      {
+        "authorId": "1678311",
+        "name": "M. Welling"
+      }
+    ],
+    "abstract": "Abstract: How can we perform efficient inference and learning in directed probabilistic models, in the presence of continuous latent variables with intractable posterior distributions, and large datasets? We introduce a stochastic variational inference and learning algorithm that scales to large datasets and, under some mild differentiability conditions, even works in the intractable case. Our contributions is two-fold. First, we show that a reparameterization of the variational lower bound yields a lower bound estimator that can be straightforwardly optimized using standard stochastic gradient methods. Second, we show that for i.i.d. datasets with continuous latent variables per datapoint, posterior inference can be made especially efficient by fitting an approximate inference model (also called a recognition model) to the intractable posterior using the proposed lower bound estimator. Theoretical advantages are reflected in experimental results."
+  },
+  {
+    "paperId": "7c59908c946a4157abc030cdbe2b63d08ba97db3",
+    "externalIds": {
+      "MAG": "2338600138",
+      "CorpusId": 262637400
+    },
+    "url": "https://www.semanticscholar.org/paper/7c59908c946a4157abc030cdbe2b63d08ba97db3",
+    "title": "Supporting Online Material for Reducing the Dimensionality of Data with Neural Networks",
+    "venue": "",
+    "year": 2006,
+    "citationCount": 11522,
+    "influentialCitationCount": 551,
+    "isOpenAccess": false,
+    "publicationDate": null,
+    "authors": [
+      {
+        "authorId": "1695689",
+        "name": "Geoffrey E. Hinton"
+      },
+      {
+        "authorId": "145124475",
+        "name": "R. Salakhutdinov"
+      }
+    ]
+  },
+  {
+    "paperId": "fa72afa9b2cbc8f0d7b05d52548906610ffbb9c5",
+    "externalIds": {
+      "MAG": "2133564696",
+      "ArXiv": "1409.0473",
+      "DBLP": "journals/corr/BahdanauCB14",
+      "CorpusId": 11212020
+    },
+    "url": "https://www.semanticscholar.org/paper/fa72afa9b2cbc8f0d7b05d52548906610ffbb9c5",
+    "title": "Neural Machine Translation by Jointly Learning to Align and Translate",
+    "venue": "International Conference on Learning Representations",
+    "year": 2014,
+    "citationCount": 28904,
+    "influentialCitationCount": 2572,
+    "isOpenAccess": false,
+    "publicationDate": "2014-09-01",
+    "authors": [
+      {
+        "authorId": "3335364",
+        "name": "Dzmitry Bahdanau"
+      },
+      {
+        "authorId": "1979489",
+        "name": "Kyunghyun Cho"
+      },
+      {
+        "authorId": "1751762",
+        "name": "Yoshua Bengio"
+      }
+    ],
+    "abstract": "Neural machine translation is a recently proposed approach to machine translation. Unlike the traditional statistical machine translation, the neural machine translation aims at building a single neural network that can be jointly tuned to maximize the translation performance. The models proposed recently for neural machine translation often belong to a family of encoder-decoders and consists of an encoder that encodes a source sentence into a fixed-length vector from which a decoder generates a translation. In this paper, we conjecture that the use of a fixed-length vector is a bottleneck in improving the performance of this basic encoder-decoder architecture, and propose to extend this by allowing a model to automatically (soft-)search for parts of a source sentence that are relevant to predicting a target word, without having to form these parts as a hard segment explicitly. With this new approach, we achieve a translation performance comparable to the existing state-of-the-art phrase-based system on the task of English-to-French translation. Furthermore, qualitative analysis reveals that the (soft-)alignments found by the model agree well with our intuition."
+  },
+  {
+    "paperId": "2e9d221c206e9503ceb452302d68d10e293f2a10",
+    "externalIds": {
+      "DBLP": "journals/neco/HochreiterS97",
+      "MAG": "2064675550",
+      "DOI": "10.1162/neco.1997.9.8.1735",
+      "CorpusId": 1915014,
+      "PubMed": "9377276"
+    },
+    "url": "https://www.semanticscholar.org/paper/2e9d221c206e9503ceb452302d68d10e293f2a10",
+    "title": "Long Short-Term Memory",
+    "venue": "Neural Computation",
+    "year": 1997,
+    "citationCount": 100706,
+    "influentialCitationCount": 9945,
+    "isOpenAccess": false,
+    "publicationDate": "1997-11-01",
+    "authors": [
+      {
+        "authorId": "3308557",
+        "name": "Sepp Hochreiter"
+      },
+      {
+        "authorId": "145341374",
+        "name": "J. Schmidhuber"
+      }
+    ]
+  },
+  {
+    "paperId": "0b544dfe355a5070b60986319a3f51fb45d1348e",
+    "externalIds": {
+      "MAG": "2950635152",
+      "DBLP": "conf/emnlp/ChoMGBBSB14",
+      "ACL": "D14-1179",
+      "ArXiv": "1406.1078",
+      "DOI": "10.3115/v1/D14-1179",
+      "CorpusId": 5590763
+    },
+    "url": "https://www.semanticscholar.org/paper/0b544dfe355a5070b60986319a3f51fb45d1348e",
+    "title": "Learning Phrase Representations using RNN Encoder\u2013Decoder for Statistical Machine Translation",
+    "venue": "Conference on Empirical Methods in Natural Language Processing",
+    "year": 2014,
+    "citationCount": 25558,
+    "influentialCitationCount": 3101,
+    "isOpenAccess": true,
+    "publicationDate": "2014-06-03",
+    "authors": [
+      {
+        "authorId": "1979489",
+        "name": "Kyunghyun Cho"
+      },
+      {
+        "authorId": "3158246",
+        "name": "B. V. Merrienboer"
+      },
+      {
+        "authorId": "1854385",
+        "name": "\u00c7aglar G\u00fcl\u00e7ehre"
+      },
+      {
+        "authorId": "3335364",
+        "name": "Dzmitry Bahdanau"
+      },
+      {
+        "authorId": "2076086",
+        "name": "Fethi Bougares"
+      },
+      {
+        "authorId": "144518416",
+        "name": "Holger Schwenk"
+      },
+      {
+        "authorId": "1751762",
+        "name": "Yoshua Bengio"
+      }
+    ],
+    "abstract": "In this paper, we propose a novel neural network model called RNN Encoder\u2010 Decoder that consists of two recurrent neural networks (RNN). One RNN encodes a sequence of symbols into a fixedlength vector representation, and the other decodes the representation into another sequence of symbols. The encoder and decoder of the proposed model are jointly trained to maximize the conditional probability of a target sequence given a source sequence. The performance of a statistical machine translation system is empirically found to improve by using the conditional probabilities of phrase pairs computed by the RNN Encoder\u2010Decoder as an additional feature in the existing log-linear model. Qualitatively, we show that the proposed model learns a semantically and syntactically meaningful representation of linguistic phrases."
+  },
+  {
+    "paperId": "cea967b59209c6be22829699f05b8b1ac4dc092d",
+    "externalIds": {
+      "MAG": "2130942839",
+      "DBLP": "conf/nips/SutskeverVL14",
+      "ArXiv": "1409.3215",
+      "CorpusId": 7961699
+    },
+    "url": "https://www.semanticscholar.org/paper/cea967b59209c6be22829699f05b8b1ac4dc092d",
+    "title": "Sequence to Sequence Learning with Neural Networks",
+    "venue": "Neural Information Processing Systems",
+    "year": 2014,
+    "citationCount": 21703,
+    "influentialCitationCount": 1408,
+    "isOpenAccess": false,
+    "publicationDate": "2014-09-10",
+    "authors": [
+      {
+        "authorId": "1701686",
+        "name": "I. Sutskever"
+      },
+      {
+        "authorId": "1689108",
+        "name": "O. Vinyals"
+      },
+      {
+        "authorId": "2827616",
+        "name": "Quoc V. Le"
+      }
+    ],
+    "abstract": "Deep Neural Networks (DNNs) are powerful models that have achieved excellent performance on difficult learning tasks. Although DNNs work well whenever large labeled training sets are available, they cannot be used to map sequences to sequences. In this paper, we present a general end-to-end approach to sequence learning that makes minimal assumptions on the sequence structure. Our method uses a multilayered Long Short-Term Memory (LSTM) to map the input sequence to a vector of a fixed dimensionality, and then another deep LSTM to decode the target sequence from the vector. Our main result is that on an English to French translation task from the WMT-14 dataset, the translations produced by the LSTM achieve a BLEU score of 34.8 on the entire test set, where the LSTM's BLEU score was penalized on out-of-vocabulary words. Additionally, the LSTM did not have difficulty on long sentences. For comparison, a phrase-based SMT system achieves a BLEU score of 33.3 on the same dataset. When we used the LSTM to rerank the 1000 hypotheses produced by the aforementioned SMT system, its BLEU score increases to 36.5, which is close to the previous state of the art. The LSTM also learned sensible phrase and sentence representations that are sensitive to word order and are relatively invariant to the active and the passive voice. Finally, we found that reversing the order of the words in all source sentences (but not target sentences) improved the LSTM's performance markedly, because doing so introduced many short term dependencies between the source and the target sentence which made the optimization problem easier."
+  },
+  {
+    "paperId": "5c126ae3421f05768d8edd97ecd44b1364e2c99a",
+    "externalIds": {
+      "DBLP": "conf/nips/HoJA20",
+      "MAG": "3100572490",
+      "ArXiv": "2006.11239",
+      "CorpusId": 219955663
+    },
+    "url": "https://www.semanticscholar.org/paper/5c126ae3421f05768d8edd97ecd44b1364e2c99a",
+    "title": "Denoising Diffusion Probabilistic Models",
+    "venue": "Neural Information Processing Systems",
+    "year": 2020,
+    "citationCount": 27043,
+    "influentialCitationCount": 4235,
+    "isOpenAccess": false,
+    "publicationDate": "2020-06-19",
+    "authors": [
+      {
+        "authorId": "2126278",
+        "name": "Jonathan Ho"
+      },
+      {
+        "authorId": "1623995772",
+        "name": "Ajay Jain"
+      },
+      {
+        "authorId": "1689992",
+        "name": "P. Abbeel"
+      }
+    ],
+    "abstract": "We present high quality image synthesis results using diffusion probabilistic models, a class of latent variable models inspired by considerations from nonequilibrium thermodynamics. Our best results are obtained by training on a weighted variational bound designed according to a novel connection between diffusion probabilistic models and denoising score matching with Langevin dynamics, and our models naturally admit a progressive lossy decompression scheme that can be interpreted as a generalization of autoregressive decoding. On the unconditional CIFAR10 dataset, we obtain an Inception score of 9.46 and a state-of-the-art FID score of 3.17. On 256x256 LSUN, we obtain sample quality similar to ProgressiveGAN. Our implementation is available at this https URL"
+  },
+  {
+    "paperId": "c10075b3746a9f3dd5811970e93c8ca3ad39b39d",
+    "externalIds": {
+      "ArXiv": "2112.10752",
+      "DBLP": "journals/corr/abs-2112-10752",
+      "DOI": "10.1109/CVPR52688.2022.01042",
+      "CorpusId": 245335280
+    },
+    "url": "https://www.semanticscholar.org/paper/c10075b3746a9f3dd5811970e93c8ca3ad39b39d",
+    "title": "High-Resolution Image Synthesis with Latent Diffusion Models",
+    "venue": "Computer Vision and Pattern Recognition",
+    "year": 2021,
+    "citationCount": 21926,
+    "influentialCitationCount": 4989,
+    "isOpenAccess": true,
+    "publicationDate": "2021-12-20",
+    "authors": [
+      {
+        "authorId": "1660819540",
+        "name": "Robin Rombach"
+      },
+      {
+        "authorId": "119843260",
+        "name": "A. Blattmann"
+      },
+      {
+        "authorId": "2053482699",
+        "name": "Dominik Lorenz"
+      },
+      {
+        "authorId": "35175531",
+        "name": "Patrick Esser"
+      },
+      {
+        "authorId": "1796707",
+        "name": "B. Ommer"
+      }
+    ],
+    "abstract": "By decomposing the image formation process into a sequential application of denoising autoencoders, diffusion models (DMs) achieve state-of-the-art synthesis results on image data and beyond. Additionally, their formulation allows for a guiding mechanism to control the image generation process without retraining. However, since these models typically operate directly in pixel space, optimization of powerful DMs often consumes hundreds of GPU days and inference is expensive due to sequential evaluations. To enable DM training on limited computational resources while retaining their quality and flexibility, we apply them in the latent space of powerful pretrained autoencoders. In contrast to previous work, training diffusion models on such a representation allows for the first time to reach a near-optimal point between complexity reduction and detail preservation, greatly boosting visual fidelity. By introducing cross-attention layers into the model architecture, we turn diffusion models into powerful and flexible generators for general conditioning inputs such as text or bounding boxes and high-resolution synthesis becomes possible in a convolutional manner. Our latent diffusion models (LDMs) achieve new state of the art scores for image inpainting and class-conditional image synthesis and highly competitive performance on various tasks, including unconditional image generation, text-to-image synthesis, and super-resolution, while significantly reducing computational requirements compared to pixel-based DMs."
+  },
+  {
+    "paperId": "64ea8f180d0682e6c18d1eb688afdb2027c02794",
+    "externalIds": {
+      "ArXiv": "2105.05233",
+      "DBLP": "journals/corr/abs-2105-05233",
+      "CorpusId": 234357997
+    },
+    "url": "https://www.semanticscholar.org/paper/64ea8f180d0682e6c18d1eb688afdb2027c02794",
+    "title": "Diffusion Models Beat GANs on Image Synthesis",
+    "venue": "Neural Information Processing Systems",
+    "year": 2021,
+    "citationCount": 10690,
+    "influentialCitationCount": 1056,
+    "isOpenAccess": false,
+    "publicationDate": "2021-05-11",
+    "authors": [
+      {
+        "authorId": "6515819",
+        "name": "Prafulla Dhariwal"
+      },
+      {
+        "authorId": "38967461",
+        "name": "Alex Nichol"
+      }
+    ],
+    "abstract": "We show that diffusion models can achieve image sample quality superior to the current state-of-the-art generative models. We achieve this on unconditional image synthesis by finding a better architecture through a series of ablations. For conditional image synthesis, we further improve sample quality with classifier guidance: a simple, compute-efficient method for trading off diversity for fidelity using gradients from a classifier. We achieve an FID of 2.97 on ImageNet 128$\\times$128, 4.59 on ImageNet 256$\\times$256, and 7.72 on ImageNet 512$\\times$512, and we match BigGAN-deep even with as few as 25 forward passes per sample, all while maintaining better coverage of the distribution. Finally, we find that classifier guidance combines well with upsampling diffusion models, further improving FID to 3.94 on ImageNet 256$\\times$256 and 3.85 on ImageNet 512$\\times$512. We release our code at https://github.com/openai/guided-diffusion"
+  },
+  {
+    "paperId": "9695824d7a01fad57ba9c01d7d76a519d78d65e7",
+    "externalIds": {
+      "DBLP": "journals/corr/abs-2205-11487",
+      "ArXiv": "2205.11487",
+      "DOI": "10.48550/arXiv.2205.11487",
+      "CorpusId": 248986576
+    },
+    "url": "https://www.semanticscholar.org/paper/9695824d7a01fad57ba9c01d7d76a519d78d65e7",
+    "title": "Photorealistic Text-to-Image Diffusion Models with Deep Language Understanding",
+    "venue": "Neural Information Processing Systems",
+    "year": 2022,
+    "citationCount": 7702,
+    "influentialCitationCount": 463,
+    "isOpenAccess": true,
+    "publicationDate": "2022-05-23",
+    "authors": [
+      {
+        "authorId": "51497543",
+        "name": "Chitwan Saharia"
+      },
+      {
+        "authorId": "144333684",
+        "name": "William Chan"
+      },
+      {
+        "authorId": "2054003577",
+        "name": "Saurabh Saxena"
+      },
+      {
+        "authorId": "2111917831",
+        "name": "Lala Li"
+      },
+      {
+        "authorId": "21040156",
+        "name": "Jay Whang"
+      },
+      {
+        "authorId": "40081727",
+        "name": "Emily L. Denton"
+      },
+      {
+        "authorId": "81419386",
+        "name": "Seyed Kamyar Seyed Ghasemipour"
+      },
+      {
+        "authorId": "143990191",
+        "name": "Burcu Karagol Ayan"
+      },
+      {
+        "authorId": "1982213",
+        "name": "S. S. Mahdavi"
+      },
+      {
+        "authorId": "143826364",
+        "name": "Raphael Gontijo Lopes"
+      },
+      {
+        "authorId": "2887364",
+        "name": "Tim Salimans"
+      },
+      {
+        "authorId": "2126278",
+        "name": "Jonathan Ho"
+      },
+      {
+        "authorId": "1793739",
+        "name": "David J. Fleet"
+      },
+      {
+        "authorId": "144739074",
+        "name": "Mohammad Norouzi"
+      }
+    ],
+    "abstract": "We present Imagen, a text-to-image diffusion model with an unprecedented degree of photorealism and a deep level of language understanding. Imagen builds on the power of large transformer language models in understanding text and hinges on the strength of diffusion models in high-fidelity image generation. Our key discovery is that generic large language models (e.g. T5), pretrained on text-only corpora, are surprisingly effective at encoding text for image synthesis: increasing the size of the language model in Imagen boosts both sample fidelity and image-text alignment much more than increasing the size of the image diffusion model. Imagen achieves a new state-of-the-art FID score of 7.27 on the COCO dataset, without ever training on COCO, and human raters find Imagen samples to be on par with the COCO data itself in image-text alignment. To assess text-to-image models in greater depth, we introduce DrawBench, a comprehensive and challenging benchmark for text-to-image models. With DrawBench, we compare Imagen with recent methods including VQ-GAN+CLIP, Latent Diffusion Models, and DALL-E 2, and find that human raters prefer Imagen over other models in side-by-side comparisons, both in terms of sample quality and image-text alignment. See https://imagen.research.google/ for an overview of the results."
+  },
+  {
+    "paperId": "962dc29fdc3fbdc5930a10aba114050b82fe5a3e",
+    "externalIds": {
+      "MAG": "3096609285",
+      "DBLP": "conf/eccv/CarionMSUKZ20",
+      "ArXiv": "2005.12872",
+      "DOI": "10.1007/978-3-030-58452-8_13",
+      "CorpusId": 218889832
+    },
+    "url": "https://www.semanticscholar.org/paper/962dc29fdc3fbdc5930a10aba114050b82fe5a3e",
+    "title": "End-to-End Object Detection with Transformers",
+    "venue": "European Conference on Computer Vision",
+    "year": 2020,
+    "citationCount": 16915,
+    "influentialCitationCount": 1766,
+    "isOpenAccess": false,
+    "publicationDate": "2020-05-26",
+    "authors": [
+      {
+        "authorId": "3422899",
+        "name": "Nicolas Carion"
+      },
+      {
+        "authorId": "1403239967",
+        "name": "Francisco Massa"
+      },
+      {
+        "authorId": "2282478",
+        "name": "Gabriel Synnaeve"
+      },
+      {
+        "authorId": "1746841",
+        "name": "Nicolas Usunier"
+      },
+      {
+        "authorId": "144843400",
+        "name": "Alexander Kirillov"
+      },
+      {
+        "authorId": "2134433",
+        "name": "Sergey Zagoruyko"
+      }
+    ],
+    "abstract": "We present a new method that views object detection as a direct set prediction problem. Our approach streamlines the detection pipeline, effectively removing the need for many hand-designed components like a non-maximum suppression procedure or anchor generation that explicitly encode our prior knowledge about the task. The main ingredients of the new framework, called DEtection TRansformer or DETR, are a set-based global loss that forces unique predictions via bipartite matching, and a transformer encoder-decoder architecture. Given a fixed small set of learned object queries, DETR reasons about the relations of the objects and the global image context to directly output the final set of predictions in parallel. The new model is conceptually simple and does not require a specialized library, unlike many other modern detectors. DETR demonstrates accuracy and run-time performance on par with the well-established and highly-optimized Faster RCNN baseline on the challenging COCO object detection dataset. Moreover, DETR can be easily generalized to produce panoptic segmentation in a unified manner. We show that it significantly outperforms competitive baselines. Training code and pretrained models are available at this https URL."
+  },
+  {
+    "paperId": "e3d7778a47c6cab4ea1ef3ee9d19ec1510c15c60",
+    "externalIds": {
+      "DBLP": "conf/nips/XieWYAAL21",
+      "ArXiv": "2105.15203",
+      "CorpusId": 235254713
+    },
+    "url": "https://www.semanticscholar.org/paper/e3d7778a47c6cab4ea1ef3ee9d19ec1510c15c60",
+    "title": "SegFormer: Simple and Efficient Design for Semantic Segmentation with Transformers",
+    "venue": "Neural Information Processing Systems",
+    "year": 2021,
+    "citationCount": 7316,
+    "influentialCitationCount": 791,
+    "isOpenAccess": false,
+    "publicationDate": "2021-05-31",
+    "authors": [
+      {
+        "authorId": "41020000",
+        "name": "Enze Xie"
+      },
+      {
+        "authorId": "71074736",
+        "name": "Wenhai Wang"
+      },
+      {
+        "authorId": "1751019",
+        "name": "Zhiding Yu"
+      },
+      {
+        "authorId": "2047844",
+        "name": "Anima Anandkumar"
+      },
+      {
+        "authorId": "2974008",
+        "name": "J. \u00c1lvarez"
+      },
+      {
+        "authorId": "47571885",
+        "name": "Ping Luo"
+      }
+    ],
+    "abstract": "We present SegFormer, a simple, efficient yet powerful semantic segmentation framework which unifies Transformers with lightweight multilayer perception (MLP) decoders. SegFormer has two appealing features: 1) SegFormer comprises a novel hierarchically structured Transformer encoder which outputs multiscale features. It does not need positional encoding, thereby avoiding the interpolation of positional codes which leads to decreased performance when the testing resolution differs from training. 2) SegFormer avoids complex decoders. The proposed MLP decoder aggregates information from different layers, and thus combining both local attention and global attention to render powerful representations. We show that this simple and lightweight design is the key to efficient segmentation on Transformers. We scale our approach up to obtain a series of models from SegFormer-B0 to SegFormer-B5, reaching significantly better performance and efficiency than previous counterparts. For example, SegFormer-B4 achieves 50.3% mIoU on ADE20K with 64M parameters, being 5x smaller and 2.2% better than the previous best method. Our best model, SegFormer-B5, achieves 84.0% mIoU on Cityscapes validation set and shows excellent zero-shot robustness on Cityscapes-C. Code will be released at: github.com/NVlabs/SegFormer."
+  },
+  {
+    "paperId": "26218bdcc3945c7edae7aa2adbfba4cd820a2df3",
+    "externalIds": {
+      "DBLP": "journals/corr/abs-2204-14198",
+      "ArXiv": "2204.14198",
+      "CorpusId": 248476411
+    },
+    "url": "https://www.semanticscholar.org/paper/26218bdcc3945c7edae7aa2adbfba4cd820a2df3",
+    "title": "Flamingo: a Visual Language Model for Few-Shot Learning",
+    "venue": "Neural Information Processing Systems",
+    "year": 2022,
+    "citationCount": 5062,
+    "influentialCitationCount": 365,
+    "isOpenAccess": false,
+    "publicationDate": "2022-04-29",
+    "authors": [
+      {
+        "authorId": "2285263",
+        "name": "Jean-Baptiste Alayrac"
+      },
+      {
+        "authorId": "7408951",
+        "name": "Jeff Donahue"
+      },
+      {
+        "authorId": "152831141",
+        "name": "Pauline Luc"
+      },
+      {
+        "authorId": "19200186",
+        "name": "Antoine Miech"
+      },
+      {
+        "authorId": "2159207795",
+        "name": "Iain Barr"
+      },
+      {
+        "authorId": "66535271",
+        "name": "Yana Hasson"
+      },
+      {
+        "authorId": "3257286",
+        "name": "Karel Lenc"
+      },
+      {
+        "authorId": "1697879",
+        "name": "Arthur Mensch"
+      },
+      {
+        "authorId": "2143434227",
+        "name": "Katie Millican"
+      },
+      {
+        "authorId": "47447264",
+        "name": "Malcolm Reynolds"
+      },
+      {
+        "authorId": "81387328",
+        "name": "Roman Ring"
+      },
+      {
+        "authorId": "2143538252",
+        "name": "Eliza Rutherford"
+      },
+      {
+        "authorId": "12159303",
+        "name": "Serkan Cabi"
+      },
+      {
+        "authorId": "22237490",
+        "name": "Tengda Han"
+      },
+      {
+        "authorId": "48398849",
+        "name": "Zhitao Gong"
+      },
+      {
+        "authorId": "2412073",
+        "name": "Sina Samangooei"
+      },
+      {
+        "authorId": "49601928",
+        "name": "Marianne Monteiro"
+      },
+      {
+        "authorId": "10698483",
+        "name": "Jacob Menick"
+      },
+      {
+        "authorId": "148016269",
+        "name": "Sebastian Borgeaud"
+      },
+      {
+        "authorId": "2065040422",
+        "name": "Andy Brock"
+      },
+      {
+        "authorId": "3208081",
+        "name": "Aida Nematzadeh"
+      },
+      {
+        "authorId": "7782886",
+        "name": "Sahand Sharifzadeh"
+      },
+      {
+        "authorId": "9961753",
+        "name": "Mikolaj Binkowski"
+      },
+      {
+        "authorId": "2026369796",
+        "name": "Ricardo Barreira"
+      },
+      {
+        "authorId": "1689108",
+        "name": "O. Vinyals"
+      },
+      {
+        "authorId": "1688869",
+        "name": "Andrew Zisserman"
+      },
+      {
+        "authorId": "34838386",
+        "name": "K. Simonyan"
+      }
+    ],
+    "abstract": "Building models that can be rapidly adapted to novel tasks using only a handful of annotated examples is an open challenge for multimodal machine learning research. We introduce Flamingo, a family of Visual Language Models (VLM) with this ability. We propose key architectural innovations to: (i) bridge powerful pretrained vision-only and language-only models, (ii) handle sequences of arbitrarily interleaved visual and textual data, and (iii) seamlessly ingest images or videos as inputs. Thanks to their flexibility, Flamingo models can be trained on large-scale multimodal web corpora containing arbitrarily interleaved text and images, which is key to endow them with in-context few-shot learning capabilities. We perform a thorough evaluation of our models, exploring and measuring their ability to rapidly adapt to a variety of image and video tasks. These include open-ended tasks such as visual question-answering, where the model is prompted with a question which it has to answer; captioning tasks, which evaluate the ability to describe a scene or an event; and close-ended tasks such as multiple-choice visual question-answering. For tasks lying anywhere on this spectrum, a single Flamingo model can achieve a new state of the art with few-shot learning, simply by prompting the model with task-specific examples. On numerous benchmarks, Flamingo outperforms models fine-tuned on thousands of times more task-specific data."
+  },
+  {
+    "paperId": "7a9a708ca61c14886aa0dcd6d13dac7879713f5f",
+    "externalIds": {
+      "DBLP": "conf/iccvw/LiangCSZGT21",
+      "ArXiv": "2108.10257",
+      "DOI": "10.1109/ICCVW54120.2021.00210",
+      "CorpusId": 237266491
+    },
+    "url": "https://www.semanticscholar.org/paper/7a9a708ca61c14886aa0dcd6d13dac7879713f5f",
+    "title": "SwinIR: Image Restoration Using Swin Transformer",
+    "venue": "2021 IEEE/CVF International Conference on Computer Vision Workshops (ICCVW)",
+    "year": 2021,
+    "citationCount": 4165,
+    "influentialCitationCount": 679,
+    "isOpenAccess": true,
+    "publicationDate": "2021-08-23",
+    "authors": [
+      {
+        "authorId": "145270228",
+        "name": "Jingyun Liang"
+      },
+      {
+        "authorId": "2109811424",
+        "name": "Jie Cao"
+      },
+      {
+        "authorId": "15839174",
+        "name": "Guolei Sun"
+      },
+      {
+        "authorId": "144110274",
+        "name": "K. Zhang"
+      },
+      {
+        "authorId": "1681236",
+        "name": "L. Gool"
+      },
+      {
+        "authorId": "1732855",
+        "name": "Radu Timofte"
+      }
+    ],
+    "abstract": "Image restoration is a long-standing low-level vision problem that aims to restore high-quality images from low-quality images (e.g., downscaled, noisy and compressed images). While state-of-the-art image restoration methods are based on convolutional neural networks, few attempts have been made with Transformers which show impressive performance on high-level vision tasks. In this paper, we propose a strong baseline model SwinIR for image restoration based on the Swin Transformer. SwinIR consists of three parts: shallow feature extraction, deep feature extraction and high-quality image reconstruction. In particular, the deep feature extraction module is composed of several residual Swin Transformer blocks (RSTB), each of which has several Swin Transformer layers together with a residual connection. We conduct experiments on three representative tasks: image super-resolution (including classical, lightweight and real-world image super-resolution), image denoising (including grayscale and color image denoising) and JPEG compression artifact reduction. Experimental results demonstrate that SwinIR outperforms state-of-the-art methods on different tasks by up to 0.14\u223c0.45dB, while the total number of parameters can be reduced by up to 67%."
+  },
+  {
+    "paperId": "659bf9ce7175e1ec266ff54359e2bd76e0b7ff31",
+    "externalIds": {
+      "DBLP": "conf/nips/LewisPPPKGKLYR020",
+      "MAG": "3027879771",
+      "ArXiv": "2005.11401",
+      "CorpusId": 218869575
+    },
+    "url": "https://www.semanticscholar.org/paper/659bf9ce7175e1ec266ff54359e2bd76e0b7ff31",
+    "title": "Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks",
+    "venue": "Neural Information Processing Systems",
+    "year": 2020,
+    "citationCount": 11270,
+    "influentialCitationCount": 1079,
+    "isOpenAccess": false,
+    "publicationDate": "2020-05-22",
+    "authors": [
+      {
+        "authorId": "145222654",
+        "name": "Patrick Lewis"
+      },
+      {
+        "authorId": "3439053",
+        "name": "Ethan Perez"
+      },
+      {
+        "authorId": "1716179427",
+        "name": "Aleksandara Piktus"
+      },
+      {
+        "authorId": "40052301",
+        "name": "F. Petroni"
+      },
+      {
+        "authorId": "2067091563",
+        "name": "Vladimir Karpukhin"
+      },
+      {
+        "authorId": "39589154",
+        "name": "Naman Goyal"
+      },
+      {
+        "authorId": "103131985",
+        "name": "Heinrich Kuttler"
+      },
+      {
+        "authorId": "35084211",
+        "name": "M. Lewis"
+      },
+      {
+        "authorId": "144105277",
+        "name": "Wen-tau Yih"
+      },
+      {
+        "authorId": "2620211",
+        "name": "Tim Rockt\u00e4schel"
+      },
+      {
+        "authorId": "48662861",
+        "name": "Sebastian Riedel"
+      },
+      {
+        "authorId": "1743722",
+        "name": "Douwe Kiela"
+      }
+    ],
+    "abstract": "Large pre-trained language models have been shown to store factual knowledge in their parameters, and achieve state-of-the-art results when fine-tuned on downstream NLP tasks. However, their ability to access and precisely manipulate knowledge is still limited, and hence on knowledge-intensive tasks, their performance lags behind task-specific architectures. Additionally, providing provenance for their decisions and updating their world knowledge remain open research problems. Pre-trained models with a differentiable access mechanism to explicit non-parametric memory can overcome this issue, but have so far been only investigated for extractive downstream tasks. We explore a general-purpose fine-tuning recipe for retrieval-augmented generation (RAG) -- models which combine pre-trained parametric and non-parametric memory for language generation. We introduce RAG models where the parametric memory is a pre-trained seq2seq model and the non-parametric memory is a dense vector index of Wikipedia, accessed with a pre-trained neural retriever. We compare two RAG formulations, one which conditions on the same retrieved passages across the whole generated sequence, the other can use different passages per token. We fine-tune and evaluate our models on a wide range of knowledge-intensive NLP tasks and set the state-of-the-art on three open domain QA tasks, outperforming parametric seq2seq models and task-specific retrieve-and-extract architectures. For language generation tasks, we find that RAG models generate more specific, diverse and factual language than a state-of-the-art parametric-only seq2seq baseline."
+  },
+  {
+    "paperId": "46f9f7b8f88f72e12cbdb21e3311f995eb6e65c5",
+    "externalIds": {
+      "ArXiv": "2312.10997",
+      "DBLP": "journals/corr/abs-2312-10997",
+      "CorpusId": 266359151
+    },
+    "url": "https://www.semanticscholar.org/paper/46f9f7b8f88f72e12cbdb21e3311f995eb6e65c5",
+    "title": "Retrieval-Augmented Generation for Large Language Models: A Survey",
+    "venue": "arXiv.org",
+    "year": 2023,
+    "citationCount": 2842,
+    "influentialCitationCount": 174,
+    "isOpenAccess": false,
+    "publicationDate": "2023-12-18",
+    "authors": [
+      {
+        "authorId": "2280046531",
+        "name": "Yunfan Gao"
+      },
+      {
+        "authorId": "2275320371",
+        "name": "Yun Xiong"
+      },
+      {
+        "authorId": "2275341478",
+        "name": "Xinyu Gao"
+      },
+      {
+        "authorId": "2275191447",
+        "name": "Kangxiang Jia"
+      },
+      {
+        "authorId": "2275530552",
+        "name": "Jinliu Pan"
+      },
+      {
+        "authorId": "2275171009",
+        "name": "Yuxi Bi"
+      },
+      {
+        "authorId": "2276187454",
+        "name": "Yi Dai"
+      },
+      {
+        "authorId": "2275540959",
+        "name": "Jiawei Sun"
+      },
+      {
+        "authorId": "2258800561",
+        "name": "Qianyu Guo"
+      },
+      {
+        "authorId": "2291409458",
+        "name": "Meng Wang"
+      },
+      {
+        "authorId": "2256769434",
+        "name": "Haofen Wang"
+      }
+    ],
+    "abstract": "Large Language Models (LLMs) showcase impressive capabilities but encounter challenges like hallucination, outdated knowledge, and non-transparent, untraceable reasoning processes. Retrieval-Augmented Generation (RAG) has emerged as a promising solution by incorporating knowledge from external databases. This enhances the accuracy and credibility of the generation, particularly for knowledge-intensive tasks, and allows for continuous knowledge updates and integration of domain-specific information. RAG synergistically merges LLMs' intrinsic knowledge with the vast, dynamic repositories of external databases. This comprehensive review paper offers a detailed examination of the progression of RAG paradigms, encompassing the Naive RAG, the Advanced RAG, and the Modular RAG. It meticulously scrutinizes the tripartite foundation of RAG frameworks, which includes the retrieval, the generation and the augmentation techniques. The paper highlights the state-of-the-art technologies embedded in each of these critical components, providing a profound understanding of the advancements in RAG systems. Furthermore, this paper introduces up-to-date evaluation framework and benchmark. At the end, this article delineates the challenges currently faced and points out prospective avenues for research and development."
+  },
+  {
+    "paperId": "8342b592fe238f3d230e4959b06fd10153c45db1",
+    "externalIds": {
+      "DBLP": "journals/corr/abs-2203-15556",
+      "ArXiv": "2203.15556",
+      "CorpusId": 247778764
+    },
+    "url": "https://www.semanticscholar.org/paper/8342b592fe238f3d230e4959b06fd10153c45db1",
+    "title": "Training Compute-Optimal Large Language Models",
+    "venue": "arXiv.org",
+    "year": 2022,
+    "citationCount": 2803,
+    "influentialCitationCount": 272,
+    "isOpenAccess": false,
+    "publicationDate": "2022-03-29",
+    "authors": [
+      {
+        "authorId": "46616544",
+        "name": "Jordan Hoffmann"
+      },
+      {
+        "authorId": "148016269",
+        "name": "Sebastian Borgeaud"
+      },
+      {
+        "authorId": "1697879",
+        "name": "Arthur Mensch"
+      },
+      {
+        "authorId": "118801223",
+        "name": "Elena Buchatskaya"
+      },
+      {
+        "authorId": "2072572294",
+        "name": "Trevor Cai"
+      },
+      {
+        "authorId": "2143538252",
+        "name": "Eliza Rutherford"
+      },
+      {
+        "authorId": "40550616",
+        "name": "Diego de Las Casas"
+      },
+      {
+        "authorId": "2234342",
+        "name": "Lisa Anne Hendricks"
+      },
+      {
+        "authorId": "1851564",
+        "name": "Johannes Welbl"
+      },
+      {
+        "authorId": "31993415",
+        "name": "Aidan Clark"
+      },
+      {
+        "authorId": "2146532222",
+        "name": "Tom Hennigan"
+      },
+      {
+        "authorId": "51210148",
+        "name": "Eric Noland"
+      },
+      {
+        "authorId": "2143434227",
+        "name": "Katie Millican"
+      },
+      {
+        "authorId": "47568983",
+        "name": "George van den Driessche"
+      },
+      {
+        "authorId": "2143374656",
+        "name": "Bogdan Damoc"
+      },
+      {
+        "authorId": "40895205",
+        "name": "Aurelia Guy"
+      },
+      {
+        "authorId": "2217144",
+        "name": "Simon Osindero"
+      },
+      {
+        "authorId": "34838386",
+        "name": "K. Simonyan"
+      },
+      {
+        "authorId": "152585800",
+        "name": "Erich Elsen"
+      },
+      {
+        "authorId": "34269227",
+        "name": "Jack W. Rae"
+      },
+      {
+        "authorId": "1689108",
+        "name": "O. Vinyals"
+      },
+      {
+        "authorId": "2175946",
+        "name": "L. Sifre"
+      }
+    ],
+    "abstract": "We investigate the optimal model size and number of tokens for training a transformer language model under a given compute budget. We find that current large language models are significantly undertrained, a consequence of the recent focus on scaling language models whilst keeping the amount of training data constant. By training over 400 language models ranging from 70 million to over 16 billion parameters on 5 to 500 billion tokens, we find that for compute-optimal training, the model size and the number of training tokens should be scaled equally: for every doubling of model size the number of training tokens should also be doubled. We test this hypothesis by training a predicted compute-optimal model, Chinchilla, that uses the same compute budget as Gopher but with 70B parameters and 4$\\times$ more more data. Chinchilla uniformly and significantly outperforms Gopher (280B), GPT-3 (175B), Jurassic-1 (178B), and Megatron-Turing NLG (530B) on a large range of downstream evaluation tasks. This also means that Chinchilla uses substantially less compute for fine-tuning and inference, greatly facilitating downstream usage. As a highlight, Chinchilla reaches a state-of-the-art average accuracy of 67.5% on the MMLU benchmark, greater than a 7% improvement over Gopher."
+  },
+  {
+    "paperId": "b3848d32f7294ec708627897833c4097eb4d8778",
+    "externalIds": {
+      "DBLP": "journals/corr/abs-2201-08239",
+      "ArXiv": "2201.08239",
+      "CorpusId": 246063428
+    },
+    "url": "https://www.semanticscholar.org/paper/b3848d32f7294ec708627897833c4097eb4d8778",
+    "title": "LaMDA: Language Models for Dialog Applications",
+    "venue": "arXiv.org",
+    "year": 2022,
+    "citationCount": 1815,
+    "influentialCitationCount": 107,
+    "isOpenAccess": false,
+    "publicationDate": "2022-01-20",
+    "authors": [
+      {
+        "authorId": "9501591",
+        "name": "R. Thoppilan"
+      },
+      {
+        "authorId": "1490889580",
+        "name": "Daniel De Freitas"
+      },
+      {
+        "authorId": "2115876918",
+        "name": "Jamie Hall"
+      },
+      {
+        "authorId": "1846258",
+        "name": "Noam Shazeer"
+      },
+      {
+        "authorId": "1490888815",
+        "name": "Apoorv Kulshreshtha"
+      },
+      {
+        "authorId": "2061550",
+        "name": "Heng-Tze Cheng"
+      },
+      {
+        "authorId": "2150572756",
+        "name": "Alicia Jin"
+      },
+      {
+        "authorId": "2150572221",
+        "name": "Taylor Bos"
+      },
+      {
+        "authorId": "2150777298",
+        "name": "Leslie Baker"
+      },
+      {
+        "authorId": "144708948",
+        "name": "Yu Du"
+      },
+      {
+        "authorId": "1720837956",
+        "name": "Yaguang Li"
+      },
+      {
+        "authorId": "8386466",
+        "name": "Hongrae Lee"
+      },
+      {
+        "authorId": "2115689465",
+        "name": "H. Zheng"
+      },
+      {
+        "authorId": "3010652",
+        "name": "Amin Ghafouri"
+      },
+      {
+        "authorId": "2150572520",
+        "name": "Marcelo Menegali"
+      },
+      {
+        "authorId": "2145438541",
+        "name": "Yanping Huang"
+      },
+      {
+        "authorId": "2048712",
+        "name": "M. Krikun"
+      },
+      {
+        "authorId": "150077954",
+        "name": "Dmitry Lepikhin"
+      },
+      {
+        "authorId": "47901308",
+        "name": "James Qin"
+      },
+      {
+        "authorId": "7167328",
+        "name": "Dehao Chen"
+      },
+      {
+        "authorId": "2145139570",
+        "name": "Yuanzhong Xu"
+      },
+      {
+        "authorId": "2111317372",
+        "name": "Zhifeng Chen"
+      },
+      {
+        "authorId": "145625142",
+        "name": "Adam Roberts"
+      },
+      {
+        "authorId": "40377863",
+        "name": "Maarten Bosma"
+      },
+      {
+        "authorId": "2389316",
+        "name": "Yanqi Zhou"
+      },
+      {
+        "authorId": "2152948655",
+        "name": "Chung-Ching Chang"
+      },
+      {
+        "authorId": "115361655",
+        "name": "I. Krivokon"
+      },
+      {
+        "authorId": "69540629",
+        "name": "W. Rusch"
+      },
+      {
+        "authorId": "144851733",
+        "name": "Marc Pickett"
+      },
+      {
+        "authorId": "1398655031",
+        "name": "K. Meier-Hellstern"
+      },
+      {
+        "authorId": "144844426",
+        "name": "M. Morris"
+      },
+      {
+        "authorId": "2155007",
+        "name": "Tulsee Doshi"
+      },
+      {
+        "authorId": "2150575477",
+        "name": "Renelito Delos Santos"
+      },
+      {
+        "authorId": "2145151992",
+        "name": "Toju Duke"
+      },
+      {
+        "authorId": "152181934",
+        "name": "J. S\u00f8raker"
+      },
+      {
+        "authorId": "70326942",
+        "name": "Ben Zevenbergen"
+      },
+      {
+        "authorId": "3331141",
+        "name": "Vinodkumar Prabhakaran"
+      },
+      {
+        "authorId": "2152965375",
+        "name": "Mark D\u00edaz"
+      },
+      {
+        "authorId": "2044655623",
+        "name": "Ben Hutchinson"
+      },
+      {
+        "authorId": "2053872069",
+        "name": "Kristen Olson"
+      },
+      {
+        "authorId": "145142660",
+        "name": "Alejandra Molina"
+      },
+      {
+        "authorId": "1413971055",
+        "name": "Erin Hoffman-John"
+      },
+      {
+        "authorId": "2108300711",
+        "name": "Josh Lee"
+      },
+      {
+        "authorId": "1745337",
+        "name": "Lora Aroyo"
+      },
+      {
+        "authorId": "22167999",
+        "name": "Ravi Rajakumar"
+      },
+      {
+        "authorId": "1724714282",
+        "name": "Alena Butryna"
+      },
+      {
+        "authorId": "48024953",
+        "name": "Matthew Lamm"
+      },
+      {
+        "authorId": "104146486",
+        "name": "V. Kuzmina"
+      },
+      {
+        "authorId": "2067536215",
+        "name": "Joseph Fenton"
+      },
+      {
+        "authorId": "2112929869",
+        "name": "Aaron Cohen"
+      },
+      {
+        "authorId": "144864136",
+        "name": "R. Bernstein"
+      },
+      {
+        "authorId": "2186634",
+        "name": "R. Kurzweil"
+      },
+      {
+        "authorId": "1453482151",
+        "name": "Blaise Aguera-Arcas"
+      },
+      {
+        "authorId": "40498222",
+        "name": "Claire Cui"
+      },
+      {
+        "authorId": "2098130534",
+        "name": "M. Croak"
+      },
+      {
+        "authorId": "2226805",
+        "name": "Ed H. Chi"
+      },
+      {
+        "authorId": "1998340269",
+        "name": "Quoc Le"
+      }
+    ],
+    "abstract": "We present LaMDA: Language Models for Dialog Applications. LaMDA is a family of Transformer-based neural language models specialized for dialog, which have up to 137B parameters and are pre-trained on 1.56T words of public dialog data and web text. While model scaling alone can improve quality, it shows less improvements on safety and factual grounding. We demonstrate that fine-tuning with annotated data and enabling the model to consult external knowledge sources can lead to significant improvements towards the two key challenges of safety and factual grounding. The first challenge, safety, involves ensuring that the model's responses are consistent with a set of human values, such as preventing harmful suggestions and unfair bias. We quantify safety using a metric based on an illustrative set of human values, and we find that filtering candidate responses using a LaMDA classifier fine-tuned with a small amount of crowdworker-annotated data offers a promising approach to improving model safety. The second challenge, factual grounding, involves enabling the model to consult external knowledge sources, such as an information retrieval system, a language translator, and a calculator. We quantify factuality using a groundedness metric, and we find that our approach enables the model to generate responses grounded in known sources, rather than responses that merely sound plausible. Finally, we explore the use of LaMDA in the domains of education and content recommendations, and analyze their helpfulness and role consistency."
+  }
+]

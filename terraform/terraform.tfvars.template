@@ -1,0 +1,32 @@
+# ── ResearchLineage — Terraform Variables ─────────────────────────────────────
+# Copy this file to terraform.tfvars and fill in your values.
+# terraform.tfvars is git-ignored; NEVER commit it.
+
+# Required — must be set by you
+project_id  = "researchlineage"   # Your actual GCP project ID
+db_password = "CHANGE_ME"         # Choose a strong password
+
+# Optional overrides (defaults shown)
+region        = "us-central1"
+instance_name = "researchlineage-db"
+instance_tier = "db-f1-micro"       # Cheapest tier — upgrade for production
+db_name       = "researchlineage"
+db_user       = "rl_user"
+
+# Postgres version
+postgres_version = "POSTGRES_15"
+
+# Storage
+disk_size_gb = 10
+
+# Backups
+backup_retention_days = 7
+
+# Deletion protection (set true before production use)
+deletion_protection = false
+
+# Add your IP to connect directly to the public IP
+# Leave the list empty to use Cloud SQL Auth Proxy instead (recommended)
+authorized_networks = [
+  # { name = "my-workstation", value = "YOUR.PUBLIC.IP/32" }
+]

@@ -1,0 +1,421 @@
+[
+  {
+    "paper": {
+      "paperId": "2c03df8b48bf3fa39054345bafabfeff15bfd11d",
+      "externalIds": {
+        "DBLP": "conf/cvpr/HeZRS16",
+        "MAG": "2949650786",
+        "ArXiv": "1512.03385",
+        "DOI": "10.1109/cvpr.2016.90",
+        "CorpusId": 206594692
+      },
+      "url": "https://www.semanticscholar.org/paper/2c03df8b48bf3fa39054345bafabfeff15bfd11d",
+      "title": "Deep Residual Learning for Image Recognition",
+      "venue": "Computer Vision and Pattern Recognition",
+      "year": 2015,
+      "citationCount": 220221,
+      "influentialCitationCount": 31617,
+      "isOpenAccess": true,
+      "publicationDate": "2015-12-10",
+      "authors": [
+        {
+          "authorId": "39353098",
+          "name": "Kaiming He"
+        },
+        {
+          "authorId": "1771551",
+          "name": "X. Zhang"
+        },
+        {
+          "authorId": "3080683",
+          "name": "Shaoqing Ren"
+        },
+        {
+          "authorId": null,
+          "name": "Jian Sun"
+        }
+      ],
+      "abstract": "Deeper neural networks are more difficult to train. We present a residual learning framework to ease the training of networks that are substantially deeper than those used previously. We explicitly reformulate the layers as learning residual functions with reference to the layer inputs, instead of learning unreferenced functions. We provide comprehensive empirical evidence showing that these residual networks are easier to optimize, and can gain accuracy from considerably increased depth. On the ImageNet dataset we evaluate residual nets with a depth of up to 152 layers - 8\u00d7 deeper than VGG nets [40] but still having lower complexity. An ensemble of these residual nets achieves 3.57% error on the ImageNet test set. This result won the 1st place on the ILSVRC 2015 classification task. We also present analysis on CIFAR-10 with 100 and 1000 layers. The depth of representations is of central importance for many visual recognition tasks. Solely due to our extremely deep representations, we obtain a 28% relative improvement on the COCO object detection dataset. Deep residual nets are foundations of our submissions to ILSVRC & COCO 2015 competitions1, where we also won the 1st places on the tasks of ImageNet detection, ImageNet localization, COCO detection, and COCO segmentation."
+    },
+    "ancestors": [
+      {
+        "paper": {
+          "paperId": "abd1c342495432171beb7ca8fd9551ef13cbd0ff",
+          "externalIds": {
+            "DBLP": "conf/nips/KrizhevskySH12",
+            "MAG": "2618530766",
+            "DOI": "10.1145/3065386",
+            "CorpusId": 195908774
+          },
+          "url": "https://www.semanticscholar.org/paper/abd1c342495432171beb7ca8fd9551ef13cbd0ff",
+          "title": "ImageNet classification with deep convolutional neural networks",
+          "venue": "Communications of the ACM",
+          "year": 2012,
+          "citationCount": 126784,
+          "influentialCitationCount": 13284,
+          "isOpenAccess": true,
+          "publicationDate": "2012-12-03",
+          "authors": [
+            {
+              "authorId": "2064160",
+              "name": "A. Krizhevsky"
+            },
+            {
+              "authorId": "1701686",
+              "name": "I. Sutskever"
+            },
+            {
+              "authorId": "1695689",
+              "name": "Geoffrey E. Hinton"
+            }
+          ]
+        },
+        "ancestors": []
+      },
+      {
+        "paper": {
+          "paperId": "eb42cf88027de515750f230b23b1a057dc782108",
+          "externalIds": {
+            "MAG": "2949429431",
+            "ArXiv": "1409.1556",
+            "DBLP": "journals/corr/SimonyanZ14a",
+            "CorpusId": 14124313
+          },
+          "url": "https://www.semanticscholar.org/paper/eb42cf88027de515750f230b23b1a057dc782108",
+          "title": "Very Deep Convolutional Networks for Large-Scale Image Recognition",
+          "venue": "International Conference on Learning Representations",
+          "year": 2014,
+          "citationCount": 109136,
+          "influentialCitationCount": 14406,
+          "isOpenAccess": false,
+          "publicationDate": "2014-09-04",
+          "authors": [
+            {
+              "authorId": "34838386",
+              "name": "K. Simonyan"
+            },
+            {
+              "authorId": "1688869",
+              "name": "Andrew Zisserman"
+            }
+          ],
+          "abstract": "In this work we investigate the effect of the convolutional network depth on its accuracy in the large-scale image recognition setting. Our main contribution is a thorough evaluation of networks of increasing depth using an architecture with very small (3x3) convolution filters, which shows that a significant improvement on the prior-art configurations can be achieved by pushing the depth to 16-19 weight layers. These findings were the basis of our ImageNet Challenge 2014 submission, where our team secured the first and the second places in the localisation and classification tracks respectively. We also show that our representations generalise well to other datasets, where they achieve state-of-the-art results. We have made our two best-performing ConvNet models publicly available to facilitate further research on the use of deep visual representations in computer vision."
+        },
+        "ancestors": []
+      },
+      {
+        "paper": {
+          "paperId": "bc6dff14a130c57a91d5a21339c23471faf1d46f",
+          "externalIds": {
+            "DOI": "10.1136/ebmh.11.4.102",
+            "CorpusId": 11759366,
+            "PubMed": "22365577"
+          },
+          "url": "https://www.semanticscholar.org/paper/bc6dff14a130c57a91d5a21339c23471faf1d46f",
+          "title": "Et al",
+          "venue": "Archives de p\u00e9diatrie",
+          "year": 2008,
+          "citationCount": 74096,
+          "influentialCitationCount": 7894,
+          "isOpenAccess": true,
+          "publicationDate": "2008-10-24",
+          "authors": [
+            {
+              "authorId": "2059358552",
+              "name": "P. Cochat"
+            },
+            {
+              "authorId": "13267685",
+              "name": "L. Vaucoret"
+            },
+            {
+              "authorId": "2097644863",
+              "name": "J. Sarles"
+            }
+          ]
+        },
+        "ancestors": []
+      }
+    ]
+  },
+  {
+    "paper": {
+      "paperId": "a6cb366736791bcccc5c8639de5a8f9636bf87e8",
+      "externalIds": {
+        "MAG": "2964121744",
+        "DBLP": "journals/corr/KingmaB14",
+        "ArXiv": "1412.6980",
+        "CorpusId": 6628106
+      },
+      "url": "https://www.semanticscholar.org/paper/a6cb366736791bcccc5c8639de5a8f9636bf87e8",
+      "title": "Adam: A Method for Stochastic Optimization",
+      "venue": "International Conference on Learning Representations",
+      "year": 2014,
+      "citationCount": 162762,
+      "influentialCitationCount": 25883,
+      "isOpenAccess": false,
+      "publicationDate": "2014-12-22",
+      "authors": [
+        {
+          "authorId": "1726807",
+          "name": "Diederik P. Kingma"
+        },
+        {
+          "authorId": "2503659",
+          "name": "Jimmy Ba"
+        }
+      ],
+      "abstract": "We introduce Adam, an algorithm for first-order gradient-based optimization of stochastic objective functions, based on adaptive estimates of lower-order moments. The method is straightforward to implement, is computationally efficient, has little memory requirements, is invariant to diagonal rescaling of the gradients, and is well suited for problems that are large in terms of data and/or parameters. The method is also appropriate for non-stationary objectives and problems with very noisy and/or sparse gradients. The hyper-parameters have intuitive interpretations and typically require little tuning. Some connections to related algorithms, on which Adam was inspired, are discussed. We also analyze the theoretical convergence properties of the algorithm and provide a regret bound on the convergence rate that is comparable to the best known results under the online convex optimization framework. Empirical results demonstrate that Adam works well in practice and compares favorably to other stochastic optimization methods. Finally, we discuss AdaMax, a variant of Adam based on the infinity norm."
+    },
+    "ancestors": [
+      {
+        "paper": {
+          "paperId": "abd1c342495432171beb7ca8fd9551ef13cbd0ff",
+          "externalIds": {
+            "DBLP": "conf/nips/KrizhevskySH12",
+            "MAG": "2618530766",
+            "DOI": "10.1145/3065386",
+            "CorpusId": 195908774
+          },
+          "url": "https://www.semanticscholar.org/paper/abd1c342495432171beb7ca8fd9551ef13cbd0ff",
+          "title": "ImageNet classification with deep convolutional neural networks",
+          "venue": "Communications of the ACM",
+          "year": 2012,
+          "citationCount": 126784,
+          "influentialCitationCount": 13284,
+          "isOpenAccess": true,
+          "publicationDate": "2012-12-03",
+          "authors": [
+            {
+              "authorId": "2064160",
+              "name": "A. Krizhevsky"
+            },
+            {
+              "authorId": "1701686",
+              "name": "I. Sutskever"
+            },
+            {
+              "authorId": "1695689",
+              "name": "Geoffrey E. Hinton"
+            }
+          ]
+        },
+        "ancestors": []
+      },
+      {
+        "paper": {
+          "paperId": "5f5dc5b9a2ba710937e2c413b37b053cd673df02",
+          "externalIds": {
+            "DBLP": "journals/corr/KingmaW13",
+            "MAG": "2951004968",
+            "ArXiv": "1312.6114",
+            "CorpusId": 216078090
+          },
+          "url": "https://www.semanticscholar.org/paper/5f5dc5b9a2ba710937e2c413b37b053cd673df02",
+          "title": "Auto-Encoding Variational Bayes",
+          "venue": "International Conference on Learning Representations",
+          "year": 2013,
+          "citationCount": 17178,
+          "influentialCitationCount": 3154,
+          "isOpenAccess": false,
+          "publicationDate": "2013-12-20",
+          "authors": [
+            {
+              "authorId": "1726807",
+              "name": "Diederik P. Kingma"
+            },
+            {
+              "authorId": "1678311",
+              "name": "M. Welling"
+            }
+          ],
+          "abstract": "Abstract: How can we perform efficient inference and learning in directed probabilistic models, in the presence of continuous latent variables with intractable posterior distributions, and large datasets? We introduce a stochastic variational inference and learning algorithm that scales to large datasets and, under some mild differentiability conditions, even works in the intractable case. Our contributions is two-fold. First, we show that a reparameterization of the variational lower bound yields a lower bound estimator that can be straightforwardly optimized using standard stochastic gradient methods. Second, we show that for i.i.d. datasets with continuous latent variables per datapoint, posterior inference can be made especially efficient by fitting an approximate inference model (also called a recognition model) to the intractable posterior using the proposed lower bound estimator. Theoretical advantages are reflected in experimental results."
+        },
+        "ancestors": []
+      },
+      {
+        "paper": {
+          "paperId": "7c59908c946a4157abc030cdbe2b63d08ba97db3",
+          "externalIds": {
+            "MAG": "2338600138",
+            "CorpusId": 262637400
+          },
+          "url": "https://www.semanticscholar.org/paper/7c59908c946a4157abc030cdbe2b63d08ba97db3",
+          "title": "Supporting Online Material for Reducing the Dimensionality of Data with Neural Networks",
+          "venue": "",
+          "year": 2006,
+          "citationCount": 11522,
+          "influentialCitationCount": 551,
+          "isOpenAccess": false,
+          "publicationDate": null,
+          "authors": [
+            {
+              "authorId": "1695689",
+              "name": "Geoffrey E. Hinton"
+            },
+            {
+              "authorId": "145124475",
+              "name": "R. Salakhutdinov"
+            }
+          ]
+        },
+        "ancestors": []
+      }
+    ]
+  },
+  {
+    "paper": {
+      "paperId": "fa72afa9b2cbc8f0d7b05d52548906610ffbb9c5",
+      "externalIds": {
+        "MAG": "2133564696",
+        "ArXiv": "1409.0473",
+        "DBLP": "journals/corr/BahdanauCB14",
+        "CorpusId": 11212020
+      },
+      "url": "https://www.semanticscholar.org/paper/fa72afa9b2cbc8f0d7b05d52548906610ffbb9c5",
+      "title": "Neural Machine Translation by Jointly Learning to Align and Translate",
+      "venue": "International Conference on Learning Representations",
+      "year": 2014,
+      "citationCount": 28904,
+      "influentialCitationCount": 2572,
+      "isOpenAccess": false,
+      "publicationDate": "2014-09-01",
+      "authors": [
+        {
+          "authorId": "3335364",
+          "name": "Dzmitry Bahdanau"
+        },
+        {
+          "authorId": "1979489",
+          "name": "Kyunghyun Cho"
+        },
+        {
+          "authorId": "1751762",
+          "name": "Yoshua Bengio"
+        }
+      ],
+      "abstract": "Neural machine translation is a recently proposed approach to machine translation. Unlike the traditional statistical machine translation, the neural machine translation aims at building a single neural network that can be jointly tuned to maximize the translation performance. The models proposed recently for neural machine translation often belong to a family of encoder-decoders and consists of an encoder that encodes a source sentence into a fixed-length vector from which a decoder generates a translation. In this paper, we conjecture that the use of a fixed-length vector is a bottleneck in improving the performance of this basic encoder-decoder architecture, and propose to extend this by allowing a model to automatically (soft-)search for parts of a source sentence that are relevant to predicting a target word, without having to form these parts as a hard segment explicitly. With this new approach, we achieve a translation performance comparable to the existing state-of-the-art phrase-based system on the task of English-to-French translation. Furthermore, qualitative analysis reveals that the (soft-)alignments found by the model agree well with our intuition."
+    },
+    "ancestors": [
+      {
+        "paper": {
+          "paperId": "2e9d221c206e9503ceb452302d68d10e293f2a10",
+          "externalIds": {
+            "DBLP": "journals/neco/HochreiterS97",
+            "MAG": "2064675550",
+            "DOI": "10.1162/neco.1997.9.8.1735",
+            "CorpusId": 1915014,
+            "PubMed": "9377276"
+          },
+          "url": "https://www.semanticscholar.org/paper/2e9d221c206e9503ceb452302d68d10e293f2a10",
+          "title": "Long Short-Term Memory",
+          "venue": "Neural Computation",
+          "year": 1997,
+          "citationCount": 100706,
+          "influentialCitationCount": 9945,
+          "isOpenAccess": false,
+          "publicationDate": "1997-11-01",
+          "authors": [
+            {
+              "authorId": "3308557",
+              "name": "Sepp Hochreiter"
+            },
+            {
+              "authorId": "145341374",
+              "name": "J. Schmidhuber"
+            }
+          ]
+        },
+        "ancestors": []
+      },
+      {
+        "paper": {
+          "paperId": "0b544dfe355a5070b60986319a3f51fb45d1348e",
+          "externalIds": {
+            "MAG": "2950635152",
+            "DBLP": "conf/emnlp/ChoMGBBSB14",
+            "ACL": "D14-1179",
+            "ArXiv": "1406.1078",
+            "DOI": "10.3115/v1/D14-1179",
+            "CorpusId": 5590763
+          },
+          "url": "https://www.semanticscholar.org/paper/0b544dfe355a5070b60986319a3f51fb45d1348e",
+          "title": "Learning Phrase Representations using RNN Encoder\u2013Decoder for Statistical Machine Translation",
+          "venue": "Conference on Empirical Methods in Natural Language Processing",
+          "year": 2014,
+          "citationCount": 25558,
+          "influentialCitationCount": 3101,
+          "isOpenAccess": true,
+          "publicationDate": "2014-06-03",
+          "authors": [
+            {
+              "authorId": "1979489",
+              "name": "Kyunghyun Cho"
+            },
+            {
+              "authorId": "3158246",
+              "name": "B. V. Merrienboer"
+            },
+            {
+              "authorId": "1854385",
+              "name": "\u00c7aglar G\u00fcl\u00e7ehre"
+            },
+            {
+              "authorId": "3335364",
+              "name": "Dzmitry Bahdanau"
+            },
+            {
+              "authorId": "2076086",
+              "name": "Fethi Bougares"
+            },
+            {
+              "authorId": "144518416",
+              "name": "Holger Schwenk"
+            },
+            {
+              "authorId": "1751762",
+              "name": "Yoshua Bengio"
+            }
+          ],
+          "abstract": "In this paper, we propose a novel neural network model called RNN Encoder\u2010 Decoder that consists of two recurrent neural networks (RNN). One RNN encodes a sequence of symbols into a fixedlength vector representation, and the other decodes the representation into another sequence of symbols. The encoder and decoder of the proposed model are jointly trained to maximize the conditional probability of a target sequence given a source sequence. The performance of a statistical machine translation system is empirically found to improve by using the conditional probabilities of phrase pairs computed by the RNN Encoder\u2010Decoder as an additional feature in the existing log-linear model. Qualitatively, we show that the proposed model learns a semantically and syntactically meaningful representation of linguistic phrases."
+        },
+        "ancestors": []
+      },
+      {
+        "paper": {
+          "paperId": "cea967b59209c6be22829699f05b8b1ac4dc092d",
+          "externalIds": {
+            "MAG": "2130942839",
+            "DBLP": "conf/nips/SutskeverVL14",
+            "ArXiv": "1409.3215",
+            "CorpusId": 7961699
+          },
+          "url": "https://www.semanticscholar.org/paper/cea967b59209c6be22829699f05b8b1ac4dc092d",
+          "title": "Sequence to Sequence Learning with Neural Networks",
+          "venue": "Neural Information Processing Systems",
+          "year": 2014,
+          "citationCount": 21703,
+          "influentialCitationCount": 1408,
+          "isOpenAccess": false,
+          "publicationDate": "2014-09-10",
+          "authors": [
+            {
+              "authorId": "1701686",
+              "name": "I. Sutskever"
+            },
+            {
+              "authorId": "1689108",
+              "name": "O. Vinyals"
+            },
+            {
+              "authorId": "2827616",
+              "name": "Quoc V. Le"
+            }
+          ],
+          "abstract": "Deep Neural Networks (DNNs) are powerful models that have achieved excellent performance on difficult learning tasks. Although DNNs work well whenever large labeled training sets are available, they cannot be used to map sequences to sequences. In this paper, we present a general end-to-end approach to sequence learning that makes minimal assumptions on the sequence structure. Our method uses a multilayered Long Short-Term Memory (LSTM) to map the input sequence to a vector of a fixed dimensionality, and then another deep LSTM to decode the target sequence from the vector. Our main result is that on an English to French translation task from the WMT-14 dataset, the translations produced by the LSTM achieve a BLEU score of 34.8 on the entire test set, where the LSTM's BLEU score was penalized on out-of-vocabulary words. Additionally, the LSTM did not have difficulty on long sentences. For comparison, a phrase-based SMT system achieves a BLEU score of 33.3 on the same dataset. When we used the LSTM to rerank the 1000 hypotheses produced by the aforementioned SMT system, its BLEU score increases to 36.5, which is close to the previous state of the art. The LSTM also learned sensible phrase and sentence representations that are sensitive to word order and are relatively invariant to the active and the passive voice. Finally, we found that reversing the order of the words in all source sentences (but not target sentences) improved the LSTM's performance markedly, because doing so introduced many short term dependencies between the source and the target sentence which made the optimization problem easier."
+        },
+        "ancestors": []
+      }
+    ]
+  }
+]
