@@ -1,6 +1,7 @@
 """Base API client with retry logic and rate limiting."""
 import asyncio
 import logging
+import random
 import time
 from typing import Optional, Dict, Any
 from abc import ABC, abstractmethod
@@ -147,9 +148,10 @@ class BaseAPIClient(ABC):
                 last_exception = e
                 if attempt < max_retries:
                     jitter = delay * 0.1
-                    sleep_time = delay + (
-                        jitter * (2 * asyncio.get_event_loop().time() - 1)
-                    )
+                    # sleep_time = delay + (
+                    #     jitter * (2 * asyncio.get_event_loop().time() - 1)
+                    # )
+                    sleep_time = delay + (jitter * random.random())
                     logger.warning(
                         f"Attempt {attempt + 1} failed: {e}. "
                         f"Retrying in {sleep_time:.1f}s"
