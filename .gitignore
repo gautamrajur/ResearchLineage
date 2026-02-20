@@ -4,7 +4,6 @@ __pycache__/
 *$py.class
 *.so
 .Python
-*.json
 env/
 venv/
 ENV/
@@ -19,6 +18,7 @@ poetry.lock
 # Environment variables
 .env
 .env.local
+*.json
 
 # IDEs
 .vscode/
