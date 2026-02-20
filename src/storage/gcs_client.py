@@ -23,6 +23,7 @@ def _get_shared_client() -> gcs.Client:
     if _gcs_client_instance is None:
         with _gcs_client_lock:
             if _gcs_client_instance is None:
+                # Uses ADC when GOOGLE_APPLICATION_CREDENTIALS is unset
                 _gcs_client_instance = gcs.Client()
                 logger.info("Created shared GCS client (singleton)")
     return _gcs_client_instance

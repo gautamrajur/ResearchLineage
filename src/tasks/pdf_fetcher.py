@@ -87,10 +87,10 @@ class PDFFetcher:
     def __init__(
         self,
         gcs_client: GCSClient,
-        max_retries: int = 5,
-        retry_delay: float = 0.5,
+        max_retries: int = 3,
+        retry_delay: float = 30,
         download_timeout: float = 120.0,
-        concurrency: int = 7,
+        concurrency: int = 3,
     ):
         self.gcs = gcs_client
         self.max_retries = max_retries
@@ -116,24 +116,34 @@ class PDFFetcher:
             (url, source) tuple, or None if no PDF found.
             source is one of: "arxiv", "semantic_scholar", "unpaywall"
         """
+        paper_id = paper.get("paperId", "unknown")
         url = self._try_arxiv(paper)
         if url:
+            logger.info("paper_id=%s resolve arxiv=found url=%s", paper_id, url[:80] + "..." if len(url) > 80 else url)
             return url, "arxiv"
+        logger.info("paper_id=%s resolve arxiv=no_id", paper_id)
 
-        paper_id = paper.get("paperId")
-        if not paper_id:
+        if not paper_id or paper_id == "unknown":
+            logger.info("paper_id=%s resolve no_paper_id", paper_id)
             return None
 
         url = await self._try_semantic_scholar(paper_id, http_client)
         if url:
+            logger.info("paper_id=%s resolve semantic_scholar=found", paper_id)
             return url, "semantic_scholar"
+        logger.info("paper_id=%s resolve semantic_scholar=not_found", paper_id)
 
         doi = IDMapper.extract_doi(paper)
         if doi:
             url = await self._try_unpaywall(doi, http_client)
             if url:
+                logger.info("paper_id=%s resolve unpaywall=found", paper_id)
                 return url, "unpaywall"
+            logger.info("paper_id=%s resolve unpaywall=not_found doi=%s", paper_id, doi[:50] if doi else "")
+        else:
+            logger.info("paper_id=%s resolve unpaywall=no_doi", paper_id)
 
+        logger.info("paper_id=%s resolve no_pdf_from_any_source", paper_id)
         return None
 
     def _try_arxiv(self, paper: Dict[str, Any]) -> Optional[str]:
@@ -214,14 +224,30 @@ class PDFFetcher:
                     await asyncio.sleep(self.retry_delay)
                     continue
                 if resp.status_code != 200:
+                    logger.info(
+                        "pdf_download_failed url=%s status_code=%s",
+                        url[:80] + "..." if len(url) > 80 else url,
+                        resp.status_code,
+                    )
                     return None
 
                 content = resp.content
                 if not self._validate_pdf(content):
+                    logger.info(
+                        "pdf_download_failed url=%s reason=invalid_content size=%d",
+                        url[:80] + "..." if len(url) > 80 else url,
+                        len(content),
+                    )
                     return None
                 return content
             except Exception as e:
                 logger.debug(f"PDF download error (attempt {attempt + 1}): {e}")
+                if attempt == self.max_retries - 1:
+                    logger.info(
+                        "pdf_download_failed url=%s reason=exception error=%s",
+                        url[:80] + "..." if len(url) > 80 else url,
+                        str(e),
+                    )
                 if attempt < self.max_retries - 1:
                     await asyncio.sleep(self.retry_delay)
         return None
