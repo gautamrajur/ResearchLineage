@@ -1,0 +1,14 @@
+.venv
+.vscode
+/inputs
+config.py
+
+# Ignore runtime inputs and outputs
+timeline_view/inputs/
+timeline_view/outputs/
+
+# Optional: ignore logs and run state
+logs/
+run_state.jsonl
+seeds.json
+lineage_training_data.jsonl
