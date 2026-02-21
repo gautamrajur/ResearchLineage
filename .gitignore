@@ -7,3 +7,6 @@ outputs/
 outputs
 
 .vscode
+.json
+.jsonl
+config.py
