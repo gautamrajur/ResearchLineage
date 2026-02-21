@@ -179,11 +179,12 @@ class OpenAlexClient(BaseAPIClient):
         Returns:
             Paper in Semantic Scholar-compatible format
         """
-        # Extract basic info
-        paper_id = openalex_paper.get("id", "").split("/")[-1]
+        # Extract basic info (id/doi may be None or non-string from API)
+        raw_id = openalex_paper.get("id") or ""
+        paper_id = raw_id.split("/")[-1] if isinstance(raw_id, str) else ""
 
-        # Extract DOI
-        doi = openalex_paper.get("doi", "").replace("https://doi.org/", "")
+        raw_doi = openalex_paper.get("doi") or ""
+        doi = raw_doi.replace("https://doi.org/", "") if isinstance(raw_doi, str) else ""
 
         # Extract authors
         authors = []
