@@ -6,157 +6,184 @@ We're not replacing comprehensive literature reviews or deep reading (that's imp
 
 ---
 
-## PDF Fetching
+## Test Suite
 
-The project can fetch open-access PDFs for papers discovered by the data acquisition pipeline, store them in **Google Cloud Storage (GCS)**, and expose a CLI to run the workflow, list/open/delete files, and inspect results.
+All tests use **pytest** with configuration in `conftest.py` and `pyproject.toml`. Test packages mirror `src/`: each `tests/unit/<layer>/test_*.py` file exercises the corresponding `src/<layer>/*.py` module.
 
-### How it works
+### Test modules at a glance
 
-1. **Data acquisition** (Semantic Scholar / OpenAlex) fetches the citation network from a seed paper and returns a list of **papers** (each with `paperId`, title, `externalIds` such as ArXiv/DOI, etc.).
-2. **PDF step** takes that list and, for each paper:
-   - Checks if a PDF already exists in GCS (by `paper_id.pdf`) and skips download if so.
-   - **Resolves** a PDF URL using a 3-step fallback: **ArXiv** (if ArXiv ID exists) → **Semantic Scholar** `openAccessPdf` → **Unpaywall** (by DOI).
-   - **Downloads** the PDF (with retries and timeout), **validates** it (size and `%PDF-` header), and **uploads** it to GCS with metadata (e.g. `arxiv_id`, `file_name`, `published_year`/`month`).
-3. All PDFs in GCS are named **`paper_id.pdf`** for consistent lookup and deduplication.
+| Test package | Covers (`src/`) | Purpose |
+|--------------|-----------------|---------|
+| `unit/api/` | `api/base`, `api/semantic_scholar`, `api/openalex` | Rate limiting, retries, 429 handling, API client behaviour |
+| `unit/cache/` | `cache/` | Redis client (get/set/delete, connection handling) |
+| `unit/database/` | `database/`, `tasks/database_write` | Connection, repositories; DatabaseWriteTask (write operations) |
+| `unit/storage/` | `storage/` | GCS client (upload/download, buckets) |
+| `unit/tasks/` | `tasks/` | PDF fetcher, acquisition, validation, cleaning, citation graph, features, schema, quality, anomaly detection |
+| `unit/utils/` | `utils/id_mapper`, `utils/errors` | DOI/ID extraction, custom exception hierarchy |
+| `integration/` | — | End-to-end flow: validation → cleaning [→ graph] with fixture data |
 
-### Workflow and CLI
+### Prerequisites
 
-- **Fetch and upload PDFs**  
-  `python temp/pdfs.py [paper_id] [depth] [direction]`  
-  Runs data acquisition for the given seed paper (and depth/direction), then resolves, downloads, and uploads PDFs to GCS.
-
-- **List PDFs in GCS**  
-  `python temp/pdfs.py list`
-
-- **Open a PDF locally**  
-  `python temp/pdfs.py open <paper_id or search term>`  
-  Downloads the file from GCS and opens it with the system default viewer.
-
-- **Delete PDFs**  
-  `python temp/pdfs.py delete <paper_id>` or `python temp/pdfs.py delete --all`
-
-- **Help**  
-  `python temp/pdfs.py help`
-
-Configuration (paper_id, depth, direction, GCS destination) is printed at startup. The run ends with a **summary**: uploaded count, already in GCS, download failed, no open-access PDF found, errors, total papers, total time taken, and GCS destination.
-
-### Script variations and what they do
-
-**Base command:** `python temp/pdfs.py [command] [arguments]`
-
-| Variation | Command | What it does |
-|-----------|---------|--------------|
-| **Fetch & upload (defaults)** | `python temp/pdfs.py` | Uses default seed paper (`204e3073870fae3d05bcbc2f6a8e263d9b72e776`), depth `1`, direction `both`. Runs data acquisition then PDF fetch/upload to GCS. |
-| **Fetch with custom seed** | `python temp/pdfs.py <paper_id>` | Same as above but starts from the given Semantic Scholar `paper_id` (e.g. another paper's ID). |
-| **Fetch with depth** | `python temp/pdfs.py <paper_id> <depth>` | `depth` = how many levels of references/citations to follow (1–5). Deeper = more papers, longer run. |
-| **Fetch with direction** | `python temp/pdfs.py <paper_id> <depth> <direction>` | `direction`: `backward` (references only), `forward` (citations only), or `both`. Controls which part of the citation network is fetched before PDFs. |
-| **List PDFs** | `python temp/pdfs.py list` | Lists all PDFs in the configured GCS bucket/prefix (filename, size, uploaded time). |
-| **Open one PDF** | `python temp/pdfs.py open <paper_id_or_search>` | Downloads the PDF from GCS and opens it locally. Use full `paper_id` or a search term that matches the filename; if multiple match, you're asked to be more specific. |
-| **Delete one PDF** | `python temp/pdfs.py delete <paper_id>` | Deletes `paper_id.pdf` from GCS. You can pass `paper_id` with or without the `.pdf` suffix. |
-| **Delete all PDFs** | `python temp/pdfs.py delete --all` | Prompts for confirmation, then deletes every PDF under the configured GCS prefix. |
-| **Help** | `python temp/pdfs.py help` | Prints usage and the list of commands/variations. |
-
-**Parameter summary (upload mode)**
-
-- **`paper_id`** — Semantic Scholar paper ID of the seed paper (optional; default is the "Attention is All You Need" paper).
-- **`depth`** — Recursion depth for references/citations (1–5). Optional; default `1`.
-- **`direction`** — `backward` \| `forward` \| `both`. Optional; default `both`.
-
-**Examples**
+Install dev dependencies (includes pytest, pytest-cov, pytest-mock, pytest-asyncio):
 
 ```bash
-# Default run (default paper, depth 1, both directions)
-python temp/pdfs.py
-
-# Custom seed, depth 2, both directions
-python temp/pdfs.py 204e3073870fae3d05bcbc2f6a8e263d9b72e776 2 both
-
-# Only references (backward), depth 1
-python temp/pdfs.py 204e3073870fae3d05bcbc2f6a8e263d9b72e776 1 backward
-
-# Only citations (forward)
-python temp/pdfs.py 204e3073870fae3d05bcbc2f6a8e263d9b72e776 1 forward
-
-# Open a PDF
-python temp/pdfs.py open 204e3073870fae3d05bcbc2f6a8e263d9b72e776
-python temp/pdfs.py open Attention
-
-# Delete one PDF
-python temp/pdfs.py delete 204e3073870fae3d05bcbc2f6a8e263d9b72e776
+poetry install --with dev
 ```
 
-### Failures and what we do
+Or with pip:
 
-- **No open-access PDF found**  
-  No URL could be resolved from ArXiv, Semantic Scholar, or Unpaywall. We count these and report them; no retry within the same run.
+```bash
+pip install pytest pytest-cov pytest-mock pytest-asyncio
+```
 
-- **Download failed**  
-  A URL was found but the download failed (e.g. HTTP non-200, timeout, invalid or non-PDF content). We retry up to **3 times** with a short delay; if all fail, we count the paper as "download failed" and continue.
+### Directory structure
 
-- **Errors**  
-  Any other exception (e.g. GCS upload failure, network error). We catch it per paper, count it, and continue the batch.
+```
+tests/
+├── conftest.py                       # Path setup, shared fixtures, mocks (GCS, Redis)
+├── unit/
+│   ├── api/                          # src.api
+│   │   ├── test_base.py              # RateLimiter, BaseAPIClient (retry, 429, HTTP)
+│   │   ├── test_semantic_scholar.py
+│   │   └── test_openalex.py
+│   ├── cache/                        # src.cache
+│   │   └── test_redis_client.py
+│   ├── database/                     # src.database + src.tasks.database_write
+│   │   ├── test_connection.py
+│   │   ├── test_repositories.py
+│   │   └── test_database_write.py    # DatabaseWriteTask (tasks)
+│   ├── storage/                      # src.storage
+│   │   └── test_gcs_client.py
+│   ├── tasks/                        # src.tasks (pipeline stages)
+│   │   ├── test_pdf_fetcher.py
+│   │   ├── test_data_acquisition.py
+│   │   ├── test_data_validation.py
+│   │   ├── test_data_cleaning.py
+│   │   ├── test_citation_graph.py    # Skipped unless RUN_CITATION_GRAPH_TESTS=1
+│   │   ├── test_feature_engineering.py
+│   │   ├── test_schema_transformation.py
+│   │   ├── test_quality_validation.py
+│   │   └── test_anomaly_detection.py
+│   └── utils/                        # src.utils
+│       ├── test_id_mapper.py
+│       └── test_errors.py
+└── integration/
+    └── test_pipeline_flow.py         # Validation → Cleaning [→ Graph]; graph tests conditional
+```
 
-- **Data acquisition failures**  
-  Invalid paper_id, 404 from the API, or "No papers fetched" are caught; we print a clear message (and suggest verifying the paper ID) and exit without a stack trace.
+### Conftest: fixtures and mocks
 
-- **Empty or invalid input**  
-  Empty paper list, missing `paperId`, invalid direction/depth, and GCS connection failures are validated up front; we exit or skip with clear messages.
+**Shared fixtures** (use in any test via function argument):
 
-### Optimizations
+| Fixture | Description |
+|---------|-------------|
+| `sample_paper` | Paper dict: paperId, title, abstract, year, authors, externalIds, venue, etc. |
+| `sample_reference` | Reference edge: fromPaperId, toPaperId, isInfluential, contexts, intents |
+| `sample_citation` | Citation edge (same shape as reference) |
 
-- **GCS deduplication**  
-  Before resolving any URLs, we call **`exists_batch`** for all `paper_id.pdf` names in one request and skip papers that already exist in GCS.
+**Mocks** (no real I/O): `google.cloud.storage` and `redis` are patched so tests run without GCS or Redis. Mock any other external services in the test or conftest.
 
-- **Concurrency**  
-  PDF resolution and download run **asynchronously** (asyncio) with a **semaphore** (default concurrency 7) so many papers are processed in parallel without overloading APIs or the network.
+### Running tests
 
-- **Single GCS client**  
-  The underlying `google.cloud.storage` client is a **singleton** shared across all GCS operations to avoid repeated auth and connection setup.
+All commands from **project root**. `pyproject.toml` sets `testpaths = ["tests"]`, so `pytest` and `pytest tests` are equivalent.
 
-- **GCS I/O off the event loop**  
-  Synchronous GCS calls (upload, exists_batch, etc.) are run via **`asyncio.to_thread`** so they don't block the async event loop.
+**By scope:**
 
-### Error handling and edge cases
+```bash
+# All tests
+pytest
+pytest tests -v
 
-- **Retries**  
-  PDF URL resolution (Semantic Scholar, Unpaywall) and PDF download use **3 retries** with a configurable delay (e.g. 30 ms). Rate limits (429) trigger a wait and retry.
+# Unit only / integration only
+pytest tests/unit -v
+pytest tests/integration -v
+```
 
-- **Validation**  
-  Direction must be `backward` \| `forward` \| `both`; depth 1–5; paper_id non-empty. GCS bucket/prefix and credentials (ADC) are checked at startup where possible.
+**By layer (unit):**
 
-- **Per-paper isolation**  
-  One paper failing (download_failed or error) does not stop the batch; results are collected and reported in the summary and in logs.
+```bash
+pytest tests/unit/api -v
+pytest tests/unit/cache -v
+pytest tests/unit/database -v
+pytest tests/unit/storage -v
+pytest tests/unit/tasks -v
+pytest tests/unit/utils -v
+```
 
-- **Missing paperId / empty papers**  
-  Papers without `paperId` are skipped or reported as error; an empty paper list after data acquisition is handled without crashing.
+**By file or test:**
 
-- **GCS `exists_batch` failure**  
-  If the batch existence check fails, we log a warning and proceed without deduplication (treat as if no files exist) so the run can continue.
+```bash
+# Single file
+pytest tests/unit/tasks/test_data_validation.py -v
 
-### Logging and tracking
+# Single test by node id
+pytest tests/unit/api/test_base.py::TestRateLimiter -v
 
-- **Log file**  
-  Each upload run writes to a timestamped log under **`logs/pdf_fetch_YYYYMMDD_HHMMSS.log`**. The path is printed at startup (e.g. "Logging to …").
+# By name pattern (-k)
+pytest tests/unit -k "validation" -v
+```
 
-- **What's logged**  
-  - Configuration (paper_id, depth, direction, GCS base URI)  
-  - Data acquisition result (e.g. "Discovered N papers") or failure  
-  - **Per paper:** API resolution (arxiv=found \| no_id, semantic_scholar=found \| not_found, unpaywall=found \| not_found \| no_doi, no_pdf_from_any_source)  
-  - **Download failures:** `pdf_download_failed` with `url`, `status_code` or `reason=invalid_content` or `reason=exception` and `error`  
-  - Per-paper result line: status (UPLOADED, EXISTS, NO_PDF, DOWNLOAD_FAILED, ERROR), title, paper_id, and for failures the error message  
-  - Summary counts and total time  
-  - **Failure details:** a consolidated block listing every **Download failed** and **Error** with paper_id, title, and full error message for easier inspection.
+**Excluding paths:**
 
-- **Stdout**  
-  The same run also prints progress and summary to the terminal (with colours and icons). Logger level for third-party libs (e.g. httpx, google) is set to WARNING to reduce noise.
+```bash
+pytest tests/unit --ignore=tests/unit/tasks/test_citation_graph.py -v
+pytest tests/unit --ignore=tests/unit/database -v
+```
 
-### Environment and dependencies
+### Coverage
 
-- **GCS**  
-  Uses **Application Default Credentials (ADC)** by default (e.g. `gcloud auth application-default login`). Optional env: `GCS_BUCKET`, `GCS_PREFIX` (see `.env.example`). Do not set `GOOGLE_APPLICATION_CREDENTIALS` when using ADC.
+```bash
+# Terminal report with missing lines
+pytest tests/unit --cov=src --cov-report=term-missing
 
-- **Redis**  
-  Optional. If available, the data acquisition step uses it to cache API responses; if Redis is down, caching is disabled and the pipeline still runs.
+# HTML report (htmlcov/)
+pytest tests/unit --cov=src --cov-report=html
 
-- **Python**  
-  See `requirements.txt` (includes `google-cloud-storage`, `httpx`, etc.). Run from project root so `src` and `temp` are importable.
+# Fail if below threshold
+pytest tests/unit --cov=src --cov-fail-under=50
+```
+
+### Conditional tests (citation graph)
+
+Tests that run `CitationGraphConstructionTask` or use NetworkX can segfault in some environments (numpy.linalg). They are **skipped unless**:
+
+```bash
+RUN_CITATION_GRAPH_TESTS=1 pytest tests/unit -v
+RUN_CITATION_GRAPH_TESTS=1 pytest tests/unit/tasks/test_citation_graph.py -v
+RUN_CITATION_GRAPH_TESTS=1 pytest tests/integration -v
+```
+
+### Useful flags
+
+| Flag | Effect |
+|------|--------|
+| `-v` / `-vv` | Verbose (one line per test / more detail) |
+| `-x` | Stop on first failure |
+| `--lf` | Re-run only last failed tests |
+| `--tb=short` | Shorter tracebacks |
+| `-q` | Quiet |
+| `--ignore=path` | Exclude file or directory |
+| `-n auto` | Parallel (requires pytest-xdist) |
+
+### Writing new tests
+
+1. **Mirror source** — `src/tasks/data_cleaning.py` → `tests/unit/tasks/test_data_cleaning.py`
+2. **Use shared fixtures** — `sample_paper`, `sample_reference`, `sample_citation` from conftest
+3. **Mock external I/O** — GCS and Redis are already mocked; patch other services as needed
+4. **Name clearly** — e.g. `test_missing_target_paper_id_raises`
+5. **Group in classes** — e.g. `TestDataValidationTaskStructure`, `TestRateLimiter`
+
+### Quick reference
+
+| Goal | Command |
+|------|--------|
+| All tests | `pytest` or `pytest tests -v` |
+| Unit only | `pytest tests/unit -v` |
+| Integration only | `pytest tests/integration -v` |
+| One layer | `pytest tests/unit/tasks -v` |
+| One file | `pytest tests/unit/utils/test_errors.py -v` |
+| One test | `pytest tests/unit/utils/test_errors.py::test_validation_error -v` |
+| With coverage | `pytest tests/unit --cov=src --cov-report=term-missing` |
+| Include citation graph | `RUN_CITATION_GRAPH_TESTS=1 pytest tests/unit -v` |
+| Stop on first fail | `pytest -x` |
+| Re-run failed | `pytest --lf` |
