@@ -32,7 +32,8 @@ from gemini_analysis import (
     MAIN_PROMPT, FOUNDATIONAL_PROMPT
 )
 from data_export import save_training_example, save_timeline_json
-
+from config import logger
+print = logger.info
 
 # ========================================
 # Main Pipeline
@@ -122,7 +123,7 @@ def build_timeline(paper_id, max_depth=MAX_DEPTH):
                 print(f"     This is a FOUNDATIONAL paper. Running final analysis...")
 
             step = _handle_foundational_paper(
-                depth, target_paper, target_text, target_source
+                depth, target_paper, target_text, target_source, lineage_chain
             )
             if step:
                 timeline_steps.append(step)
@@ -236,7 +237,7 @@ def build_timeline(paper_id, max_depth=MAX_DEPTH):
                 print(f"  📍 Last predecessor is foundational. Analyzing...")
             last_text, last_source = extract_paper_text(last_predecessor)
             last_step = _handle_foundational_paper(
-                len(timeline_steps), last_predecessor, last_text, last_source
+                len(timeline_steps), last_predecessor, last_text, last_source, lineage_chain
             )
             if last_step:
                 timeline_steps.append(last_step)
@@ -250,7 +251,7 @@ def build_timeline(paper_id, max_depth=MAX_DEPTH):
 # Helper Functions
 # ========================================
 
-def _handle_foundational_paper(depth, paper, paper_text, source_type):
+def _handle_foundational_paper(depth, paper, paper_text, source_type, lineage_chain=None):
     """
     Run foundational analysis for the last paper in chain.
 
@@ -266,6 +267,12 @@ def _handle_foundational_paper(depth, paper, paper_text, source_type):
     if VERBOSE:
         bt = analysis.get("target_analysis", {}).get("breakthrough_level", "?")
         print(f"  ✅ Foundational paper analyzed (breakthrough: {bt})")
+
+    # Add this paper to the chain
+    if lineage_chain is not None:
+        lineage_chain = list(lineage_chain) + [paper["paperId"]]
+    else:
+        lineage_chain = [paper["paperId"]]
 
     # Save training example
     save_training_example(
@@ -287,7 +294,7 @@ def _handle_foundational_paper(depth, paper, paper_text, source_type):
         target_paper=paper,
         candidates=None,
         predecessor_paper=None,
-        lineage_chain=None
+        lineage_chain=lineage_chain
     )
 
     return {

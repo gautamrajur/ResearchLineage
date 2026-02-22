@@ -15,7 +15,8 @@ from config import (
     S2_MAX_RETRIES, S2_RETRY_BASE_WAIT,
     MAX_CANDIDATES, VERBOSE
 )
-
+from config import logger
+print = logger.info
 
 # ========================================
 # Base API Call (matches tree view pattern)

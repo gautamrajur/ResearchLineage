@@ -17,7 +17,8 @@ from config import (
     VERBOSE
 )
 from prompts.prompts import MAIN_PROMPT, FOUNDATIONAL_PROMPT
-
+from config import logger
+print = logger.info
 
 # ========================================
 # Gemini Client

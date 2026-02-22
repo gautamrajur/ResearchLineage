@@ -16,7 +16,8 @@ from bs4 import BeautifulSoup
 
 from config import ARXIV_HTML_URLS, HTML_REQUEST_TIMEOUT, VERBOSE
 from semantic_scholar import get_arxiv_id
-
+from config import logger
+print = logger.info
 
 # ========================================
 # HTML Fetching

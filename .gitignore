@@ -12,3 +12,9 @@ logs/
 run_state.jsonl
 seeds.json
 lineage_training_data.jsonl
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd

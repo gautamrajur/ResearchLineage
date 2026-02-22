@@ -1,0 +1,7 @@
+requests
+beautifulsoup4
+lxml
+google-genai
+google-cloud-storage
+gcloud
+airflow

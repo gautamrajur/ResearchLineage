@@ -17,7 +17,8 @@ import os
 import time
 
 from config import TRAINING_DATA_FILE, TIMELINE_OUTPUT_DIR, VERBOSE
-
+from config import logger
+print = logger.info
 
 # ========================================
 # Training Data Export

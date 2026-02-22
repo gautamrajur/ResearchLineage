@@ -16,10 +16,7 @@ DEFAULT_DOMAINS = [
     "Computer Science",
     "Physics",
     "Mathematics",
-    "Statistics",
     "Engineering",
-    "Biology",
-    "Economics"
 ]
 
 
@@ -103,21 +100,16 @@ def bulk_search_top_cited(
 # ==========================================
 
 def build_seeds(
-    n_total: int,
-    domains: List[str],
-    per_domain_pool: int,
-    seed: int,
-    min_citations: int,
-    query: str,
-) -> List[Dict]:
+    n_total, domains, per_domain_pool, seed, min_citations, query, domain_counts=None,
+):
 
     random.seed(seed)
     seeds = []
     seen_ids = set()
 
-    per_domain_target = max(1, n_total // len(domains))
 
     for domain in domains:
+        per_domain_target = (domain_counts or {}).get(domain, max(1, n_total // len(domains)))
         if VERBOSE:
             print(f"\n🔎 Domain: {domain} | building pool of {per_domain_pool}")
 
@@ -191,11 +183,28 @@ def main():
 
     args = parser.parse_args()
 
-    # ADD THESE TWO LINES:
     out_dir = os.path.dirname(args.out)
     if out_dir:
         os.makedirs(out_dir, exist_ok=True)
-    domains = [d.strip() for d in args.domains.split(",") if d.strip()]
+
+    # Parse domains — supports "Physics:70,Mathematics:40" or "Physics,Mathematics"
+    domain_counts = {}
+    for d in args.domains.split(","):
+        d = d.strip()
+        if not d:
+            continue
+        if ":" in d:
+            name, count = d.rsplit(":", 1)
+            domain_counts[name.strip()] = int(count.strip())
+        else:
+            domain_counts[d] = None
+
+    domains = list(domain_counts.keys())
+
+    # If no counts specified, split evenly
+    if all(v is None for v in domain_counts.values()):
+        per = max(1, args.n // len(domains))
+        domain_counts = {d: per for d in domains}
 
     seeds = build_seeds(
         n_total=args.n,
@@ -204,13 +213,13 @@ def main():
         seed=args.seed,
         min_citations=args.min_citations,
         query=args.query,
+        domain_counts=domain_counts,
     )
 
     with open(args.out, "w", encoding="utf-8") as f:
         json.dump(seeds, f, indent=2)
 
     print(f"\n✅ Wrote {len(seeds)} ArXiv seeds to {args.out}")
-
 
 if __name__ == "__main__":
     main()

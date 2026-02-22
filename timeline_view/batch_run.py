@@ -10,8 +10,8 @@ from data_export import save_timeline_json
 from config import VERBOSE
 import logging
 import traceback
-
-from logger_setup import setup_logging
+from config import logger
+print = logger.info
 
 
 STATE_FILE_DEFAULT = "run_state.jsonl"
@@ -142,7 +142,7 @@ def main():
     print(f"   Depth: {args.depth}")
     print(f"   This session: {len(run_list)} seeds")
     print(f"   State file: {args.state}")
-    print()
+    print("")
 
     successes = 0
     failures = 0
@@ -222,9 +222,4 @@ def main():
 
 
 if __name__ == "__main__":
-    logger, log_path = setup_logging()
-    os.makedirs("inputs", exist_ok=True)
-    os.makedirs("outputs", exist_ok=True)
-    from tee_stdout import tee_prints_to_file
-    _tee_handle = tee_prints_to_file(log_path)
     main()
