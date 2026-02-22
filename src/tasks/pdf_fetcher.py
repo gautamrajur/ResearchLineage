@@ -38,6 +38,8 @@ class FetchResult:
     source: str = ""  # "arxiv", "semantic_scholar", "unpaywall"
     size_bytes: int = 0
     error: str = ""
+    fetch_url: str = ""  # URL that was tried (for failure recording / retry)
+    response_code: int = 0  # HTTP status when applicable (e.g. 403, 404)
 
 
 @dataclass
@@ -309,6 +311,7 @@ class PDFFetcher:
                 return FetchResult(
                     paper_id=pid, title=title, status="download_failed",
                     source=source, error=f"Failed to download from {url[:80]}",
+                    fetch_url=url,
                 )
 
             metadata = build_blob_metadata(paper)
@@ -327,6 +330,80 @@ class PDFFetcher:
         finally:
             if owns_client:
                 await http_client.aclose()
+
+    async def fetch_from_url_and_upload(
+        self,
+        paper_id: str,
+        title: str,
+        fetch_url: str,
+        paper_metadata: Optional[Dict[str, Any]] = None,
+    ) -> FetchResult:
+        """
+        Fetch PDF from a known URL and upload to GCS.
+
+        Used by the retry-failed-PDFs flow where URL and timeout come from the
+        fetch_pdf_failures table. Uses self.download_timeout for the request.
+        """
+        paper_metadata = paper_metadata or {"paperId": paper_id, "title": title}
+        filename = paper_id_to_filename(paper_id)
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(
+                    fetch_url,
+                    follow_redirects=True,
+                    timeout=self.download_timeout,
+                )
+            if resp.status_code == 429:
+                return FetchResult(
+                    paper_id=paper_id,
+                    title=title,
+                    status="download_failed",
+                    error="429 Too Many Requests",
+                    fetch_url=fetch_url,
+                    response_code=429,
+                )
+            if resp.status_code != 200:
+                return FetchResult(
+                    paper_id=paper_id,
+                    title=title,
+                    status="download_failed",
+                    error=f"HTTP {resp.status_code}",
+                    fetch_url=fetch_url,
+                    response_code=resp.status_code,
+                )
+            content = resp.content
+            if not self._validate_pdf(content):
+                return FetchResult(
+                    paper_id=paper_id,
+                    title=title,
+                    status="download_failed",
+                    error="invalid_content",
+                    fetch_url=fetch_url,
+                )
+            metadata = build_blob_metadata(paper_metadata)
+            gcs_uri = await asyncio.to_thread(
+                self.gcs.upload,
+                filename,
+                content,
+                "application/pdf",
+                metadata,
+            )
+            return FetchResult(
+                paper_id=paper_id,
+                title=title,
+                status="uploaded",
+                gcs_uri=gcs_uri,
+                size_bytes=len(content),
+                fetch_url=fetch_url,
+            )
+        except Exception as e:
+            return FetchResult(
+                paper_id=paper_id,
+                title=title,
+                status="error",
+                error=str(e),
+                fetch_url=fetch_url,
+            )
 
     # ── Batch fetch + upload with GCS dedup ──────────────────────────
 
@@ -399,6 +476,7 @@ class PDFFetcher:
                         return FetchResult(
                             paper_id=pid, title=title, status="download_failed",
                             source=source, error=f"Failed from {url[:80]}",
+                            fetch_url=url,
                         )
 
                     metadata = build_blob_metadata(paper)

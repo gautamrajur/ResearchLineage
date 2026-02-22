@@ -16,7 +16,10 @@ for ns in ["httpx", "httpcore", "google", "src", "urllib3"]:
 
 from src.storage.gcs_client import GCSClient  # noqa: E402
 from src.tasks.data_acquisition import DataAcquisitionTask  # noqa: E402
-from src.tasks.pdf_fetcher import PDFFetcher, FetchResult  # noqa: E402
+from src.tasks.pdf_fetcher import PDFFetcher, FetchResult, BatchResult  # noqa: E402
+from src.tasks.pdf_failure_sync import sync_failures_to_db  # noqa: E402
+from src.tasks.retry_failed_pdfs import run_retry_failed_pdfs  # noqa: E402
+from src.database.connection import DatabaseConnection  # noqa: E402
 
 LOG = logging.getLogger("pdf_fetch")
 
@@ -133,6 +136,23 @@ async def cmd_upload() -> None:
         _teardown_pdf_fetch_log_file(file_handler)
 
 
+def _build_failure_list(batch: BatchResult, fetcher: PDFFetcher) -> list:
+    """Build list of failure dicts for sync to fetch_pdf_failures table."""
+    failure_list = []
+    for r in batch.results:
+        if r.status not in ("download_failed", "error"):
+            continue
+        failure_list.append({
+            "paper_id": r.paper_id,
+            "title": r.title,
+            "status": r.status,
+            "fetch_url": getattr(r, "fetch_url", "") or "",
+            "reason": r.error or r.status,
+            "timeout_sec": fetcher.download_timeout,
+        })
+    return failure_list
+
+
 async def _run_upload(
     paper_id: str, max_depth: int, direction: str,
     gcs: "GCSClient", fetcher: "PDFFetcher",
@@ -156,9 +176,13 @@ async def _run_upload(
         err_msg = str(e)
         LOG.error("Data acquisition failed: %s", err_msg)
         if "No papers fetched" in err_msg:
-            print(f"  {RED}✗{RESET}  Paper not found: {BOLD}{paper_id}{RESET}")
-            print(f"     The paper ID may be invalid or Semantic Scholar may be rate-limiting.")
-            print(f"     Verify at: https://api.semanticscholar.org/graph/v1/paper/{paper_id}")
+            if "429" in err_msg or "Rate limit" in err_msg:
+                print(f"  {RED}✗{RESET}  Rate limit exceeded.")
+                print(f"     Try again in a few minutes.")
+            else:
+                print(f"  {RED}✗{RESET}  Paper not found: {BOLD}{paper_id}{RESET}")
+                print(f"     The paper ID may be invalid or not in Semantic Scholar.")
+                print(f"     Verify at: https://api.semanticscholar.org/graph/v1/paper/{paper_id}")
         elif "Invalid paper_id" in err_msg:
             print(f"  {RED}✗{RESET}  Invalid paper ID format: {BOLD}{paper_id}{RESET}")
         elif "Invalid direction" in err_msg or "Invalid max_depth" in err_msg:
@@ -230,6 +254,36 @@ async def _run_upload(
                 r.paper_id, r.title, (r.error or "(no message)"),
             )
         LOG.info("--- End failure details (%d download_failed, %d errors) ---", len(failed), len(errored))
+
+    # Sync failures to fetch_pdf_failures table (for retry flow / DAG)
+    failure_list = _build_failure_list(batch, fetcher)
+    if failure_list:
+        try:
+            db = DatabaseConnection()
+            synced = sync_failures_to_db(failure_list, db.get_session)
+            LOG.info("Synced %d failure(s) to fetch_pdf_failures", synced)
+        except Exception as e:
+            LOG.warning("Could not sync failures to database (table may not exist or DB not configured): %s", e)
+
+
+async def cmd_retry_failures() -> None:
+    """Run retry for failed PDFs from fetch_pdf_failures table (eligible rows only)."""
+    try:
+        gcs = GCSClient()
+        db = DatabaseConnection()
+    except Exception as e:
+        print(f"\n  {RED}✗{RESET}  Setup failed: {e}")
+        sys.exit(1)
+    header("Retry failed PDFs")
+    print("  Querying fetch_pdf_failures for eligible rows, then fetching with stored URL/timeout...\n")
+    stats = await run_retry_failed_pdfs(db.get_session, gcs)
+    print(f"  Fetched (eligible) : {stats['fetched']}")
+    print(f"  Succeeded          : {stats['succeeded']}")
+    print(f"  Failed             : {stats['failed']}")
+    print(f"  Deleted (403/404)  : {stats['deleted_403_404']}")
+    print(f"  Reconciled (GCS)   : {stats['reconciled']}")
+    print(f"  Alerted            : {stats['alerted']}")
+    print()
 
 
 def cmd_list() -> None:
@@ -309,6 +363,7 @@ def print_usage() -> None:
   python temp/pdfs.py open  <paper_id or search>        Download & open a PDF
   python temp/pdfs.py delete <paper_id>                 Delete one PDF
   python temp/pdfs.py delete --all                      Delete all PDFs
+  python temp/pdfs.py retry-failures                    Retry failed PDFs from DB
   python temp/pdfs.py help                              Show this message
 """)
 
@@ -330,5 +385,7 @@ if __name__ == "__main__":
             print("Usage: python temp/pdfs.py delete <paper_id | --all>")
             sys.exit(1)
         cmd_delete(sys.argv[2])
+    elif cmd == "retry-failures":
+        asyncio.run(cmd_retry_failures())
     else:
         asyncio.run(cmd_upload())
