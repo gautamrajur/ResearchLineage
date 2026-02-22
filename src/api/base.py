@@ -54,13 +54,18 @@ class RateLimiter:
 class BaseAPIClient(ABC):
     """Abstract base API client with retry logic."""
 
-    def __init__(self, base_url: str, rate_limiter: RateLimiter, timeout: int = 30):
+    def __init__(
+        self,
+        base_url: str,
+        rate_limiter: Optional[RateLimiter] = None,
+        timeout: int = 30,
+    ):
         """
         Initialize API client.
 
         Args:
             base_url: Base URL for API
-            rate_limiter: Rate limiter instance
+            rate_limiter: Rate limiter instance (optional)
             timeout: Request timeout in seconds
         """
         self.base_url = base_url
@@ -76,7 +81,7 @@ class BaseAPIClient(ABC):
         headers: Optional[Dict[str, str]] = None,
     ) -> Dict[str, Any]:
         """
-        Make HTTP request with rate limiting.
+        Make HTTP request with optional rate limiting.
 
         Args:
             method: HTTP method (GET, POST, etc.)
@@ -91,7 +96,9 @@ class BaseAPIClient(ABC):
             RateLimitError: If rate limit exceeded
             APIError: If request fails
         """
-        await self.rate_limiter.acquire()
+        # Only use rate limiter if provided
+        if self.rate_limiter:
+            await self.rate_limiter.acquire()
 
         url = f"{self.base_url}/{endpoint}"
 
@@ -104,6 +111,10 @@ class BaseAPIClient(ABC):
                 raise RateLimitError("Rate limit exceeded")
 
             response.raise_for_status()
+
+            # Simple delay after successful request
+            await asyncio.sleep(0.2)
+
             return response.json()
 
         except httpx.HTTPStatusError as e:
@@ -116,18 +127,16 @@ class BaseAPIClient(ABC):
     async def _retry_with_backoff(
         self,
         func,
-        max_retries: int = 3,
-        initial_delay: float = 1.0,
-        backoff_factor: float = 2.0,
+        max_retries: int = 10,
+        delay: float = 5.0,
     ):
         """
-        Retry function with exponential backoff.
+        Retry function with fixed delay.
 
         Args:
             func: Async function to retry
             max_retries: Maximum number of retries
-            initial_delay: Initial delay in seconds
-            backoff_factor: Backoff multiplier
+            delay: Fixed delay between retries in seconds
 
         Returns:
             Result of successful function call
@@ -135,27 +144,26 @@ class BaseAPIClient(ABC):
         Raises:
             Exception from last failed attempt
         """
-        delay = initial_delay
-        last_exception = None
+        last_exception: Optional[Exception] = None
 
         for attempt in range(max_retries + 1):
             try:
                 return await func()
             except RateLimitError:
-                raise
-            except Exception as e:
-                last_exception = e
+                last_exception = RateLimitError("Rate limit exceeded")
                 if attempt < max_retries:
-                    jitter = delay * 0.1
-                    sleep_time = delay + (
-                        jitter * (2 * asyncio.get_event_loop().time() - 1)
-                    )
+                    wait_time = delay * (attempt + 1)
                     logger.warning(
-                        f"Attempt {attempt + 1} failed: {e}. "
-                        f"Retrying in {sleep_time:.1f}s"
+                        f"Rate limited. Waiting {wait_time}s before retry "
+                        f"(attempt {attempt + 1}/{max_retries + 1})"
                     )
-                    await asyncio.sleep(sleep_time)
-                    delay *= backoff_factor
+                    await asyncio.sleep(wait_time)
+            except Exception as e:
+                if attempt < max_retries:
+                    logger.warning(
+                        f"Attempt {attempt + 1} failed: {e}. Retrying in {delay}s"
+                    )
+                    await asyncio.sleep(delay)
 
         if last_exception:
             raise last_exception

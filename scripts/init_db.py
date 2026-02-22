@@ -1,5 +1,4 @@
 """Initialize database schema for ResearchLineage."""
-import os
 from pathlib import Path
 from sqlalchemy import create_engine, text
 from dotenv import load_dotenv
@@ -8,11 +7,14 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).parent.parent / ".env")
 
 # Database connection string
-DATABASE_URL = (
+"""DATABASE_URL = (
     f"postgresql://{os.getenv('POSTGRES_USER')}:{os.getenv('POSTGRES_PASSWORD')}"
     f"@{os.getenv('POSTGRES_HOST')}:{os.getenv('POSTGRES_PORT')}"
     f"/{os.getenv('POSTGRES_DB')}"
-)
+)"""
+
+# At the top, replace the DATABASE_URL with GCP directly
+DATABASE_URL = "postgresql://shivram:shivram@136.111.19.109:5432/researchlineage"
 
 # SQL schema
 SCHEMA_SQL = """

@@ -1,10 +1,12 @@
 """Semantic Scholar API client."""
 import logging
 from typing import Optional, Dict, Any, List
-from src.api.base import BaseAPIClient, RateLimiter
+from src.api.base import BaseAPIClient
 from src.models.api_models import PaperResponse
 from src.utils.config import settings
 from src.cache.redis_client import RedisCache
+from src.database.connection import DatabaseConnection
+from src.database.repositories import PaperRepository
 
 logger = logging.getLogger(__name__)
 
@@ -19,12 +21,8 @@ class SemanticScholarClient(BaseAPIClient):
         Args:
             cache: Redis cache instance (optional)
         """
-        rate_limiter = RateLimiter(
-            rate_limit=settings.semantic_scholar_rate_limit, time_window=300
-        )
-        super().__init__(
-            base_url=settings.semantic_scholar_base_url, rate_limiter=rate_limiter
-        )
+        # No rate limiter - just reactive retry
+        super().__init__(base_url=settings.semantic_scholar_base_url, rate_limiter=None)
         self.cache = cache
         self.api_key = settings.semantic_scholar_api_key
 
@@ -41,8 +39,10 @@ class SemanticScholarClient(BaseAPIClient):
         """
         Get paper metadata by ID.
 
+        Cache priority: Redis > Database > API
+
         Args:
-            paper_id: Paper ID (ArXiv ID, DOI, Semantic Scholar ID, etc.)
+            paper_id: Paper ID
             fields: Comma-separated fields to retrieve
 
         Returns:
@@ -50,14 +50,32 @@ class SemanticScholarClient(BaseAPIClient):
         """
         cache_key = f"paper:{paper_id}"
 
-        # Check cache first
+        # 1. Check Redis cache
         if self.cache:
             cached = self.cache.get(cache_key)
             if cached:
-                logger.info(f"Cache hit for paper {paper_id}")
+                logger.info(f"Cache hit (Redis) for paper {paper_id}")
                 return cached
 
-        # Default fields to retrieve
+        # 2. Check database
+        try:
+            db = DatabaseConnection()
+            with db.get_session() as session:
+                paper_repo = PaperRepository(session)
+                db_paper = paper_repo.get_by_id(paper_id)
+
+                if db_paper:
+                    logger.info(f"Cache hit (Database) for paper {paper_id}")
+
+                    # Store in Redis for faster future access
+                    if self.cache:
+                        self.cache.set(cache_key, db_paper)
+
+                    return db_paper
+        except Exception as e:
+            logger.warning(f"Database check failed for {paper_id}: {e}")
+
+        # 3. Fetch from API
         if not fields:
             fields = (
                 "paperId,title,abstract,year,citationCount,"
@@ -65,7 +83,6 @@ class SemanticScholarClient(BaseAPIClient):
                 "externalIds,venue,publicationDate,url"
             )
 
-        # Make API request
         async def fetch():
             return await self._make_request(
                 method="GET",
@@ -75,15 +92,13 @@ class SemanticScholarClient(BaseAPIClient):
             )
 
         result = await self._retry_with_backoff(fetch)
-
-        # Validate with Pydantic
         PaperResponse(**result)
 
-        # Cache result
+        # 4. Cache result in Redis
         if self.cache:
             self.cache.set(cache_key, result)
 
-        logger.info(f"Fetched paper {paper_id}: {result.get('title', 'N/A')}")
+        logger.info(f"Fetched from API: {paper_id}: {result.get('title', 'N/A')}")
         return result
 
     async def get_references(
@@ -102,14 +117,12 @@ class SemanticScholarClient(BaseAPIClient):
         """
         cache_key = f"references:{paper_id}:{offset}"
 
-        # Check cache
         if self.cache:
             cached = self.cache.get(cache_key)
-            if cached:
+            if cached and len(cached) > 0:
                 logger.info(f"Cache hit for references of {paper_id}")
                 return cached
 
-        # Make API request
         async def fetch():
             return await self._make_request(
                 method="GET",
@@ -129,7 +142,6 @@ class SemanticScholarClient(BaseAPIClient):
         result = await self._retry_with_backoff(fetch)
         references = (result or {}).get("data") or []
 
-        # Cache result
         if self.cache and references:
             self.cache.set(cache_key, references)
 
@@ -137,7 +149,11 @@ class SemanticScholarClient(BaseAPIClient):
         return references
 
     async def get_citations(
-        self, paper_id: str, limit: int = 100, offset: int = 0
+        self,
+        paper_id: str,
+        limit: int = 100,
+        offset: int = 0,
+        year_range: Optional[str] = None,  # Add this
     ) -> List[Dict[str, Any]]:
         """
         Get papers citing this paper.
@@ -146,40 +162,44 @@ class SemanticScholarClient(BaseAPIClient):
             paper_id: Paper ID
             limit: Maximum number of citations to retrieve
             offset: Pagination offset
+            year_range: Year range filter (e.g., "2018:2021")
 
         Returns:
             List of citation dictionaries
         """
-        cache_key = f"citations:{paper_id}:{offset}"
+        cache_key = f"citations:{paper_id}:{offset}:{year_range or 'all'}"
 
-        # Check cache
         if self.cache:
             cached = self.cache.get(cache_key)
             if cached and len(cached) > 0:
                 logger.info(f"Cache hit for citations of {paper_id}")
                 return cached
 
-        # Make API request
         async def fetch():
+            params = {
+                "fields": (
+                    "contexts,intents,isInfluential,"
+                    "citingPaper.paperId,citingPaper.title,citingPaper.year,"
+                    "citingPaper.citationCount,citingPaper.influentialCitationCount"
+                ),
+                "limit": limit,
+                "offset": offset,
+            }
+
+            # Add year filter if provided
+            if year_range:
+                params["publicationDateOrYear"] = year_range
+
             return await self._make_request(
                 method="GET",
                 endpoint=f"paper/{paper_id}/citations",
-                params={
-                    "fields": (
-                        "contexts,intents,isInfluential,"
-                        "citingPaper.paperId,citingPaper.title,citingPaper.year,"
-                        "citingPaper.citationCount,citingPaper.influentialCitationCount"
-                    ),
-                    "limit": limit,
-                    "offset": offset,
-                },
+                params=params,
                 headers=self._get_headers(),
             )
 
         result = await self._retry_with_backoff(fetch)
         citations = (result or {}).get("data") or []
 
-        # Cache result
         if self.cache and citations:
             self.cache.set(cache_key, citations)
 

@@ -25,9 +25,18 @@ class DatabaseConnection:
     @classmethod
     def _initialize_engine(cls):
         """Initialize database engine and session factory."""
+        # Check if running in Docker (Airflow sets AIRFLOW_HOME)
+        is_docker = os.getenv("AIRFLOW_HOME") is not None
+
+        db_host = (
+            os.getenv("POSTGRES_HOST_DOCKER", "postgres")
+            if is_docker
+            else os.getenv("POSTGRES_HOST", "localhost")
+        )
+
         database_url = (
             f"postgresql://{os.getenv('POSTGRES_USER')}:{os.getenv('POSTGRES_PASSWORD')}"
-            f"@{os.getenv('POSTGRES_HOST')}:{os.getenv('POSTGRES_PORT')}"
+            f"@{db_host}:{os.getenv('POSTGRES_PORT')}"
             f"/{os.getenv('POSTGRES_DB')}"
         )
 

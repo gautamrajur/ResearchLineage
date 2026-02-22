@@ -10,6 +10,11 @@ from airflow import DAG  # noqa: E402
 from airflow.operators.python import PythonOperator  # noqa: E402
 import asyncio  # noqa: E402
 
+from src.tasks.feature_engineering import FeatureEngineeringTask  # noqa: E402
+from src.tasks.schema_transformation import SchemaTransformationTask  # noqa: E402
+from src.tasks.quality_validation import QualityValidationTask  # noqa: E402
+from src.tasks.anomaly_detection import AnomalyDetectionTask  # noqa: E402
+from src.tasks.database_write import DatabaseWriteTask  # noqa: E402
 from src.tasks.data_acquisition import DataAcquisitionTask  # noqa: E402
 from src.tasks.data_validation import DataValidationTask  # noqa: E402
 from src.tasks.data_cleaning import DataCleaningTask  # noqa: E402
@@ -54,7 +59,7 @@ def task_1_data_acquisition(**context):
     paper_id = context["dag_run"].conf.get(
         "paper_id", "204e3073870fae3d05bcbc2f6a8e263d9b72e776"
     )
-    max_depth = context["dag_run"].conf.get("max_depth", 1)
+    max_depth = context["dag_run"].conf.get("max_depth", 3)
     direction = context["dag_run"].conf.get("direction", "both")
 
     async def acquire():
@@ -136,6 +141,81 @@ def task_4_graph_construction(**context):
     return f"Built graph: {stats['num_nodes']} nodes, {stats['num_edges']} edges"
 
 
+def task_5_feature_engineering(**context):
+    """Task 5: Compute derived features."""
+    graph_data = context["task_instance"].xcom_pull(
+        task_ids="graph_construction", key="graph_data"
+    )
+
+    task = FeatureEngineeringTask()
+    result = task.execute(graph_data)
+
+    context["task_instance"].xcom_push(key="enriched_data", value=result)
+
+    return f"Added features to {len(result['papers'])} papers"
+
+
+def task_7_schema_transformation(**context):
+    """Task 7: Transform to database schema."""
+    enriched_data = context["task_instance"].xcom_pull(
+        task_ids="feature_engineering", key="enriched_data"
+    )
+
+    task = SchemaTransformationTask()
+    result = task.execute(enriched_data)
+
+    context["task_instance"].xcom_push(key="db_data", value=result)
+
+    stats = result["transformation_stats"]
+    return f"Transformed {stats['papers_transformed']} papers to DB schema"
+
+
+def task_8_quality_validation(**context):
+    """Task 8: Validate data quality."""
+    db_data = context["task_instance"].xcom_pull(
+        task_ids="schema_transformation", key="db_data"
+    )
+
+    task = QualityValidationTask()
+    result = task.execute(db_data)
+
+    context["task_instance"].xcom_push(key="validated_db_data", value=result)
+
+    quality_score = result["quality_report"]["quality_score"]
+    return f"Quality validation: {quality_score:.1%} score"
+
+
+def task_9_anomaly_detection(**context):
+    """Task 9: Detect anomalies."""
+    validated_db_data = context["task_instance"].xcom_pull(
+        task_ids="quality_validation", key="validated_db_data"
+    )
+
+    task = AnomalyDetectionTask()
+    result = task.execute(validated_db_data)
+
+    context["task_instance"].xcom_push(key="final_data", value=result)
+
+    anomaly_count = result["anomaly_report"]["total_anomalies"]
+    return f"Detected {anomaly_count} anomalies"
+
+
+def task_10_database_write(**context):
+    """Task 10: Write to database."""
+    final_data = context["task_instance"].xcom_pull(
+        task_ids="anomaly_detection", key="final_data"
+    )
+
+    task = DatabaseWriteTask()
+    result = task.execute(final_data)
+
+    stats = result["write_stats"]
+    return (
+        f"Wrote to DB: {stats['papers_written']} papers, "
+        f"{stats['authors_written']} authors, {stats['citations_written']} citations"
+    )
+
+
 # Define tasks
 t1_acquisition = PythonOperator(
     task_id="data_acquisition",
@@ -161,5 +241,45 @@ t4_graph = PythonOperator(
     dag=dag,
 )
 
+t5_features = PythonOperator(
+    task_id="feature_engineering",
+    python_callable=task_5_feature_engineering,
+    dag=dag,
+)
+
+t7_transform = PythonOperator(
+    task_id="schema_transformation",
+    python_callable=task_7_schema_transformation,
+    dag=dag,
+)
+
+t8_quality = PythonOperator(
+    task_id="quality_validation",
+    python_callable=task_8_quality_validation,
+    dag=dag,
+)
+
+t9_anomaly = PythonOperator(
+    task_id="anomaly_detection",
+    python_callable=task_9_anomaly_detection,
+    dag=dag,
+)
+
+t10_db_write = PythonOperator(
+    task_id="database_write",
+    python_callable=task_10_database_write,
+    dag=dag,
+)
 # Define task dependencies
-t1_acquisition >> t2_validation >> t3_cleaning >> t4_graph
+# Define task dependencies - full pipeline
+(
+    t1_acquisition
+    >> t2_validation
+    >> t3_cleaning
+    >> t4_graph
+    >> t5_features
+    >> t7_transform
+    >> t8_quality
+    >> t9_anomaly
+    >> t10_db_write
+)

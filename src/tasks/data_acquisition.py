@@ -107,104 +107,31 @@ class DataAcquisitionTask:
             logger.error(f"Data acquisition failed: {e}")
             raise
 
-    async def _fetch_citations_with_fallback(
-        self, paper_id: str, paper_data: Dict[str, Any], limit: int
-    ) -> List[Dict[str, Any]]:
+    def _get_max_papers_for_depth(self, current_depth: int) -> int:
         """
-        Fetch citations with OpenAlex fallback.
+        Get maximum papers to fetch based on depth.
+
+        Adaptive strategy:
+        - Depth 0 (target): 5 papers
+        - Depth 1: 5 papers
+        - Depth 2: 3 papers
+        - Depth 3+: 2 papers
 
         Args:
-            paper_id: Semantic Scholar paper ID
-            paper_data: Paper metadata
-            limit: Max citations to fetch
+            current_depth: Current recursion depth
 
         Returns:
-            List of citations
+            Maximum papers to fetch at this depth
         """
-        try:
-            citations = await self.api_client.get_citations(paper_id, limit=limit)
-            if citations:
-                return citations
-            logger.info(
-                f"No citations from Semantic Scholar, trying OpenAlex for {paper_id}"
-            )
-        except Exception as e:
-            logger.warning(f"Semantic Scholar citations failed for {paper_id}: {e}")
-
-        try:
-            logger.info(f"Falling back to OpenAlex for citations of {paper_id}")
-
-            doi = self.id_mapper.extract_doi(paper_data)
-
-            if doi:
-                openalex_paper = await self.openalex_client.get_paper_by_doi(doi)
-                if openalex_paper:
-                    openalex_id = self.id_mapper.get_openalex_id(openalex_paper)
-                    if openalex_id:
-                        openalex_citations = await self.openalex_client.get_citations(
-                            openalex_id, limit=limit
-                        )
-
-                        converted_citations = []
-                        for cit in openalex_citations:
-                            converted = (
-                                self.openalex_client.convert_to_semantic_scholar_format(
-                                    cit
-                                )
-                            )
-                            converted_citations.append(
-                                {
-                                    "fromPaperId": converted["paperId"],
-                                    "toPaperId": paper_id,
-                                    "contexts": [],
-                                    "intents": [],
-                                    "isInfluential": False,
-                                    "direction": "forward",
-                                }
-                            )
-
-                        logger.info(
-                            f"Fetched {len(converted_citations)} citations from OpenAlex"
-                        )
-                        return converted_citations
-
-            title = paper_data.get("title", "")
-            if title:
-                results = await self.openalex_client.search_by_title(title)
-                if results:
-                    openalex_id = self.id_mapper.get_openalex_id(results[0])
-                    if openalex_id:
-                        openalex_citations = await self.openalex_client.get_citations(
-                            openalex_id, limit=limit
-                        )
-
-                        converted_citations = []
-                        for cit in openalex_citations:
-                            converted = (
-                                self.openalex_client.convert_to_semantic_scholar_format(
-                                    cit
-                                )
-                            )
-                            converted_citations.append(
-                                {
-                                    "fromPaperId": converted["paperId"],
-                                    "toPaperId": paper_id,
-                                    "contexts": [],
-                                    "intents": [],
-                                    "isInfluential": False,
-                                    "direction": "forward",
-                                }
-                            )
-
-                        return converted_citations
-
-        except Exception as e:
-            logger.error(f"OpenAlex fallback failed for {paper_id}: {e}")
-
-        return []
+        if current_depth <= 1:
+            return settings.max_papers_per_level
+        elif current_depth == 2:
+            return 3
+        else:
+            return 2
 
     def _filter_references_for_recursion(
-        self, references: List[Dict[str, Any]]
+        self, references: List[Dict[str, Any]], current_depth: int = 0
     ) -> List[Dict[str, Any]]:
         """
         Filter references before recursive fetching to reduce API calls.
@@ -216,6 +143,7 @@ class DataAcquisitionTask:
 
         Args:
             references: List of reference dictionaries
+            current_depth: Current recursion depth for adaptive limits
 
         Returns:
             Filtered list of top references to explore
@@ -245,18 +173,120 @@ class DataAcquisitionTask:
             scored_refs.append({"reference": ref, "score": score})
 
         scored_refs.sort(key=lambda x: float(x["score"]), reverse=True)
-        max_papers = settings.max_papers_per_level
+
+        # Adaptive limit based on depth
+        max_papers = self._get_max_papers_for_depth(current_depth)
 
         top_refs: List[Dict[str, Any]] = [
             item["reference"] for item in scored_refs[:max_papers]
         ]
 
         logger.info(
-            f"Filtered references: {len(references)} -> {len(top_refs)} "
-            f"(kept methodology/background with high impact)"
+            f"Filtered references (depth {current_depth}): {len(references)} -> {len(top_refs)} "
+            f"(limit: {max_papers})"
         )
 
         return top_refs
+
+    def _filter_citations_for_recursion(
+        self,
+        citations: List[Dict[str, Any]],
+        paper_data: Dict[str, Any],
+        current_depth: int = 0,
+    ) -> List[Dict[str, Any]]:
+        """
+        Filter forward citations before recursive fetching.
+
+        Filters by:
+        - Methodology intent (primary)
+        - Influential citations (fallback)
+        - Remove irrelevant domains (medical, clinical)
+        - Citation count of citing paper
+
+        Args:
+            citations: List of citation dictionaries from API
+            paper_data: Target paper metadata
+            current_depth: Current recursion depth for adaptive limits
+
+        Returns:
+            Filtered citations for recursion
+        """
+        # Filter by intent
+        methodology_cites = []
+
+        for cit in citations:
+            intents = cit.get("intents", [])
+            is_influential = cit.get("isInfluential", False)
+
+            if "methodology" in intents or is_influential:
+                methodology_cites.append(cit)
+
+        # Filter out irrelevant domains
+        irrelevant_keywords = [
+            "medical",
+            "clinical",
+            "disease",
+            "patient",
+            "diagnosis",
+            "ecg",
+            "mri",
+            "ct scan",
+            "imaging",
+            "radiology",
+            "tooth",
+            "dental",
+            "retinal",
+            "octa",
+            "tumor",
+            "cancer",
+            "segmentation",
+            "lung",
+            "liver",
+            "brain",
+            "heart",
+        ]
+
+        relevant_cites = []
+        for cit in methodology_cites:
+            citing_paper = cit.get("citingPaper", {})
+            title = citing_paper.get("title", "").lower()
+
+            if not any(keyword in title for keyword in irrelevant_keywords):
+                cit["citingPaperId"] = citing_paper.get("paperId")
+                relevant_cites.append(cit)
+            else:
+                logger.debug(f"Filtered irrelevant paper: {title[:50]}")
+
+        # Score by citation count
+        scored_cites: List[Dict[str, Any]] = []
+        for cit in relevant_cites:
+            citing_paper = cit.get("citingPaper", {})
+            citation_count = citing_paper.get("citationCount", 0) or 0
+
+            score = citation_count
+
+            if cit.get("isInfluential", False):
+                score += 5000
+
+            if "methodology" in cit.get("intents", []):
+                score += 2000
+
+            scored_cites.append({"citation": cit, "score": score})
+
+        # Sort and take top N with adaptive limit
+        scored_cites.sort(key=lambda x: float(x["score"]), reverse=True)
+        max_cites = min(3, self._get_max_papers_for_depth(current_depth))
+
+        top_cites: List[Dict[str, Any]] = [
+            item["citation"] for item in scored_cites[:max_cites]
+        ]
+
+        logger.info(
+            f"Filtered citations (depth {current_depth}): {len(citations)} -> {len(top_cites)} "
+            f"(limit: {max_cites}, removed {len(citations) - len(relevant_cites)} irrelevant)"
+        )
+
+        return top_cites
 
     async def _fetch_recursive(
         self,
@@ -300,7 +330,10 @@ class DataAcquisitionTask:
                     limit=100,
                 )
 
-                filtered_refs = self._filter_references_for_recursion(references)
+                # Filter with depth-aware limits
+                filtered_refs = self._filter_references_for_recursion(
+                    references, current_depth
+                )
 
                 for ref in filtered_refs:
                     cited_paper = ref.get("citedPaper", {})
@@ -330,13 +363,28 @@ class DataAcquisitionTask:
                             )
 
             elif fetch_direction == "forward":
+                # Use year range filtering at API level
+                paper_year = paper_data.get("year")
+                year_range = None
+
+                if paper_year:
+                    window_years = 3
+                    start_year = paper_year + 1
+                    end_year = paper_year + window_years
+                    year_range = f"{start_year}:{end_year}"
+                    logger.info(f"Fetching citations in year range: {year_range}")
+
                 citations = await self.api_client.get_citations(
-                    paper_id, limit=settings.max_papers_per_level
+                    paper_id, limit=1000, year_range=year_range
                 )
 
-                for cit in citations:
-                    citing_paper = cit.get("citingPaper", {})
-                    citing_paper_id = citing_paper.get("paperId")
+                # Filter with depth-aware limits
+                filtered_cits = self._filter_citations_for_recursion(
+                    citations, paper_data, current_depth
+                )
+
+                for cit in filtered_cits:
+                    citing_paper_id = cit.get("citingPaperId")
 
                     if citing_paper_id:
                         all_citations.append(

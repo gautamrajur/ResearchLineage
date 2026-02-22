@@ -1,7 +1,7 @@
 """OpenAlex API client."""
 import logging
 from typing import Optional, Dict, Any, List
-from src.api.base import BaseAPIClient, RateLimiter
+from src.api.base import BaseAPIClient
 from src.utils.config import settings
 from src.cache.redis_client import RedisCache
 
@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 class OpenAlexClient(BaseAPIClient):
     """OpenAlex API client for fallback citation data."""
 
+    # In src/api/openalex.py, __init__ method:
     def __init__(self, cache: Optional[RedisCache] = None):
         """
         Initialize OpenAlex client.
@@ -18,11 +19,8 @@ class OpenAlexClient(BaseAPIClient):
         Args:
             cache: Redis cache instance (optional)
         """
-        rate_limiter = RateLimiter(
-            rate_limit=600,  # 10 requests/second
-            time_window=60,
-        )
-        super().__init__(base_url=settings.openalex_base_url, rate_limiter=rate_limiter)
+        # No rate limiter for OpenAlex
+        super().__init__(base_url=settings.openalex_base_url, rate_limiter=None)
         self.cache = cache
 
     async def get_paper(self, paper_id: str) -> Dict[str, Any]:

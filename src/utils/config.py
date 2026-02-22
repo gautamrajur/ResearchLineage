@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     semantic_scholar_rate_limit: int = 100
     arxiv_base_url: str = "http://export.arxiv.org/api/query"
     openalex_base_url: str = "https://api.openalex.org"
+
     # Database settings
     postgres_host: str = "localhost"
     postgres_port: int = 5432
@@ -29,9 +30,10 @@ class Settings(BaseSettings):
 
     # Pipeline settings
     max_citation_depth: int = 3
-    max_papers_per_level: int = 15
+    max_papers_per_level: int = 5
     min_citation_count: int = 10
     influential_citation_weight: float = 2.0
+    forward_citation_window: int = 3  # Add this line
 
     # Monitoring
     log_level: str = "INFO"

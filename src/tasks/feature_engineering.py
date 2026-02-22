@@ -64,7 +64,6 @@ class FeatureEngineeringTask:
             "papers": enriched_papers,
             "references": graph_data["references"],
             "citations": graph_data["citations"],
-            "graph": graph_data["graph"],
             "metrics": metrics,
             "graph_stats": graph_data["graph_stats"],
             "components": graph_data["components"],

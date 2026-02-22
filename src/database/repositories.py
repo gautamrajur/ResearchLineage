@@ -1,6 +1,6 @@
 """Data access layer - Repository pattern for database operations."""
 import logging
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from sqlalchemy import text
 
 logger = logging.getLogger(__name__)
@@ -51,6 +51,49 @@ class PaperRepository:
 
         logger.info(f"Upserted {len(papers)} papers")
         return len(papers)
+
+    def get_by_id(self, paper_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Get paper by ID from database.
+
+        Args:
+            paper_id: Paper ID
+
+        Returns:
+            Paper dictionary in API format or None if not found
+        """
+        query = text(
+            """
+            SELECT paperId, arxivId, title, abstract, year,
+                citationCount, influentialCitationCount, referenceCount,
+                venue, urls
+            FROM papers
+            WHERE paperId = :paper_id
+        """
+        )
+
+        result = self.session.execute(query, {"paper_id": paper_id})
+        row = result.fetchone()
+
+        if not row:
+            return None
+
+        # Access by index (guaranteed column order from SELECT)
+        paper_dict = {
+            "paperId": row[0],
+            "title": row[2],
+            "abstract": row[3],
+            "year": row[4],
+            "citationCount": row[5],
+            "influentialCitationCount": row[6],
+            "referenceCount": row[7],
+            "venue": row[8],
+            "url": row[9],
+            "authors": [],
+            "externalIds": {"ArXiv": row[1]} if row[1] else {},
+        }
+
+        return paper_dict
 
 
 class AuthorRepository:

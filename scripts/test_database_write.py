@@ -25,9 +25,7 @@ async def test():
     # Run full pipeline
     print("\n[1/10] Data Acquisition...")
     acquisition = DataAcquisitionTask()
-    raw = await acquisition.execute(
-        paper_id=paper_id, max_depth=1, direction="backward"
-    )
+    raw = await acquisition.execute(paper_id=paper_id, max_depth=3, direction="both")
     await acquisition.close()
     print(f"  Fetched: {raw['total_papers']} papers")
 

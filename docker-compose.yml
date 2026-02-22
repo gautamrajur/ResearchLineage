@@ -1,20 +1,34 @@
 services:
   postgres:
     image: postgres:15
-    container_name: research_lineage_db
+    container_name: airflow_metadata_db
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: research_lineage
+      POSTGRES_DB: airflow
     ports:
-      - "5432:5432"
-    volumes:
-      - E:/ResearchLineage/postgres_data:/var/lib/postgresql/data
+      - "5433:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
+
+  cloud-sql-proxy:
+    image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.21.1
+    container_name: cloud_sql_proxy
+    command:
+      - "--address=0.0.0.0"
+      - "--port=5432"
+      - "researchlineage:us-central1:researchlineage-db"
+    ports:
+      - "5432:5432"
+    volumes:
+      - C:/Users/nekka/AppData/Roaming/gcloud:/gcp/config:ro
+    environment:
+      - GOOGLE_APPLICATION_CREDENTIALS=/gcp/config/application_default_credentials.json
+    restart: unless-stopped
 
   redis:
     image: redis:7-alpine
@@ -26,6 +40,7 @@ services:
       interval: 10s
       timeout: 3s
       retries: 5
+    restart: unless-stopped
 
   airflow-init:
     build:
@@ -72,11 +87,13 @@ services:
     depends_on:
       - postgres
       - redis
+      - cloud-sql-proxy
       - airflow-init
     volumes:
       - ./dags:/opt/airflow/dags
       - ./src:/opt/airflow/src
       - ./logs:/opt/airflow/logs
+    restart: unless-stopped
 
   airflow-scheduler:
     build:
@@ -94,8 +111,10 @@ services:
     depends_on:
       - postgres
       - redis
+      - cloud-sql-proxy
       - airflow-init
     volumes:
       - ./dags:/opt/airflow/dags
       - ./src:/opt/airflow/src
       - ./logs:/opt/airflow/logs
+    restart: unless-stopped
