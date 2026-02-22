@@ -1,5 +1,5 @@
 """
-timeline_pipeline_dag.py - Airflow DAG for ResearchLineage Timeline Pipeline
+data_generation_pipeline_dag.py - Airflow DAG for ResearchLineage Timeline Pipeline
 
 DAG Structure:
     seed_generation → batch_run → preprocessing → upload_to_gcs
@@ -59,7 +59,7 @@ DEFAULT_ARGS = {
 
 
 with DAG(
-    dag_id="researchlineage_timeline_pipeline",
+    dag_id="researchlineage_data_generation_pipeline",
     default_args=DEFAULT_ARGS,
     description="Generate research lineage timelines and training data",
     schedule_interval=None,  # Manual trigger only
