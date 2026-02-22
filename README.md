@@ -6,184 +6,75 @@ We're not replacing comprehensive literature reviews or deep reading (that's imp
 
 ---
 
-## Test Suite
+## Database operations for PDF failure handling
 
-All tests use **pytest** with configuration in `conftest.py` and `pyproject.toml`. Test packages mirror `src/`: each `tests/unit/<layer>/test_*.py` file exercises the corresponding `src/<layer>/*.py` module.
+Failed PDF fetches are stored in a PostgreSQL table so they can be retried later and, when failures persist, surfaced via email alerts. This section describes the database operations, what you need to run them, and how to run the retry flow.
 
-### Test modules at a glance
+### Purpose of the failure table
 
-| Test package | Covers (`src/`) | Purpose |
-|--------------|-----------------|---------|
-| `unit/api/` | `api/base`, `api/semantic_scholar`, `api/openalex` | Rate limiting, retries, 429 handling, API client behaviour |
-| `unit/cache/` | `cache/` | Redis client (get/set/delete, connection handling) |
-| `unit/database/` | `database/`, `tasks/database_write` | Connection, repositories; DatabaseWriteTask (write operations) |
-| `unit/storage/` | `storage/` | GCS client (upload/download, buckets) |
-| `unit/tasks/` | `tasks/` | PDF fetcher, acquisition, validation, cleaning, citation graph, features, schema, quality, anomaly detection |
-| `unit/utils/` | `utils/id_mapper`, `utils/errors` | DOI/ID extraction, custom exception hierarchy |
-| `integration/` | — | End-to-end flow: validation → cleaning [→ graph] with fixture data |
+- Only **failed** PDF fetches (download_failed or error) are written to the database. Successful uploads and 403/404 responses do not create or keep rows.
+- Each row represents one paper that failed: `paper_id`, `title`, `status`, `fail_runs`, `fetch_url`, `reason`, `timeout_sec`, `retry_after`, `first_failed_at`, `last_attempt_at`, `alerted`, `created_at`.
+- **fail_runs** is the number of **runs** (not in-run retries) in which that paper failed. It increments each time the sync or retry flow records a failure for that paper.
+- Rows are **deleted** when the paper later succeeds or when the failure is 403/404 (no point retrying). They are also deleted during retry if the paper already has a PDF in GCS (reconciliation).
 
-### Prerequisites
+### Operations
 
-Install dev dependencies (includes pytest, pytest-cov, pytest-mock, pytest-asyncio):
+| Operation | Purpose |
+|-----------|---------|
+| **Sync to DB** | After each main PDF fetch run, the list of failed papers (download_failed / error) is upserted into `fetch_pdf_failures`: new paper_id → insert with fail_runs=1 and retry_after = NOW() + 30s; existing paper_id → increment fail_runs, update reason/fetch_url/timeout_sec, set last_attempt_at and retry_after = NOW() + 30s. |
+| **Retry failed PDFs** | A dedicated command reads rows where `retry_after` has passed and `alerted = FALSE`, re-fetches each PDF using the stored URL and timeout, then updates the table: delete row on success or 403/404; on other failure, increment fail_runs and bump timeout_sec by 20s, set retry_after = NOW() + 30s. |
+| **GCS reconciliation** | During retry, any row whose paper_id already has a PDF in GCS is deleted so the table does not keep retrying papers that are already in storage. |
+| **Alerts** | After retry (or when retry runs with no eligible rows but there are pending alerts), any row with `fail_runs > 5` and `alerted = FALSE` triggers an alert: if SMTP is configured, an HTML email is sent with a table of those papers, then those rows are set to `alerted = TRUE`; otherwise the same information is only logged. |
 
-```bash
-poetry install --with dev
-```
+### What you need to run error-free
 
-Or with pip:
+- **PostgreSQL**: Create the `fetch_pdf_failures` table in your database (the app does not run migrations). Columns and indexes are implied by `src/database/fetch_pdf_failures_repository.py`; an index on `retry_after` is recommended for the eligible-for-retry query.
+- **`.env`** in the project root with at least:
+  - **Database**: `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DB`. Used by the connection pool and by the failure repository.
+  - **Optional — Email alerts**: `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `ALERT_EMAIL_FROM`, `ALERT_EMAIL_TO`. If `SMTP_HOST` and `ALERT_EMAIL_TO` are set, alerts are sent; otherwise they are only logged.
 
-```bash
-pip install pytest pytest-cov pytest-mock pytest-asyncio
-```
+Do not commit `.env`; it is listed in `.gitignore`.
 
-### Directory structure
+### Environment variables (DB and alerts)
 
-```
-tests/
-├── conftest.py                       # Path setup, shared fixtures, mocks (GCS, Redis)
-├── unit/
-│   ├── api/                          # src.api
-│   │   ├── test_base.py              # RateLimiter, BaseAPIClient (retry, 429, HTTP)
-│   │   ├── test_semantic_scholar.py
-│   │   └── test_openalex.py
-│   ├── cache/                        # src.cache
-│   │   └── test_redis_client.py
-│   ├── database/                     # src.database + src.tasks.database_write
-│   │   ├── test_connection.py
-│   │   ├── test_repositories.py
-│   │   └── test_database_write.py    # DatabaseWriteTask (tasks)
-│   ├── storage/                      # src.storage
-│   │   └── test_gcs_client.py
-│   ├── tasks/                        # src.tasks (pipeline stages)
-│   │   ├── test_pdf_fetcher.py
-│   │   ├── test_data_acquisition.py
-│   │   ├── test_data_validation.py
-│   │   ├── test_data_cleaning.py
-│   │   ├── test_citation_graph.py    # Skipped unless RUN_CITATION_GRAPH_TESTS=1
-│   │   ├── test_feature_engineering.py
-│   │   ├── test_schema_transformation.py
-│   │   ├── test_quality_validation.py
-│   │   └── test_anomaly_detection.py
-│   └── utils/                        # src.utils
-│       ├── test_id_mapper.py
-│       └── test_errors.py
-└── integration/
-    └── test_pipeline_flow.py         # Validation → Cleaning [→ Graph]; graph tests conditional
-```
+| Variable | Required | Purpose |
+|----------|----------|---------|
+| `POSTGRES_USER` | Yes | PostgreSQL user. |
+| `POSTGRES_PASSWORD` | Yes | PostgreSQL password. |
+| `POSTGRES_HOST` | Yes | PostgreSQL host (e.g. `localhost` or Cloud SQL proxy). |
+| `POSTGRES_PORT` | Yes | PostgreSQL port (e.g. `5432`). |
+| `POSTGRES_DB` | Yes | Database name (e.g. `researchlineage`). |
+| `SMTP_HOST` | No | SMTP server host; required only to send alert emails. |
+| `SMTP_PORT` | No | SMTP port (default 587). |
+| `SMTP_USER` | No | SMTP username. |
+| `SMTP_PASSWORD` | No | SMTP password or app password. |
+| `ALERT_EMAIL_FROM` | No | Sender address in alert emails. |
+| `ALERT_EMAIL_TO` | No | Recipient(s), comma-separated; required for sending alerts. |
 
-### Conftest: fixtures and mocks
+### Running the retry flow
 
-**Shared fixtures** (use in any test via function argument):
-
-| Fixture | Description |
-|---------|-------------|
-| `sample_paper` | Paper dict: paperId, title, abstract, year, authors, externalIds, venue, etc. |
-| `sample_reference` | Reference edge: fromPaperId, toPaperId, isInfluential, contexts, intents |
-| `sample_citation` | Citation edge (same shape as reference) |
-
-**Mocks** (no real I/O): `google.cloud.storage` and `redis` are patched so tests run without GCS or Redis. Mock any other external services in the test or conftest.
-
-### Running tests
-
-All commands from **project root**. `pyproject.toml` sets `testpaths = ["tests"]`, so `pytest` and `pytest tests` are equivalent.
-
-**By scope:**
+From the project root:
 
 ```bash
-# All tests
-pytest
-pytest tests -v
-
-# Unit only / integration only
-pytest tests/unit -v
-pytest tests/integration -v
+python temp/pdfs.py retry-failures
 ```
 
-**By layer (unit):**
+This will:
+
+1. Query `fetch_pdf_failures` for rows where `retry_after` has passed and `alerted = FALSE`.
+2. For each such row, attempt to fetch the PDF from the stored URL with the stored timeout and upload to GCS.
+3. Update the table: delete row on success or 403/404; otherwise update fail_runs, timeout, retry_after.
+4. Reconcile with GCS (delete rows whose paper_id already has a PDF in GCS).
+5. For any row with `fail_runs > 5` and `alerted = FALSE`, send an HTML alert email (if SMTP is configured) and set `alerted = TRUE`.
+
+The main PDF fetch run (e.g. `python temp/pdfs.py ...`) syncs failures to the same table after each run; no separate command is needed for that.
+
+### Verifying the database
+
+To check that the database is reachable and the table exists:
 
 ```bash
-pytest tests/unit/api -v
-pytest tests/unit/cache -v
-pytest tests/unit/database -v
-pytest tests/unit/storage -v
-pytest tests/unit/tasks -v
-pytest tests/unit/utils -v
+python scripts/check_fetch_pdf_failures_db.py
 ```
 
-**By file or test:**
-
-```bash
-# Single file
-pytest tests/unit/tasks/test_data_validation.py -v
-
-# Single test by node id
-pytest tests/unit/api/test_base.py::TestRateLimiter -v
-
-# By name pattern (-k)
-pytest tests/unit -k "validation" -v
-```
-
-**Excluding paths:**
-
-```bash
-pytest tests/unit --ignore=tests/unit/tasks/test_citation_graph.py -v
-pytest tests/unit --ignore=tests/unit/database -v
-```
-
-### Coverage
-
-```bash
-# Terminal report with missing lines
-pytest tests/unit --cov=src --cov-report=term-missing
-
-# HTML report (htmlcov/)
-pytest tests/unit --cov=src --cov-report=html
-
-# Fail if below threshold
-pytest tests/unit --cov=src --cov-fail-under=50
-```
-
-### Conditional tests (citation graph)
-
-Tests that run `CitationGraphConstructionTask` or use NetworkX can segfault in some environments (numpy.linalg). They are **skipped unless**:
-
-```bash
-RUN_CITATION_GRAPH_TESTS=1 pytest tests/unit -v
-RUN_CITATION_GRAPH_TESTS=1 pytest tests/unit/tasks/test_citation_graph.py -v
-RUN_CITATION_GRAPH_TESTS=1 pytest tests/integration -v
-```
-
-### Useful flags
-
-| Flag | Effect |
-|------|--------|
-| `-v` / `-vv` | Verbose (one line per test / more detail) |
-| `-x` | Stop on first failure |
-| `--lf` | Re-run only last failed tests |
-| `--tb=short` | Shorter tracebacks |
-| `-q` | Quiet |
-| `--ignore=path` | Exclude file or directory |
-| `-n auto` | Parallel (requires pytest-xdist) |
-
-### Writing new tests
-
-1. **Mirror source** — `src/tasks/data_cleaning.py` → `tests/unit/tasks/test_data_cleaning.py`
-2. **Use shared fixtures** — `sample_paper`, `sample_reference`, `sample_citation` from conftest
-3. **Mock external I/O** — GCS and Redis are already mocked; patch other services as needed
-4. **Name clearly** — e.g. `test_missing_target_paper_id_raises`
-5. **Group in classes** — e.g. `TestDataValidationTaskStructure`, `TestRateLimiter`
-
-### Quick reference
-
-| Goal | Command |
-|------|--------|
-| All tests | `pytest` or `pytest tests -v` |
-| Unit only | `pytest tests/unit -v` |
-| Integration only | `pytest tests/integration -v` |
-| One layer | `pytest tests/unit/tasks -v` |
-| One file | `pytest tests/unit/utils/test_errors.py -v` |
-| One test | `pytest tests/unit/utils/test_errors.py::test_validation_error -v` |
-| With coverage | `pytest tests/unit --cov=src --cov-report=term-missing` |
-| Include citation graph | `RUN_CITATION_GRAPH_TESTS=1 pytest tests/unit -v` |
-| Stop on first fail | `pytest -x` |
-| Re-run failed | `pytest --lf` |
+This uses `POSTGRES_*` from `.env` and prints the row count of `fetch_pdf_failures`.

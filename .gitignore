@@ -61,5 +61,11 @@ Thumbs.db
 *.db
 *.sqlite
 
-# Test
+# Test / coverage
 .coverage
+htmlcov/
+
+# Local outputs and binaries
+outputs/
+cloud-sql-proxy
+cloud-sql-proxy.exe
