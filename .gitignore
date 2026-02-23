@@ -52,6 +52,9 @@ airflow-webserver.pid
 # DVC
 .dvc/cache
 
+# Claude Code session context (local only)
+CLAUDE.md
+
 # OS
 .DS_Store
 Thumbs.db
