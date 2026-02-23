@@ -64,6 +64,14 @@ class Settings(BaseSettings):
     enable_metrics: bool = True
     verbose: bool = True
 
+    # SMTP alert settings
+    smtp_host: str = "smtp.gmail.com"
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    alert_email_from: str = ""
+    alert_email_to: str = ""
+
     # Environment
     environment: str = "development"
 

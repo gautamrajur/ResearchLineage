@@ -2,8 +2,21 @@
 from typing import Dict, Any, List, Tuple
 import statistics
 from src.utils.logging import get_logger
+from src.utils.email_service import EmailConfig, EmailService
+from src.utils.config import settings
 
 logger = get_logger(__name__)
+
+
+def _build_email_service() -> EmailService:
+    return EmailService(EmailConfig(
+        smtp_host=settings.smtp_host,
+        smtp_port=settings.smtp_port,
+        smtp_user=settings.smtp_user,
+        smtp_password=settings.smtp_password,
+        alert_email_from=settings.alert_email_from,
+        alert_email_to=settings.alert_email_to,
+    ))
 
 
 class AnomalyDetectionTask:
@@ -51,6 +64,11 @@ class AnomalyDetectionTask:
                             logger.warning(
                                 f"  {category}.{anomaly_type}: {len(anomaly_list)} issues"
                             )
+            self._send_anomaly_alert(
+                target_paper_id=validated_data["target_paper_id"],
+                total_anomalies=total_anomalies,
+                anomalies=anomalies,
+            )
         else:
             logger.info("No anomalies detected")
 
@@ -65,6 +83,32 @@ class AnomalyDetectionTask:
                 "anomalies": anomalies,
             },
         }
+
+    def _send_anomaly_alert(
+        self,
+        target_paper_id: str,
+        total_anomalies: int,
+        anomalies: Dict[str, Any],
+    ) -> None:
+        """Send email alert summarising detected anomalies."""
+        lines = [
+            f"Anomaly detection found {total_anomalies} issue(s) in pipeline run.",
+            f"Target paper: {target_paper_id}",
+            "",
+            "Breakdown:",
+        ]
+        for category, results in anomalies.items():
+            if isinstance(results, dict):
+                for anomaly_type, anomaly_list in results.items():
+                    if anomaly_list:
+                        lines.append(f"  {category}.{anomaly_type}: {len(anomaly_list)}")
+
+        lines += ["", "Check the Airflow logs for full details."]
+
+        _build_email_service().send_alert(
+            subject=f"ResearchLineage Anomaly Alert — {total_anomalies} issue(s) detected",
+            body="\n".join(lines),
+        )
 
     def _detect_missing_data(
         self, papers: List[Dict[str, Any]]
