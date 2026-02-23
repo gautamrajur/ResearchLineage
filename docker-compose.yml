@@ -96,6 +96,7 @@ services:
       - ./dags:/opt/airflow/dags
       - ./src:/opt/airflow/src
       - ./logs:/opt/airflow/logs
+      - ./tests:/opt/airflow/tests
       - C:/Users/jithi/AppData/Roaming/gcloud:/gcp/config:ro
     restart: unless-stopped
 
@@ -123,5 +124,6 @@ services:
       - ./dags:/opt/airflow/dags
       - ./src:/opt/airflow/src
       - ./logs:/opt/airflow/logs
+      - ./tests:/opt/airflow/tests
       - C:/Users/jithi/AppData/Roaming/gcloud:/gcp/config:ro
     restart: unless-stopped

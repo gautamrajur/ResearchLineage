@@ -1,0 +1,28 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install only the packages the task modules and tests actually use
+RUN pip install --no-cache-dir \
+    networkx \
+    pydantic-settings \
+    python-dotenv \
+    httpx \
+    redis \
+    sqlalchemy \
+    psycopg2-binary \
+    alembic \
+    pytest \
+    pytest-mock \
+    pytest-asyncio \
+    pytest-cov \
+    pytest-html
+
+# Copy source + tests (no credentials, no dags needed)
+COPY src/ /app/src/
+COPY tests/ /app/tests/
+COPY pyproject.toml /app/
+
+ENV PYTHONPATH=/app
+
+CMD ["pytest", "tests/", "-v", "--tb=short", "--html=/app/reports/report.html", "--self-contained-html"]
