@@ -1,11 +1,11 @@
 """Redis cache client for API response caching."""
 import json
-import logging
 from typing import Optional, Any
 import redis
 from src.utils.config import settings
+from src.utils.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class RedisCache:

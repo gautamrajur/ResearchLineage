@@ -1,5 +1,4 @@
 """Semantic Scholar API client."""
-import logging
 from typing import Optional, Dict, Any, List
 from src.api.base import BaseAPIClient
 from src.models.api_models import PaperResponse
@@ -7,8 +6,9 @@ from src.utils.config import settings
 from src.cache.redis_client import RedisCache
 from src.database.connection import DatabaseConnection
 from src.database.repositories import PaperRepository
+from src.utils.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class SemanticScholarClient(BaseAPIClient):

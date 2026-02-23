@@ -73,39 +73,24 @@ from src.utils.config import (
     # Logging
     VERBOSE,
 )
+from src.utils.logging import get_logger
 
 
 # ════════════════════════════════════════
-# LOGGING SETUP (pipeline-specific: console + file handler)
+# LOGGING — console via central config + file handler for persistent pipeline log
 # ════════════════════════════════════════
 
-def _setup_logger():
-    """Configure logger with console (INFO) + file (DEBUG) handlers."""
-    RUN_DIR.mkdir(parents=True, exist_ok=True)
+logger = get_logger(__name__)
 
-    lgr = logging.getLogger("lineage_pipeline")
-    lgr.setLevel(logging.DEBUG)
-    lgr.handlers.clear()
-
-    fmt = logging.Formatter(
-        "%(asctime)s — %(levelname)-8s — %(funcName)s — %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
-
-    ch = logging.StreamHandler()
-    ch.setLevel(logging.INFO)
-    ch.setFormatter(fmt)
-    lgr.addHandler(ch)
-
-    fh = logging.FileHandler(LOG_FILE, encoding="utf-8")
-    fh.setLevel(logging.DEBUG)
-    fh.setFormatter(fmt)
-    lgr.addHandler(fh)
-
-    return lgr
-
-
-logger = _setup_logger()
+# Add file handler so the full pipeline run is persisted to pipeline_output/pipeline.log
+RUN_DIR.mkdir(parents=True, exist_ok=True)
+_fh = logging.FileHandler(LOG_FILE, encoding="utf-8")
+_fh.setLevel(logging.DEBUG)
+_fh.setFormatter(logging.Formatter(
+    "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+))
+logger.addHandler(_fh)
 
 
 # ════════════════════════════════════════

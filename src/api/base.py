@@ -1,13 +1,13 @@
 """Base API client with retry logic and rate limiting."""
 import asyncio
-import logging
 import time
 from typing import Optional, Dict, Any
 from abc import ABC, abstractmethod
 import httpx
 from src.utils.errors import APIError, RateLimitError
+from src.utils.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class RateLimiter:

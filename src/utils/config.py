@@ -1,6 +1,5 @@
 """Configuration management using Pydantic settings."""
 
-import logging
 from pathlib import Path
 from typing import Set
 
@@ -89,13 +88,6 @@ settings = Settings()
 # ========================================
 
 VERBOSE = settings.verbose
-
-logger = logging.getLogger("fine_tuning_pipeline")
-logger.setLevel(logging.DEBUG if VERBOSE else logging.INFO)
-if not logger.handlers:
-    handler = logging.StreamHandler()
-    handler.setFormatter(logging.Formatter("%(asctime)s — %(levelname)s — %(message)s"))
-    logger.addHandler(handler)
 
 
 # ========================================

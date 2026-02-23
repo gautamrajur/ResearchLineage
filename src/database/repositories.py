@@ -1,9 +1,9 @@
 """Data access layer - Repository pattern for database operations."""
-import logging
 from typing import List, Dict, Any, Optional
 from sqlalchemy import text
+from src.utils.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class PaperRepository:
