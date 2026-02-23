@@ -1,11 +1,11 @@
 """OpenAlex API client."""
-import logging
 from typing import Optional, Dict, Any, List
 from src.api.base import BaseAPIClient
 from src.utils.config import settings
 from src.cache.redis_client import RedisCache
+from src.utils.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class OpenAlexClient(BaseAPIClient):

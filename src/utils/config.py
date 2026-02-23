@@ -1,6 +1,5 @@
 """Configuration management using Pydantic settings."""
 
-import logging
 from pathlib import Path
 from typing import Set
 
@@ -55,14 +54,22 @@ class Settings(BaseSettings):
     forward_citation_window: int = 3
 
     # GCS settings
-    gcs_bucket_name: str = "researchlineage-data"
-    gcs_project_id: str = "mlops-researchlineage"
-    gcs_upload_prefix: str = "pipeline_runs"
+    gcs_bucket_name: str = "researchlineage-gcs"
+    gcs_project_id: str = "researchlineage"
+    gcs_upload_prefix: str = "fine-tuning-artifacts/"
 
     # Monitoring
     log_level: str = "INFO"
     enable_metrics: bool = True
     verbose: bool = True
+
+    # SMTP alert settings
+    smtp_host: str = "smtp.gmail.com"
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    alert_email_from: str = ""
+    alert_email_to: str = ""
 
     # Environment
     environment: str = "development"
@@ -81,13 +88,6 @@ settings = Settings()
 # ========================================
 
 VERBOSE = settings.verbose
-
-logger = logging.getLogger("fine_tuning_pipeline")
-logger.setLevel(logging.DEBUG if VERBOSE else logging.INFO)
-if not logger.handlers:
-    handler = logging.StreamHandler()
-    handler.setFormatter(logging.Formatter("%(asctime)s — %(levelname)s — %(message)s"))
-    logger.addHandler(handler)
 
 
 # ========================================

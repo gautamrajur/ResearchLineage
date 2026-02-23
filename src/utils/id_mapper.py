@@ -1,8 +1,8 @@
 """ID mapping utilities for cross-API paper identification."""
-import logging
 from typing import Optional, Dict, Any
+from src.utils.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class IDMapper:
