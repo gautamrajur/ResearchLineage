@@ -156,7 +156,7 @@ All exceptions propagate to Airflow which retries the task up to 3 times with a 
 ### 1. Clone and configure environment
 
 ```bash
-git clone <repo-url>
+git clone https://github.com/gautamrajur/ResearchLineage.git
 cd Datapipeline_Jithin_Shivram
 
 cp .env.example .env
@@ -340,44 +340,67 @@ The log level is controlled by `LOG_LEVEL` in `.env` (default: `INFO`). Set to `
 
 ## Data Versioning (DVC)
 
-Raw and processed datasets are tracked with DVC.
+DVC tracks raw/processed research data and fine-tuning artifacts. All data is stored in GCS. The remote is pre-configured in `.dvc/config` — no additional setup required.
 
-### Configure the remote
+### Remote
 
-The default DVC remote is a local path. Switch to GCS for team use:
+The project uses a GCS remote named `gcs`:
 
-```bash
-dvc remote modify local url gs://your-bucket/dvc-store
-dvc remote modify local credentialpath /path/to/service-account.json
+```
+gs://researchlineage-gcs/dvc-store
 ```
 
-Or point to a local path on your machine:
+Authentication uses the same GCP credentials as the rest of the project (`GCLOUD_CONFIG_DIR`).
 
-```bash
-dvc remote modify local url /absolute/path/to/dvc-storage
-```
+### Tracked datasets
 
-### Pull data
+| DVC pointer | DAG | Contents |
+|---|---|---|
+| `data/raw.dvc` | `research_lineage_pipeline` | Raw API responses from Semantic Scholar |
+| `data/processed.dvc` | `research_lineage_pipeline` | Cleaned, validated, and feature-engineered datasets |
+| `src/tasks/pipeline_output/splits.dvc` | `fine_tuning_data_pipeline` | Stratified train / val / test splits (70 / 15 / 15) |
+| `src/tasks/pipeline_output/llama_format.dvc` | `fine_tuning_data_pipeline` | Llama chat-format training files and metadata sidecars |
+
+### Pull existing data
 
 ```bash
 dvc pull
 ```
 
-### Push after adding new data
+### Push new data after a pipeline run
+
+**Research lineage pipeline** (updates `data/raw/` and `data/processed/`):
 
 ```bash
-dvc add data/raw/
+dvc add data/raw data/processed
 dvc push
-git add data/raw.dvc .dvc/config
-git commit -m "Update raw dataset"
+git add data/raw.dvc data/processed.dvc
+git commit -m "Update research lineage datasets"
 ```
 
-### Tracked files
+**Fine-tuning pipeline** (updates `splits/` and `llama_format/`):
 
-| DVC pointer | Contents |
-|---|---|
-| `data/raw.dvc` | Raw API responses from Semantic Scholar |
-| `data/processed.dvc` | Cleaned, validated, and feature-engineered datasets |
+```bash
+dvc add src/tasks/pipeline_output/splits src/tasks/pipeline_output/llama_format
+dvc push
+git add src/tasks/pipeline_output/splits.dvc src/tasks/pipeline_output/llama_format.dvc
+git commit -m "Track fine-tuning artifacts from pipeline run"
+```
+
+### Retrieve data from a specific past run
+
+Each `dvc push` is tied to a git commit via the `.dvc` pointer file. To restore an earlier version:
+
+```bash
+# Find the commit where that run was recorded
+git log --oneline data/raw.dvc
+
+# Restore the pointer from that commit
+git checkout <commit-hash> -- data/raw.dvc
+
+# Pull that exact dataset from GCS
+dvc pull data/raw.dvc
+```
 
 ---
 
