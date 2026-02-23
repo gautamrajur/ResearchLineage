@@ -55,9 +55,9 @@ class Settings(BaseSettings):
     forward_citation_window: int = 3
 
     # GCS settings
-    gcs_bucket_name: str = "researchlineage-data"
-    gcs_project_id: str = "mlops-researchlineage"
-    gcs_upload_prefix: str = "pipeline_runs"
+    gcs_bucket_name: str = "researchlineage-gcs"
+    gcs_project_id: str = "researchlineage"
+    gcs_upload_prefix: str = "fine-tuning-artifacts/"
 
     # Monitoring
     log_level: str = "INFO"
