@@ -512,18 +512,30 @@ def analyze_foundational(paper_text):
 def _build_paper_metadata(paper_data):
     if not paper_data:
         return {}
-    fields = paper_data.get("fieldsOfStudy") or []
+
     s2_fields = paper_data.get("s2FieldsOfStudy") or []
+    fields = paper_data.get("fieldsOfStudy") or []
+
+    # Get primary field — prefer non-CS if multiple fields exist
     primary_field = None
-    if fields:
-        primary_field = fields[0]
-    elif s2_fields:
-        for f in s2_fields:
-            if f.get("source") == "external":
-                primary_field = f.get("category")
-                break
-        if not primary_field and s2_fields:
-            primary_field = s2_fields[0].get("category")
+
+    # Priority 1: external source fields
+    external_fields = [f.get("category") for f in s2_fields if f.get("source") == "external"]
+    if external_fields:
+        non_cs = [f for f in external_fields if f != "Computer Science"]
+        primary_field = non_cs[0] if non_cs else external_fields[0]
+
+    # Priority 2: fieldsOfStudy
+    if not primary_field and fields:
+        non_cs = [f for f in fields if f != "Computer Science"]
+        primary_field = non_cs[0] if non_cs else fields[0]
+
+    # Priority 3: any s2-fos-model field
+    if not primary_field:
+        all_cats = [f.get("category") for f in s2_fields if f.get("category")]
+        non_cs = [f for f in all_cats if f != "Computer Science"]
+        primary_field = non_cs[0] if non_cs else (all_cats[0] if all_cats else None)
+
     return {
         "paper_id": paper_data.get("paperId"),
         "title": paper_data.get("title"),
