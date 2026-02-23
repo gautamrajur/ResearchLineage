@@ -60,3 +60,6 @@ Thumbs.db
 *.db
 *.sqlite
 cloud-sql-proxy.exe
+
+
+src/tasks/pipeline_output/

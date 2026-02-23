@@ -25,7 +25,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - C:/Users/nekka/AppData/Roaming/gcloud:/gcp/config:ro
+      - C:/Users/jithi/AppData/Roaming/gcloud:/gcp/config:ro
     environment:
       - GOOGLE_APPLICATION_CREDENTIALS=/gcp/config/application_default_credentials.json
     restart: unless-stopped
@@ -52,6 +52,7 @@ services:
       - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://postgres:postgres@postgres:5432/airflow
       - AIRFLOW__CORE__LOAD_EXAMPLES=False
       - AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=True
+      - _PIP_ADDITIONAL_REQUIREMENTS=google-genai beautifulsoup4 pydantic-settings
     entrypoint: /bin/bash
     command:
       - -c
@@ -79,6 +80,8 @@ services:
       - AIRFLOW__CORE__LOAD_EXAMPLES=False
       - AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=True
       - PYTHONPATH=/opt/airflow
+      - _PIP_ADDITIONAL_REQUIREMENTS=google-genai beautifulsoup4 pydantic-settings
+      - GOOGLE_APPLICATION_CREDENTIALS=/gcp/config/application_default_credentials.json
     env_file:
       - .env
     ports:
@@ -93,6 +96,7 @@ services:
       - ./dags:/opt/airflow/dags
       - ./src:/opt/airflow/src
       - ./logs:/opt/airflow/logs
+      - C:/Users/jithi/AppData/Roaming/gcloud:/gcp/config:ro
     restart: unless-stopped
 
   airflow-scheduler:
@@ -105,6 +109,8 @@ services:
       - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://postgres:postgres@postgres:5432/airflow
       - AIRFLOW__CORE__LOAD_EXAMPLES=False
       - PYTHONPATH=/opt/airflow
+      - _PIP_ADDITIONAL_REQUIREMENTS=google-genai beautifulsoup4 pydantic-settings
+      - GOOGLE_APPLICATION_CREDENTIALS=/gcp/config/application_default_credentials.json
     env_file:
       - .env
     command: scheduler
@@ -117,4 +123,5 @@ services:
       - ./dags:/opt/airflow/dags
       - ./src:/opt/airflow/src
       - ./logs:/opt/airflow/logs
+      - C:/Users/jithi/AppData/Roaming/gcloud:/gcp/config:ro
     restart: unless-stopped
