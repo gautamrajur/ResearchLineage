@@ -140,13 +140,9 @@ Each task raises typed exceptions from `src/utils/errors.py`:
 
 **Gantt analysis** pinpointed `data_acquisition` as the bottleneck. After enabling caching + filtering: **6m 02s → 3m 15s (46% faster)**, with `database_write` no longer timing out. Steady state: <5 min e2e, 60–80% cache hit rate, 95%+ task success.
 
-**Before optimization** — `database_write` failing, 21+ min total run time:
+Below — pre-optimization run where `database_write` failed after 21+ minutes:
 
 ![Before optimization: database_write failed at 21:23](docs/screenshots/Without-pipeline-optimization.png)
-
-**After optimization** — all tasks green, `data_acquisition` completes in 6m 02s:
-
-![After optimization: Gantt view with all tasks passing](docs/screenshots/With-pipeline-optimization.png)
 
 ---
 
