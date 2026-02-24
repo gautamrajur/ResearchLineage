@@ -1,0 +1,5 @@
+# Everything in this directory is generated at runtime by the fine_tuning_data_pipeline DAG.
+# DVC pointer files (*.dvc) are tracked by git; actual data directories are not.
+*
+!.gitignore
+!*.dvc

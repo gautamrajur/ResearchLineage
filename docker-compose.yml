@@ -1,0 +1,153 @@
+services:
+  postgres:
+    image: postgres:15
+    container_name: airflow_metadata_db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: airflow
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  cloud-sql-proxy:
+    image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.21.1
+    container_name: cloud_sql_proxy
+    command:
+      - "--address=0.0.0.0"
+      - "--port=5432"
+      - "researchlineage:us-central1:researchlineage-db"
+    ports:
+      - "5432:5432"
+    volumes:
+      - ${GCLOUD_CONFIG_DIR}:/gcp/config:ro
+    environment:
+      - GOOGLE_APPLICATION_CREDENTIALS=/gcp/config/application_default_credentials.json
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: research_lineage_cache
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  airflow-init:
+    build:
+      context: .
+      dockerfile: docker/airflow.Dockerfile
+    container_name: airflow_init
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://postgres:postgres@postgres:5432/airflow
+      - AIRFLOW__CORE__LOAD_EXAMPLES=False
+      - AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=True
+      - _PIP_ADDITIONAL_REQUIREMENTS=google-genai beautifulsoup4 pydantic-settings
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        airflow db init
+        airflow users create \
+          --username admin \
+          --firstname Admin \
+          --lastname User \
+          --role Admin \
+          --email admin@example.com \
+          --password admin
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  airflow-webserver:
+    build:
+      context: .
+      dockerfile: docker/airflow.Dockerfile
+    container_name: airflow_webserver
+    environment:
+      # Airflow Core Settings
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://postgres:postgres@postgres:5432/airflow
+      - AIRFLOW__CORE__LOAD_EXAMPLES=False
+      - AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=True
+      - AIRFLOW__CORE__PARALLELISM=32
+      - AIRFLOW__CORE__DAG_CONCURRENCY=16
+      - AIRFLOW__CORE__MAX_ACTIVE_TASKS_PER_DAG=16
+      - PYTHONPATH=/opt/airflow
+      - _PIP_ADDITIONAL_REQUIREMENTS=google-genai beautifulsoup4 pydantic-settings
+      - GOOGLE_APPLICATION_CREDENTIALS=/gcp/config/application_default_credentials.json
+      # GCP Settings
+      - GOOGLE_CLOUD_PROJECT=researchlineage
+      # Cloud SQL via Proxy (for retry_failed_pdfs DAG)
+      - CLOUD_SQL_HOST=${CLOUD_SQL_HOST}
+      - CLOUD_SQL_PORT=${CLOUD_SQL_PORT}
+      - CLOUD_SQL_DB=${CLOUD_SQL_DB}
+      - CLOUD_SQL_USER=${CLOUD_SQL_USER}
+      - CLOUD_SQL_PASSWORD=${CLOUD_SQL_PASSWORD}
+    env_file:
+      - .env
+    ports:
+      - "8080:8080"
+    command: webserver
+    depends_on:
+      - postgres
+      - redis
+      - cloud-sql-proxy
+      - airflow-init
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./src:/opt/airflow/src
+      - ./logs:/opt/airflow/logs
+      - ./tests:/opt/airflow/tests
+      - ${GCLOUD_CONFIG_DIR}:/gcp/config:ro
+    restart: unless-stopped
+
+  airflow-scheduler:
+    build:
+      context: .
+      dockerfile: docker/airflow.Dockerfile
+    container_name: airflow_scheduler
+    environment:
+      # Airflow Core Settings
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://postgres:postgres@postgres:5432/airflow
+      - AIRFLOW__CORE__LOAD_EXAMPLES=False
+      - AIRFLOW__CORE__PARALLELISM=32
+      - AIRFLOW__CORE__DAG_CONCURRENCY=16
+      - AIRFLOW__CORE__MAX_ACTIVE_TASKS_PER_DAG=16
+      - PYTHONPATH=/opt/airflow
+      - _PIP_ADDITIONAL_REQUIREMENTS=google-genai beautifulsoup4 pydantic-settings
+      - GOOGLE_APPLICATION_CREDENTIALS=/gcp/config/application_default_credentials.json
+      # GCP Settings
+      - GOOGLE_CLOUD_PROJECT=researchlineage
+      # Cloud SQL via Proxy (for retry_failed_pdfs DAG)
+      - CLOUD_SQL_HOST=${CLOUD_SQL_HOST}
+      - CLOUD_SQL_PORT=${CLOUD_SQL_PORT}
+      - CLOUD_SQL_DB=${CLOUD_SQL_DB} 
+      - CLOUD_SQL_USER=${CLOUD_SQL_USER}
+      - CLOUD_SQL_PASSWORD=${CLOUD_SQL_PASSWORD}
+    env_file:
+      - .env
+    command: scheduler
+    depends_on:
+      - postgres
+      - redis
+      - cloud-sql-proxy
+      - airflow-init
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./src:/opt/airflow/src
+      - ./logs:/opt/airflow/logs
+      - ./tests:/opt/airflow/tests
+      - ${GCLOUD_CONFIG_DIR}:/gcp/config:ro
+    restart: unless-stopped

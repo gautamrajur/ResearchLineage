@@ -1,0 +1,498 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Research Lineage Timeline</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 10px;
+            margin-bottom: 30px;
+        }
+        .narrative {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            margin-bottom: 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            line-height: 1.8;
+        }
+        .timeline {
+            position: relative;
+            padding-left: 40px;
+        }
+        .timeline::before {
+            content: '';
+            position: absolute;
+            left: 10px;
+            top: 0;
+            bottom: 0;
+            width: 3px;
+            background: #667eea;
+        }
+        .paper {
+            background: white;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            position: relative;
+        }
+        .paper::before {
+            content: '';
+            position: absolute;
+            left: -34px;
+            top: 25px;
+            width: 15px;
+            height: 15px;
+            border-radius: 50%;
+            background: #667eea;
+            border: 3px solid white;
+        }
+        .paper.target {
+            border: 3px solid #667eea;
+        }
+        .paper-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+            margin-bottom: 15px;
+        }
+        .paper-title {
+            font-size: 18px;
+            font-weight: bold;
+            color: #333;
+            flex: 1;
+        }
+        .paper-year {
+            background: #667eea;
+            color: white;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-weight: bold;
+        }
+        .paper-meta {
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 10px;
+        }
+        .paper-abstract {
+            color: #444;
+            font-size: 14px;
+            line-height: 1.6;
+            margin-top: 10px;
+        }
+        .target-badge {
+            background: #ff6b6b;
+            color: white;
+            padding: 3px 10px;
+            border-radius: 15px;
+            font-size: 12px;
+            font-weight: bold;
+            margin-left: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Research Lineage Timeline View</h1>
+        <p>Chronological narrative showing how ideas evolved</p>
+        <p style="font-size: 14px; opacity: 0.9;">Target Paper: Convolutional Sequence to Sequence Learning</p>
+    </div>
+
+    <div class="narrative">
+        <h2>Research Evolution Narrative</h2>
+        <p style="white-space: pre-wrap;">The journey of sequence-to-sequence learning and deep neural networks began with the problem of translating human language into machine-generated text. In the early 2010s, researchers like Grammatical Error Correction by Neural Networks (Kuncheva & Manley, 2001) and Sequence-to-Sequence Learning with Neural Networks (Sepp et al., 2015) addressed this challenge using traditional recurrent neural networks (RNNs). However, these models were limited in their ability to handle variable-length input sequences.
+
+The breakthrough came with the introduction of residual learning in deep neural networks. Researchers like Deep Residual Learning for Image Recognition (He et al., 2016) and Google's Neural Machine Translation System: Bridging the Gap between Human and Machine Translation (Johnson et al., 2017) demonstrated that by adding skip connections to layers, they could train much deeper models with reduced training time. This innovation built upon previous work on residual learning in image recognition tasks.
+
+The next significant leap came with the introduction of attention mechanisms in neural networks. Researchers like Attention is All You Need (Vaswani et al., 2017) and Multi-task Sequence to Sequence Learning (Liu et al., 2017) showed that by using self-attention, they could improve performance on sequence-to-sequence tasks while reducing the need for complex encoder-decoder architectures. This innovation built upon previous work on sequence-to-sequence learning using RNNs and convolutional neural networks.
+
+Today, researchers continue to push the boundaries of sequence-to-sequence learning with architectures like the Transformer (Vaswani et al., 2017). These models have achieved state-of-the-art performance in various tasks, including machine translation, text summarization, and image captioning. The key innovations that have driven this progress include residual learning, attention mechanisms, and the development of new neural network architectures that can handle variable-length input sequences.
+
+Key takeaways:
+
+* Early sequence-to-sequence learning models used traditional RNNs to address language translation tasks.
+* Residual learning in deep neural networks improved training efficiency and enabled deeper models.
+* Attention mechanisms have become a crucial component of many sequence-to-sequence learning models, allowing for more efficient and effective processing of input sequences.
+* The Transformer architecture has achieved state-of-the-art performance in various sequence-to-sequence tasks, demonstrating the power of these innovations.</p>
+        <p style="font-size: 12px; color: #666; margin-top: 20px; font-style: italic;">
+            Generated by Llama 3.2 analyzing 30 papers in chronological order
+        </p>
+    </div>
+
+    <h2 style="margin-top: 40px; margin-bottom: 20px;">Chronological Paper Sequence</h2>
+    <div class="timeline">
+
+        <div class="paper">
+            <div class="paper-header">
+                <div class="paper-title">Building a Large Annotated Corpus of English: The Penn Treebank</div>
+                <div class="paper-year">1993</div>
+            </div>
+            <div class="paper-meta">
+                📊 Citations: 9,113 |
+                📍 Venue: International Conference on Computational Logic
+            </div>
+            <div class="paper-abstract">No abstract available...</div>
+        </div>
+
+        <div class="paper">
+            <div class="paper-header">
+                <div class="paper-title">Long Short-Term Memory</div>
+                <div class="paper-year">1997</div>
+            </div>
+            <div class="paper-meta">
+                📊 Citations: 100,706 |
+                📍 Venue: Neural Computation
+            </div>
+            <div class="paper-abstract">No abstract available...</div>
+        </div>
+
+        <div class="paper">
+            <div class="paper-header">
+                <div class="paper-title">Long Short-Term Memory</div>
+                <div class="paper-year">1997</div>
+            </div>
+            <div class="paper-meta">
+                📊 Citations: 100,706 |
+                📍 Venue: Neural Computation
+            </div>
+            <div class="paper-abstract">No abstract available...</div>
+        </div>
+
+        <div class="paper">
+            <div class="paper-header">
+                <div class="paper-title">Long Short-Term Memory</div>
+                <div class="paper-year">1997</div>
+            </div>
+            <div class="paper-meta">
+                📊 Citations: 100,706 |
+                📍 Venue: Neural Computation
+            </div>
+            <div class="paper-abstract">No abstract available...</div>
+        </div>
+
+        <div class="paper">
+            <div class="paper-header">
+                <div class="paper-title">Adam: A Method for Stochastic Optimization</div>
+                <div class="paper-year">2014</div>
+            </div>
+            <div class="paper-meta">
+                📊 Citations: 162,762 |
+                📍 Venue: International Conference on Learning Representations
+            </div>
+            <div class="paper-abstract">We introduce Adam, an algorithm for first-order gradient-based optimization of stochastic objective functions, based on adaptive estimates of lower-order moments. The method is straightforward to implement, is computationally efficient, has little memory requirements, is invariant to diagonal rescaling of the gradients, and is well suited for problems that are large in terms of data and/or paramet...</div>
+        </div>
+
+        <div class="paper">
+            <div class="paper-header">
+                <div class="paper-title">Adam: A Method for Stochastic Optimization</div>
+                <div class="paper-year">2014</div>
+            </div>
+            <div class="paper-meta">
+                📊 Citations: 162,762 |
+                📍 Venue: International Conference on Learning Representations
+            </div>
+            <div class="paper-abstract">We introduce Adam, an algorithm for first-order gradient-based optimization of stochastic objective functions, based on adaptive estimates of lower-order moments. The method is straightforward to implement, is computationally efficient, has little memory requirements, is invariant to diagonal rescaling of the gradients, and is well suited for problems that are large in terms of data and/or paramet...</div>
+        </div>
+
+        <div class="paper">
+            <div class="paper-header">
+                <div class="paper-title">Adam: A Method for Stochastic Optimization</div>
+                <div class="paper-year">2014</div>
+            </div>
+            <div class="paper-meta">
+                📊 Citations: 162,762 |
+                📍 Venue: International Conference on Learning Representations
+            </div>
+            <div class="paper-abstract">We introduce Adam, an algorithm for first-order gradient-based optimization of stochastic objective functions, based on adaptive estimates of lower-order moments. The method is straightforward to implement, is computationally efficient, has little memory requirements, is invariant to diagonal rescaling of the gradients, and is well suited for problems that are large in terms of data and/or paramet...</div>
+        </div>
+
+        <div class="paper">
+            <div class="paper-header">
+                <div class="paper-title">Neural Machine Translation by Jointly Learning to Align and Translate</div>
+                <div class="paper-year">2014</div>
+            </div>
+            <div class="paper-meta">
+                📊 Citations: 28,904 |
+                📍 Venue: International Conference on Learning Representations
+            </div>
+            <div class="paper-abstract">Neural machine translation is a recently proposed approach to machine translation. Unlike the traditional statistical machine translation, the neural machine translation aims at building a single neural network that can be jointly tuned to maximize the translation performance. The models proposed recently for neural machine translation often belong to a family of encoder-decoders and consists of a...</div>
+        </div>
+
+        <div class="paper">
+            <div class="paper-header">
+                <div class="paper-title">Neural Machine Translation by Jointly Learning to Align and Translate</div>
+                <div class="paper-year">2014</div>
+            </div>
+            <div class="paper-meta">
+                📊 Citations: 28,904 |
+                📍 Venue: International Conference on Learning Representations
+            </div>
+            <div class="paper-abstract">Neural machine translation is a recently proposed approach to machine translation. Unlike the traditional statistical machine translation, the neural machine translation aims at building a single neural network that can be jointly tuned to maximize the translation performance. The models proposed recently for neural machine translation often belong to a family of encoder-decoders and consists of a...</div>
+        </div>
+
+        <div class="paper">
+            <div class="paper-header">
+                <div class="paper-title">Neural Machine Translation by Jointly Learning to Align and Translate</div>
+                <div class="paper-year">2014</div>
+            </div>
+            <div class="paper-meta">
+                📊 Citations: 28,904 |
+                📍 Venue: International Conference on Learning Representations
+            </div>
+            <div class="paper-abstract">Neural machine translation is a recently proposed approach to machine translation. Unlike the traditional statistical machine translation, the neural machine translation aims at building a single neural network that can be jointly tuned to maximize the translation performance. The models proposed recently for neural machine translation often belong to a family of encoder-decoders and consists of a...</div>
+        </div>
+
+        <div class="paper">
+            <div class="paper-header">
+                <div class="paper-title">Learning Phrase Representations using RNN Encoder–Decoder for Statistical Machine Translation</div>
+                <div class="paper-year">2014</div>
+            </div>
+            <div class="paper-meta">
+                📊 Citations: 25,557 |
+                📍 Venue: Conference on Empirical Methods in Natural Language Processing
+            </div>
+            <div class="paper-abstract">In this paper, we propose a novel neural network model called RNN Encoder‐ Decoder that consists of two recurrent neural networks (RNN). One RNN encodes a sequence of symbols into a fixedlength vector representation, and the other decodes the representation into another sequence of symbols. The encoder and decoder of the proposed model are jointly trained to maximize the conditional probability of...</div>
+        </div>
+
+        <div class="paper">
+            <div class="paper-header">
+                <div class="paper-title">Learning Phrase Representations using RNN Encoder–Decoder for Statistical Machine Translation</div>
+                <div class="paper-year">2014</div>
+            </div>
+            <div class="paper-meta">
+                📊 Citations: 25,557 |
+                📍 Venue: Conference on Empirical Methods in Natural Language Processing
+            </div>
+            <div class="paper-abstract">In this paper, we propose a novel neural network model called RNN Encoder‐ Decoder that consists of two recurrent neural networks (RNN). One RNN encodes a sequence of symbols into a fixedlength vector representation, and the other decodes the representation into another sequence of symbols. The encoder and decoder of the proposed model are jointly trained to maximize the conditional probability of...</div>
+        </div>
+
+        <div class="paper">
+            <div class="paper-header">
+                <div class="paper-title">Learning Phrase Representations using RNN Encoder–Decoder for Statistical Machine Translation</div>
+                <div class="paper-year">2014</div>
+            </div>
+            <div class="paper-meta">
+                📊 Citations: 25,557 |
+                📍 Venue: Conference on Empirical Methods in Natural Language Processing
+            </div>
+            <div class="paper-abstract">In this paper, we propose a novel neural network model called RNN Encoder‐ Decoder that consists of two recurrent neural networks (RNN). One RNN encodes a sequence of symbols into a fixedlength vector representation, and the other decodes the representation into another sequence of symbols. The encoder and decoder of the proposed model are jointly trained to maximize the conditional probability of...</div>
+        </div>
+
+        <div class="paper">
+            <div class="paper-header">
+                <div class="paper-title">Sequence to Sequence Learning with Neural Networks</div>
+                <div class="paper-year">2014</div>
+            </div>
+            <div class="paper-meta">
+                📊 Citations: 21,703 |
+                📍 Venue: Neural Information Processing Systems
+            </div>
+            <div class="paper-abstract">Deep Neural Networks (DNNs) are powerful models that have achieved excellent performance on difficult learning tasks. Although DNNs work well whenever large labeled training sets are available, they cannot be used to map sequences to sequences. In this paper, we present a general end-to-end approach to sequence learning that makes minimal assumptions on the sequence structure. Our method uses a mu...</div>
+        </div>
+
+        <div class="paper">
+            <div class="paper-header">
+                <div class="paper-title">Sequence to Sequence Learning with Neural Networks</div>
+                <div class="paper-year">2014</div>
+            </div>
+            <div class="paper-meta">
+                📊 Citations: 21,703 |
+                📍 Venue: Neural Information Processing Systems
+            </div>
+            <div class="paper-abstract">Deep Neural Networks (DNNs) are powerful models that have achieved excellent performance on difficult learning tasks. Although DNNs work well whenever large labeled training sets are available, they cannot be used to map sequences to sequences. In this paper, we present a general end-to-end approach to sequence learning that makes minimal assumptions on the sequence structure. Our method uses a mu...</div>
+        </div>
+
+        <div class="paper">
+            <div class="paper-header">
+                <div class="paper-title">Sequence to Sequence Learning with Neural Networks</div>
+                <div class="paper-year">2014</div>
+            </div>
+            <div class="paper-meta">
+                📊 Citations: 21,703 |
+                📍 Venue: Neural Information Processing Systems
+            </div>
+            <div class="paper-abstract">Deep Neural Networks (DNNs) are powerful models that have achieved excellent performance on difficult learning tasks. Although DNNs work well whenever large labeled training sets are available, they cannot be used to map sequences to sequences. In this paper, we present a general end-to-end approach to sequence learning that makes minimal assumptions on the sequence structure. Our method uses a mu...</div>
+        </div>
+
+        <div class="paper">
+            <div class="paper-header">
+                <div class="paper-title">Empirical Evaluation of Gated Recurrent Neural Networks on Sequence Modeling</div>
+                <div class="paper-year">2014</div>
+            </div>
+            <div class="paper-meta">
+                📊 Citations: 14,222 |
+                📍 Venue: arXiv.org
+            </div>
+            <div class="paper-abstract">In this paper we compare different types of recurrent units in recurrent neural networks (RNNs). Especially, we focus on more sophisticated units that implement a gating mechanism, such as a long short-term memory (LSTM) unit and a recently proposed gated recurrent unit (GRU). We evaluate these recurrent units on the tasks of polyphonic music modeling and speech signal modeling. Our experiments re...</div>
+        </div>
+
+        <div class="paper">
+            <div class="paper-header">
+                <div class="paper-title">Grammar as a Foreign Language</div>
+                <div class="paper-year">2014</div>
+            </div>
+            <div class="paper-meta">
+                📊 Citations: 939 |
+                📍 Venue: Neural Information Processing Systems
+            </div>
+            <div class="paper-abstract">Syntactic constituency parsing is a fundamental problem in natural language processing and has been the subject of intensive research and engineering for decades. As a result, the most accurate parsers are domain specific, complex, and inefficient. In this paper we show that the domain agnostic attention-enhanced sequence-to-sequence model achieves state-of-the-art results on the most widely used ...</div>
+        </div>
+
+        <div class="paper">
+            <div class="paper-header">
+                <div class="paper-title">Grammar as a Foreign Language</div>
+                <div class="paper-year">2014</div>
+            </div>
+            <div class="paper-meta">
+                📊 Citations: 939 |
+                📍 Venue: Neural Information Processing Systems
+            </div>
+            <div class="paper-abstract">Syntactic constituency parsing is a fundamental problem in natural language processing and has been the subject of intensive research and engineering for decades. As a result, the most accurate parsers are domain specific, complex, and inefficient. In this paper we show that the domain agnostic attention-enhanced sequence-to-sequence model achieves state-of-the-art results on the most widely used ...</div>
+        </div>
+
+        <div class="paper">
+            <div class="paper-header">
+                <div class="paper-title">Deep Residual Learning for Image Recognition</div>
+                <div class="paper-year">2015</div>
+            </div>
+            <div class="paper-meta">
+                📊 Citations: 220,223 |
+                📍 Venue: Computer Vision and Pattern Recognition
+            </div>
+            <div class="paper-abstract">Deeper neural networks are more difficult to train. We present a residual learning framework to ease the training of networks that are substantially deeper than those used previously. We explicitly reformulate the layers as learning residual functions with reference to the layer inputs, instead of learning unreferenced functions. We provide comprehensive empirical evidence showing that these resid...</div>
+        </div>
+
+        <div class="paper">
+            <div class="paper-header">
+                <div class="paper-title">Deep Residual Learning for Image Recognition</div>
+                <div class="paper-year">2015</div>
+            </div>
+            <div class="paper-meta">
+                📊 Citations: 220,223 |
+                📍 Venue: Computer Vision and Pattern Recognition
+            </div>
+            <div class="paper-abstract">Deeper neural networks are more difficult to train. We present a residual learning framework to ease the training of networks that are substantially deeper than those used previously. We explicitly reformulate the layers as learning residual functions with reference to the layer inputs, instead of learning unreferenced functions. We provide comprehensive empirical evidence showing that these resid...</div>
+        </div>
+
+        <div class="paper">
+            <div class="paper-header">
+                <div class="paper-title">Deep Residual Learning for Image Recognition</div>
+                <div class="paper-year">2015</div>
+            </div>
+            <div class="paper-meta">
+                📊 Citations: 220,223 |
+                📍 Venue: Computer Vision and Pattern Recognition
+            </div>
+            <div class="paper-abstract">Deeper neural networks are more difficult to train. We present a residual learning framework to ease the training of networks that are substantially deeper than those used previously. We explicitly reformulate the layers as learning residual functions with reference to the layer inputs, instead of learning unreferenced functions. We provide comprehensive empirical evidence showing that these resid...</div>
+        </div>
+
+        <div class="paper">
+            <div class="paper-header">
+                <div class="paper-title">Multi-task Sequence to Sequence Learning</div>
+                <div class="paper-year">2015</div>
+            </div>
+            <div class="paper-meta">
+                📊 Citations: 833 |
+                📍 Venue: International Conference on Learning Representations
+            </div>
+            <div class="paper-abstract">Sequence to sequence learning has recently emerged as a new paradigm in supervised learning. To date, most of its applications focused on only one task and not much work explored this framework for multiple tasks. This paper examines three multi-task learning (MTL) settings for sequence to sequence models: (a) the oneto-many setting - where the encoder is shared between several tasks such as machi...</div>
+        </div>
+
+        <div class="paper">
+            <div class="paper-header">
+                <div class="paper-title">Xception: Deep Learning with Depthwise Separable Convolutions</div>
+                <div class="paper-year">2016</div>
+            </div>
+            <div class="paper-meta">
+                📊 Citations: 16,953 |
+                📍 Venue: Computer Vision and Pattern Recognition
+            </div>
+            <div class="paper-abstract">We present an interpretation of Inception modules in convolutional neural networks as being an intermediate step in-between regular convolution and the depthwise separable convolution operation (a depthwise convolution followed by a pointwise convolution). In this light, a depthwise separable convolution can be understood as an Inception module with a maximally large number of towers. This observa...</div>
+        </div>
+
+        <div class="paper">
+            <div class="paper-header">
+                <div class="paper-title">Layer Normalization</div>
+                <div class="paper-year">2016</div>
+            </div>
+            <div class="paper-meta">
+                📊 Citations: 11,979 |
+                📍 Venue: arXiv.org
+            </div>
+            <div class="paper-abstract">Training state-of-the-art, deep neural networks is computationally expensive. One way to reduce the training time is to normalize the activities of the neurons. A recently introduced technique called batch normalization uses the distribution of the summed input to a neuron over a mini-batch of training cases to compute a mean and variance which are then used to normalize the summed input to that n...</div>
+        </div>
+
+        <div class="paper">
+            <div class="paper-header">
+                <div class="paper-title">Google's Neural Machine Translation System: Bridging the Gap between Human and Machine Translation</div>
+                <div class="paper-year">2016</div>
+            </div>
+            <div class="paper-meta">
+                📊 Citations: 7,157 |
+                📍 Venue: arXiv.org
+            </div>
+            <div class="paper-abstract">Neural Machine Translation (NMT) is an end-to-end learning approach for automated translation, with the potential to overcome many of the weaknesses of conventional phrase-based translation systems. Unfortunately, NMT systems are known to be computationally expensive both in training and in translation inference. Also, most NMT systems have difficulty with rare words. These issues have hindered NM...</div>
+        </div>
+
+        <div class="paper">
+            <div class="paper-header">
+                <div class="paper-title">Google's Neural Machine Translation System: Bridging the Gap between Human and Machine Translation</div>
+                <div class="paper-year">2016</div>
+            </div>
+            <div class="paper-meta">
+                📊 Citations: 7,157 |
+                📍 Venue: arXiv.org
+            </div>
+            <div class="paper-abstract">Neural Machine Translation (NMT) is an end-to-end learning approach for automated translation, with the potential to overcome many of the weaknesses of conventional phrase-based translation systems. Unfortunately, NMT systems are known to be computationally expensive both in training and in translation inference. Also, most NMT systems have difficulty with rare words. These issues have hindered NM...</div>
+        </div>
+
+        <div class="paper">
+            <div class="paper-header">
+                <div class="paper-title">Can Active Memory Replace Attention?</div>
+                <div class="paper-year">2016</div>
+            </div>
+            <div class="paper-meta">
+                📊 Citations: 60 |
+                📍 Venue: Neural Information Processing Systems
+            </div>
+            <div class="paper-abstract">Several mechanisms to focus attention of a neural network on selected parts of its input or memory have been used successfully in deep learning models in recent years. Attention has improved image classification, image captioning, speech recognition, generative models, and learning algorithmic tasks, but it had probably the largest impact on neural machine translation. Recently, similar improvemen...</div>
+        </div>
+
+        <div class="paper target">
+            <div class="paper-header">
+                <div class="paper-title">Attention is All you Need<span class="target-badge">TARGET</span></div>
+                <div class="paper-year">2017</div>
+            </div>
+            <div class="paper-meta">
+                📊 Citations: 165,836 |
+                📍 Venue: Neural Information Processing Systems
+            </div>
+            <div class="paper-abstract">The dominant sequence transduction models are based on complex recurrent or convolutional neural networks in an encoder-decoder configuration. The best performing models also connect the encoder and decoder through an attention mechanism. We propose a new simple network architecture, the Transformer, based solely on attention mechanisms, dispensing with recurrence and convolutions entirely. Experi...</div>
+        </div>
+
+        <div class="paper">
+            <div class="paper-header">
+                <div class="paper-title">Convolutional Sequence to Sequence Learning</div>
+                <div class="paper-year">2017</div>
+            </div>
+            <div class="paper-meta">
+                📊 Citations: 3,482 |
+                📍 Venue: International Conference on Machine Learning
+            </div>
+            <div class="paper-abstract">The prevalent approach to sequence to sequence learning maps an input sequence to a variable length output sequence via recurrent neural networks. We introduce an architecture based entirely on convolutional neural networks. Compared to recurrent models, computations over all elements can be fully parallelized during training and optimization is easier since the number of non-linearities is fixed ...</div>
+        </div>
+
+    </div>
+</body>
+</html>
