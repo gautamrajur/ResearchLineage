@@ -19,6 +19,7 @@ poetry.lock
 .env
 .env.local
 *.json
+docker-compose.yml
 
 # IDEs
 .vscode/
