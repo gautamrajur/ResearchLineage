@@ -1,4 +1,10 @@
 """Test full pipeline: Acquisition -> Validation -> Cleaning -> Graph Construction."""
+import sys
+from pathlib import Path
+
+project_root = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(project_root))
+
 import asyncio
 import logging
 from src.tasks.data_acquisition import DataAcquisitionTask

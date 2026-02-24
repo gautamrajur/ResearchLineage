@@ -33,7 +33,7 @@ class FetchResult:
 
     paper_id: str
     title: str
-    status: str  # "uploaded", "exists", "no_pdf", "download_failed", "error"
+    status: str  # "uploaded", "exists", "no_pdf", "download_failed", "error", "gcs_upload_failed"
     gcs_uri: str = ""
     source: str = ""  # "arxiv", "semantic_scholar", "unpaywall"
     size_bytes: int = 0
@@ -315,10 +315,15 @@ class PDFFetcher:
                 )
 
             metadata = build_blob_metadata(paper)
-            gcs_uri = await asyncio.to_thread(
-                self.gcs.upload, filename, content, "application/pdf", metadata
-            )
-
+            try:
+                gcs_uri = await asyncio.to_thread(
+                    self.gcs.upload, filename, content, "application/pdf", metadata
+                )
+            except Exception as e:
+                return FetchResult(
+                    paper_id=pid, title=title, status="gcs_upload_failed",
+                    source=source, error=str(e), fetch_url=url,
+                )
             return FetchResult(
                 paper_id=pid, title=title, status="uploaded",
                 gcs_uri=gcs_uri, source=source, size_bytes=len(content),
@@ -381,13 +386,22 @@ class PDFFetcher:
                     fetch_url=fetch_url,
                 )
             metadata = build_blob_metadata(paper_metadata)
-            gcs_uri = await asyncio.to_thread(
-                self.gcs.upload,
-                filename,
-                content,
-                "application/pdf",
-                metadata,
-            )
+            try:
+                gcs_uri = await asyncio.to_thread(
+                    self.gcs.upload,
+                    filename,
+                    content,
+                    "application/pdf",
+                    metadata,
+                )
+            except Exception as e:
+                return FetchResult(
+                    paper_id=paper_id,
+                    title=title,
+                    status="gcs_upload_failed",
+                    error=str(e),
+                    fetch_url=fetch_url,
+                )
             return FetchResult(
                 paper_id=paper_id,
                 title=title,
@@ -480,11 +494,16 @@ class PDFFetcher:
                         )
 
                     metadata = build_blob_metadata(paper)
-                    gcs_uri = await asyncio.to_thread(
-                        self.gcs.upload, filename, content, "application/pdf", metadata
-                    )
+                    try:
+                        gcs_uri = await asyncio.to_thread(
+                            self.gcs.upload, filename, content, "application/pdf", metadata
+                        )
+                    except Exception as e:
+                        return FetchResult(
+                            paper_id=pid, title=title, status="gcs_upload_failed",
+                            source=source, error=str(e), fetch_url=url,
+                        )
                     await asyncio.sleep(1)
-
                     return FetchResult(
                         paper_id=pid, title=title, status="uploaded",
                         gcs_uri=gcs_uri, source=source, size_bytes=len(content),
@@ -514,6 +533,8 @@ class PDFFetcher:
             elif r.status == "download_failed":
                 batch.download_failed += 1
             elif r.status == "error":
+                batch.errors += 1
+            elif r.status == "gcs_upload_failed":
                 batch.errors += 1
 
             if on_result:

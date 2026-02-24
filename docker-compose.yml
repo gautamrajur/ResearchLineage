@@ -5,11 +5,12 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: research_lineage
+      POSTGRES_DB: researchlineage
     ports:
-      - "5432:5432"
+      - "5434:5432"
     volumes:
-      - E:/ResearchLineage/postgres_data:/var/lib/postgresql/data
+      - ./postgres_data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s
@@ -59,11 +60,29 @@ services:
       dockerfile: docker/airflow.Dockerfile
     container_name: airflow_webserver
     environment:
+      # Airflow Core Settings
       - AIRFLOW__CORE__EXECUTOR=LocalExecutor
       - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://postgres:postgres@postgres:5432/airflow
       - AIRFLOW__CORE__LOAD_EXAMPLES=False
       - AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=True
+      - AIRFLOW__CORE__PARALLELISM=32
+      - AIRFLOW__CORE__DAG_CONCURRENCY=16
+      - AIRFLOW__CORE__MAX_ACTIVE_TASKS_PER_DAG=16
       - PYTHONPATH=/opt/airflow
+      # GCP Settings
+      - GOOGLE_CLOUD_PROJECT=researchlineage
+      # Local Postgres (for main pipeline metadata)
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=researchlineage
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      # Cloud SQL via Proxy (for retry_failed_pdfs DAG)
+      - CLOUD_SQL_HOST=host.docker.internal
+      - CLOUD_SQL_PORT=5433
+      - CLOUD_SQL_DB=researchlineage
+      - CLOUD_SQL_USER=smit
+      - CLOUD_SQL_PASSWORD=smit
     env_file:
       - .env
     ports:
@@ -77,6 +96,7 @@ services:
       - ./dags:/opt/airflow/dags
       - ./src:/opt/airflow/src
       - ./logs:/opt/airflow/logs
+      - ~/.config/gcloud/application_default_credentials.json:/home/airflow/.config/gcloud/application_default_credentials.json:ro
 
   airflow-scheduler:
     build:
@@ -84,10 +104,28 @@ services:
       dockerfile: docker/airflow.Dockerfile
     container_name: airflow_scheduler
     environment:
+      # Airflow Core Settings
       - AIRFLOW__CORE__EXECUTOR=LocalExecutor
       - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://postgres:postgres@postgres:5432/airflow
       - AIRFLOW__CORE__LOAD_EXAMPLES=False
+      - AIRFLOW__CORE__PARALLELISM=32
+      - AIRFLOW__CORE__DAG_CONCURRENCY=16
+      - AIRFLOW__CORE__MAX_ACTIVE_TASKS_PER_DAG=16
       - PYTHONPATH=/opt/airflow
+      # GCP Settings
+      - GOOGLE_CLOUD_PROJECT=researchlineage
+      # Local Postgres (for main pipeline metadata)
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=researchlineage
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      # Cloud SQL via Proxy (for retry_failed_pdfs DAG)
+      - CLOUD_SQL_HOST=host.docker.internal
+      - CLOUD_SQL_PORT=5433
+      - CLOUD_SQL_DB=researchlineage
+      - CLOUD_SQL_USER=smit
+      - CLOUD_SQL_PASSWORD=smit
     env_file:
       - .env
     command: scheduler
@@ -99,3 +137,4 @@ services:
       - ./dags:/opt/airflow/dags
       - ./src:/opt/airflow/src
       - ./logs:/opt/airflow/logs
+      - ~/.config/gcloud/application_default_credentials.json:/home/airflow/.config/gcloud/application_default_credentials.json:ro

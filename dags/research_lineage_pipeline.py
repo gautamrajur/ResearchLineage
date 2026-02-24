@@ -14,6 +14,7 @@ from src.tasks.data_acquisition import DataAcquisitionTask  # noqa: E402
 from src.tasks.data_validation import DataValidationTask  # noqa: E402
 from src.tasks.data_cleaning import DataCleaningTask  # noqa: E402
 from src.tasks.citation_graph_construction import CitationGraphConstructionTask  # noqa: E402
+from src.tasks.pdf_upload_task import PDFUploadTask  # noqa: E402
 from src.utils.logging import setup_logging  # noqa: E402
 
 # Configure logging
@@ -48,9 +49,11 @@ def run_async_task(async_func):
     return asyncio.run(async_func)
 
 
+# ══════════════════════════════════════════════════════════════════════
+# Task 1: Data Acquisition (shared by both branches)
+# ══════════════════════════════════════════════════════════════════════
 def task_1_data_acquisition(**context):
     """Task 1: Acquire paper metadata and citation network."""
-    # Get paper_id from DAG run config
     paper_id = context["dag_run"].conf.get(
         "paper_id", "204e3073870fae3d05bcbc2f6a8e263d9b72e776"
     )
@@ -67,16 +70,18 @@ def task_1_data_acquisition(**context):
 
     result = run_async_task(acquire())
 
-    # Push to XCom (only paper IDs, not full data)
+    # Push to XCom (used by BOTH branches)
     context["task_instance"].xcom_push(key="raw_data", value=result)
     context["task_instance"].xcom_push(key="paper_count", value=result["total_papers"])
 
     return f"Acquired {result['total_papers']} papers"
 
 
-def task_2_data_validation(**context):
-    """Task 2: Validate raw data."""
-    # Pull from XCom
+# ══════════════════════════════════════════════════════════════════════
+# Branch A: Validation → Cleaning → Graph Construction
+# ══════════════════════════════════════════════════════════════════════
+def task_1a_data_validation(**context):
+    """Task 1a: Validate raw data (Branch A start)."""
     raw_data = context["task_instance"].xcom_pull(
         task_ids="data_acquisition", key="raw_data"
     )
@@ -84,16 +89,14 @@ def task_2_data_validation(**context):
     task = DataValidationTask()
     result = task.execute(raw_data)
 
-    # Push to XCom
     context["task_instance"].xcom_push(key="validated_data", value=result)
 
     error_rate = result["validation_report"]["error_rate"]
     return f"Validated with {error_rate:.2%} error rate"
 
 
-def task_3_data_cleaning(**context):
-    """Task 3: Clean and normalize data."""
-    # Pull from XCom
+def task_2a_data_cleaning(**context):
+    """Task 2a: Clean and normalize data."""
     validated_data = context["task_instance"].xcom_pull(
         task_ids="data_validation", key="validated_data"
     )
@@ -101,16 +104,14 @@ def task_3_data_cleaning(**context):
     task = DataCleaningTask()
     result = task.execute(validated_data)
 
-    # Push to XCom
     context["task_instance"].xcom_push(key="cleaned_data", value=result)
 
     stats = result["cleaning_stats"]
     return f"Cleaned {stats['cleaned_papers']} papers, removed {stats['duplicates_removed']} duplicates"
 
 
-def task_4_graph_construction(**context):
-    """Task 4: Build citation graph."""
-    # Pull from XCom
+def task_3a_graph_construction(**context):
+    """Task 3a: Build citation graph."""
     cleaned_data = context["task_instance"].xcom_pull(
         task_ids="data_cleaning", key="cleaned_data"
     )
@@ -136,30 +137,97 @@ def task_4_graph_construction(**context):
     return f"Built graph: {stats['num_nodes']} nodes, {stats['num_edges']} edges"
 
 
-# Define tasks
+# ══════════════════════════════════════════════════════════════════════
+# Branch B: PDF Upload (parallel to Branch A)
+# ══════════════════════════════════════════════════════════════════════
+def task_1b_pdf_upload(**context):
+    """
+    Task 1b: Upload PDFs to GCS using pre-fetched acquisition data (Branch B).
+
+    Runs in parallel with the validation/cleaning/graph branch.
+    Uses the same raw_data from data_acquisition task.
+    """
+    # Pull acquisition result from data_acquisition task
+    acquisition_result = context["task_instance"].xcom_pull(
+        task_ids="data_acquisition", key="raw_data"
+    )
+
+    if not acquisition_result or not acquisition_result.get("papers"):
+        return "No papers to process for PDF upload"
+
+    async def upload():
+        task = PDFUploadTask()
+        return await task.execute(acquisition_result)
+
+    result = run_async_task(upload())
+
+    # Push result to XCom for potential downstream use
+    context["task_instance"].xcom_push(key="pdf_upload_result", value=result)
+
+    return (
+        f"PDF upload: {result['uploaded']} uploaded, "
+        f"{result['already_in_gcs']} already in GCS, "
+        f"{result['download_failed']} failed"
+    )
+
+
+# ══════════════════════════════════════════════════════════════════════
+# Define Airflow Tasks
+# ══════════════════════════════════════════════════════════════════════
+
+# Task 1: Shared entry point
 t1_acquisition = PythonOperator(
     task_id="data_acquisition",
     python_callable=task_1_data_acquisition,
     dag=dag,
 )
 
-t2_validation = PythonOperator(
+# Branch A: Validation → Cleaning → Graph
+t1a_validation = PythonOperator(
     task_id="data_validation",
-    python_callable=task_2_data_validation,
+    python_callable=task_1a_data_validation,
     dag=dag,
 )
 
-t3_cleaning = PythonOperator(
+t2a_cleaning = PythonOperator(
     task_id="data_cleaning",
-    python_callable=task_3_data_cleaning,
+    python_callable=task_2a_data_cleaning,
     dag=dag,
 )
 
-t4_graph = PythonOperator(
+t3a_graph = PythonOperator(
     task_id="graph_construction",
-    python_callable=task_4_graph_construction,
+    python_callable=task_3a_graph_construction,
     dag=dag,
 )
 
-# Define task dependencies
-t1_acquisition >> t2_validation >> t3_cleaning >> t4_graph
+# Branch B: PDF Upload (parallel)
+t1b_pdf_upload = PythonOperator(
+    task_id="pdf_upload",
+    python_callable=task_1b_pdf_upload,
+    dag=dag,
+    # Longer timeout for PDF downloads
+    execution_timeout=timedelta(minutes=120),
+)
+
+
+# ══════════════════════════════════════════════════════════════════════
+# Define Task Dependencies (Parallel Branches)
+# ══════════════════════════════════════════════════════════════════════
+
+# Branch A: data_acquisition → validation → cleaning → graph
+t1_acquisition >> t1a_validation >> t2a_cleaning >> t3a_graph
+
+# Branch B: data_acquisition → pdf_upload (runs in parallel with Branch A)
+t1_acquisition >> t1b_pdf_upload
+
+
+# ══════════════════════════════════════════════════════════════════════
+# Visual Representation:
+# ══════════════════════════════════════════════════════════════════════
+#
+#                          ┌──→ [t1a_validation] ──→ [t2a_cleaning] ──→ [t3a_graph]
+# [t1_acquisition] ────────┤
+#                          └──→ [t1b_pdf_upload]
+#
+# ══════════════════════════════════════════════════════════════════════

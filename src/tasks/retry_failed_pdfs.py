@@ -2,9 +2,10 @@
 
 Designed to be run when the pipeline is idle (e.g. from a DAG). Fetches eligible
 rows (retry_after passed, alerted=FALSE), runs PDF fetch with stored URL/timeout,
-updates or deletes rows by reason (403/404 -> delete; else update with +20s timeout,
-+30s retry_after, fail_runs+1), reconciles with GCS, and sends one alert for
-fail_runs > 5. Callable from script or DAG; no Airflow dependency.
+updates or deletes rows by reason: 403/404 -> delete (except status=gcs_upload_failed,
+which is updated for retry); else update with +20s timeout, +30s retry_after,
+fail_runs+1. Reconciles with GCS, and sends one alert for fail_runs > 5.
+Callable from script or DAG; no Airflow dependency.
 """
 import asyncio
 import logging
@@ -80,12 +81,25 @@ async def run_retry_failed_pdfs(
                 stats["failed"] += 1
                 still_failed.append((row, result))
 
-        # 3. Process still-failed: 403/404 -> delete; else update
+        # 3. Process still-failed: 403/404 -> delete (except gcs_upload_failed); else update
         for row, result in still_failed:
             if result.response_code in (403, 404):
-                repo.delete(row["paper_id"])
-                stats["deleted_403_404"] += 1
-                logger.info("Deleted paper_id=%s (reason=%s)", row["paper_id"], result.response_code)
+                if row.get("status") == "gcs_upload_failed":
+                    # GCS upload failure rows: do not delete on 403/404; update for retry
+                    reason = result.error or result.status
+                    if len(reason) > 64:
+                        reason = reason[:64]
+                    repo.update_after_failure(
+                        paper_id=row["paper_id"],
+                        fail_runs=row["fail_runs"] + 1,
+                        fetch_url=row.get("fetch_url") or result.fetch_url or "",
+                        reason=reason,
+                        timeout_sec=float(row.get("timeout_sec", 120)),
+                    )
+                else:
+                    repo.delete(row["paper_id"])
+                    stats["deleted_403_404"] += 1
+                    logger.info("Deleted paper_id=%s (reason=%s)", row["paper_id"], result.response_code)
             else:
                 reason = result.error or result.status
                 if len(reason) > 64:

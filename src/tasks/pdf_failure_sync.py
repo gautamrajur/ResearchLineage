@@ -46,11 +46,14 @@ def sync_failures_to_db(
 
 def _normalize_failure_row(item: Dict[str, Any]) -> Dict[str, Any]:
     """Ensure required keys exist and types are correct for the table."""
+    status = str(item.get("status") or "download_failed")
+    # GCS upload failures: initial timeout = base + 20 (e.g. 140)
+    default_timeout = 140.0 if status == "gcs_upload_failed" else 120.0
     return {
         "paper_id": str(item["paper_id"]),
         "title": str(item.get("title") or ""),
-        "status": str(item.get("status") or "download_failed"),
+        "status": status,
         "fetch_url": str(item.get("fetch_url") or ""),
         "reason": str(item.get("reason") or item.get("error") or "")[:64],
-        "timeout_sec": float(item.get("timeout_sec", 120)),
+        "timeout_sec": float(item.get("timeout_sec", default_timeout)),
     }
