@@ -24,7 +24,6 @@ Given a seed paper ID, this pipeline crawls the Semantic Scholar citation graph,
 14. [Setup & Reproducibility](#setup--reproducibility)
 15. [Running the Pipeline](#running-the-pipeline)
 16. [Configuration Reference](#configuration-reference)
-17. [DAGs](#dags)
 
 ---
 
@@ -532,23 +531,9 @@ Creates the metadata schema and default admin user:
 
 ## Running the Pipeline
 
-### Trigger the main pipeline
-
 1. Open http://localhost:8080
-2. Find `research_lineage_pipeline` and toggle it **on**
-3. Click **Trigger DAG w/ config** and provide:
-
-```json
-{
-  "paper_id": "204e3073870fae3d05bcbc2f6a8e263d9b72e776",
-  "max_depth": 2,
-  "direction": "backward"
-}
-```
-
-`paper_id` is the Semantic Scholar paper ID — the default above is "Attention Is All You Need". Start with `max_depth: 2` and `direction: backward` for a faster first run.
-
-`direction` options: `backward` (references only), `forward` (citations only), `both`.
+2. Find the DAG you want to run and toggle it **on**
+3. Click **Trigger DAG** to start
 
 ### Stop all services
 
@@ -589,82 +574,3 @@ All settings are loaded from `.env` via `src/utils/config.py` (Pydantic `BaseSet
 | `ALERT_EMAIL_TO` | `""` | Recipient address for anomaly alerts |
 | `ENVIRONMENT` | `development` | Runtime environment tag |
 
----
-
-## DAGs
-
-### `research_lineage_pipeline`
-
-**Trigger:** Manual only (`schedule_interval=None`)
-**Operator:** PythonOperator (all tasks)
-**Config:** `max_active_runs=1`, `retries=3`, `retry_delay=5m`, `execution_timeout=60m` (pdf_upload: 120m)
-
-**Trigger config:**
-```json
-{
-  "paper_id": "204e3073870fae3d05bcbc2f6a8e263d9b72e776",
-  "max_depth": 3,
-  "direction": "both"
-}
-```
-
----
-
-### `fine_tuning_pipeline`
-
-**Trigger:** Manual only (`schedule_interval=None`), no backfill
-**Operator:** BashOperator — each step via `python lineage_pipeline.py --step <name>`
-**Config:** `max_active_runs=1`, `retries=2`, `retry_delay=5m`
-
-**Task flow and timeouts:**
-
-| Task | `--step` flag | Timeout |
-|---|---|---|
-| `seed_generation` | `seed_generation` | 30 min |
-| `batch_run` | `batch_run` | 12 hours |
-| `preprocessing` | `preprocessing` | 10 min |
-| `repair_lineage_chains` | `repair` | 10 min |
-| `stratified_split` | `split` | 10 min |
-| `convert_to_llama_format` | `convert` | 10 min |
-| `pipeline_report` | `report` | 10 min |
-| `upload_to_gcs` | `upload` | 30 min |
-
-All parameters are overridable at trigger time. Defaults come from `src/utils/config.py`.
-
-**Sample trigger config:**
-
-```json
-{
-  "n_seeds": "30",
-  "domains": "cs,physics,math",
-  "min_citations": "50",
-  "max_depth": "3",
-  "max_seeds": "30",
-  "train_frac": "0.70",
-  "val_frac": "0.15",
-  "test_frac": "0.15",
-  "split_seed": "42",
-  "bucket": "researchlineage-gcs",
-  "project": "researchlineage",
-  "gcs_prefix": "fine_tuning"
-}
-```
-
-**Pipeline report** (JSON + TXT): global sample stats, per-split distributions, lineage integrity check (zero paper ID overlap), token length stats, file manifest.
-
-![fine_tuning_pipeline: all 8 tasks green, 7:20 total](docs/screenshots/Fine-tuning-DAG.png)
-
-![batch_run logs: S2 rate limiting, Gemini API calls, training examples saved](docs/screenshots/Fine-tuning-DAG-logs.png)
-
----
-
-### `retry_failed_pdfs`
-
-Standalone DAG to retry failed PDF fetches from previous pipeline runs.
-
-**Trigger:** Manual only (`schedule_interval=None`)
-**Config:** `max_active_runs=1`, `retries=1`, `retry_delay=5m`, `execution_timeout=60m`
-
-Queries `fetch_pdf_failures` for eligible retries, re-downloads and uploads to GCS, removes permanent 403/404 failures, reconciles with GCS, and alerts on max-retry exhaustion.
-
-![retry_failed_pdfs task logs: successful retry execution](docs/screenshots/retry-DAG-for-failed-pdf.png)
