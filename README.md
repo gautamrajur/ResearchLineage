@@ -2,55 +2,75 @@
 
 > *"We're not replacing comprehensive literature reviews. We're the Wikipedia of research lineages — a starting point that helps researchers get oriented 10x faster, so they can read the right papers in the right order with the right context."*
 
-Given a seed paper ID, this pipeline crawls the Semantic Scholar citation graph, validates and cleans the data, builds a directed citation network, engineers influence features, detects anomalies and sends email alerts, and writes structured results to a PostgreSQL database — all orchestrated by Apache Airflow.
+Given a seed paper ID, this pipeline crawls the Semantic Scholar citation graph, validates and cleans the data, builds a directed citation network, engineers influence features, detects anomalies, and writes structured results to a PostgreSQL database — all orchestrated by Apache Airflow running locally via Docker Compose, backed by GCP (Cloud SQL + GCS) and versioned with DVC. Three DAGs cover the full workflow: citation network analysis, fine-tuning data generation for Llama 3.1 8B, and a standalone PDF retry handler.
 
 ---
 
 ## Table of Contents
 
 1. [Architecture](#architecture)
-2. [Project Structure](#project-structure)
-3. [Prerequisites](#prerequisites)
-4. [Setup](#setup)
-5. [Running the Pipeline](#running-the-pipeline)
-6. [Running Tests](#running-tests)
-7. [Alerting](#alerting)
-8. [Logging](#logging)
-9. [Data Versioning (DVC)](#data-versioning-dvc)
-10. [Configuration Reference](#configuration-reference)
-11. [DAGs](#dags)
+2. [Error Handling](#error-handling)
+3. [Data Acquisition](#data-acquisition)
+4. [Data Preprocessing](#data-preprocessing)
+5. [Pipeline Flow Optimization](#pipeline-flow-optimization)
+6. [Bias Detection & Mitigation (DAG 2)](#bias-detection--mitigation-dag-2)
+7. [Project Structure](#project-structure)
+8. [Prerequisites](#prerequisites)
+9. [Setup & Reproducibility](#setup--reproducibility)
+10. [Running the Pipeline](#running-the-pipeline)
+11. [Running Tests](#running-tests)
+12. [Tracking & Logging](#tracking--logging)
+13. [Anomaly Detection & Alerting](#anomaly-detection--alerting)
+14. [Data Versioning (DVC)](#data-versioning-dvc)
+15. [Configuration Reference](#configuration-reference)
+16. [DAGs](#dags)
 
 ---
 
 ## Architecture
 
-The main pipeline (`research_lineage_pipeline`) is a 10-task Airflow DAG that runs sequentially:
+Three Airflow DAGs, all running locally via Docker Compose:
+
+| DAG | Tasks | Operator | Trigger |
+|---|---|---|---|
+| `research_lineage_pipeline` | 11 + parallel pdf_upload | PythonOperator | Manual |
+| `fine_tuning_pipeline` | 8 sequential | BashOperator | Manual |
+| `retry_failed_pdfs` | 1 | PythonOperator | Manual |
+
+### `research_lineage_pipeline` — 11-task flow
 
 ```
-[T1] Data Acquisition          — Semantic Scholar API crawl (async, depth-limited BFS)
+[T0]  schema_validation         — verify PostgreSQL tables exist, print schema info; fails if missing
         ↓
-[T2] Data Validation           — Schema checks, type validation, 10% error-rate threshold
+[T1]  data_acquisition          — Semantic Scholar API crawl (async, depth-limited BFS)
+        ↓                      ↘
+[T2]  data_validation            [pdf_upload] → GCS   ← parallel branch, 120-min timeout
         ↓
-[T3] Data Cleaning             — Deduplication, self-citation removal, venue normalisation
+[T3]  data_cleaning
         ↓
-[T4] Citation Graph Construction — NetworkX DiGraph, centrality metrics, connected components
+[T4]  citation_graph_construction
         ↓
-[T5] Feature Engineering       — Influence score, temporal category, citation velocity, recency
+[T5]  feature_engineering
         ↓
-[T6] Schema Transformation     — Flatten to relational tables (papers / authors / citations)
+[T7]  schema_transformation
         ↓
-[T7] Quality Validation        — Referential integrity, statistical checks, bias detection (85% threshold)
+[T8]  quality_validation         — 300–500 checks (schema compliance, statistical properties,
+        ↓                          referential integrity, distribution balance); ≥85% required
+[T9]  anomaly_detection          — Z-score > 3 outliers, missing data, citation anomalies + email alert
         ↓
-[T8] Anomaly Detection         — Z-score outliers, missing data, self-citations + email alert
+[T10] database_write             — upsert to Cloud SQL (PostgreSQL) via Cloud SQL Auth Proxy
         ↓
-[T9] Database Write            — Upsert to Cloud SQL (PostgreSQL) via Cloud SQL Auth Proxy
+[T11] report_generation          — JSON report: total counts, citations by direction, papers-by-year,
+                                   top venues, citation stats, year range
 ```
 
-Inter-task data is passed through Airflow **XCom**. The NetworkX graph object is not serialised; only the derived metrics are pushed downstream.
+Inter-task data passes through Airflow **XCom**. The NetworkX graph object is not serialised to XCom; only derived metrics (graph_stats, metrics, components) are pushed downstream. All tasks use `PythonOperator`.
 
-### Bias Detection
+**Config:** `max_active_runs=1`, `retries=3`, `retry_delay=5m`, `execution_timeout=60m` per task (pdf_upload: 120m).
 
-`QualityValidationTask` actively checks for three bias dimensions before allowing data through:
+### Data Quality Validation (Task 8)
+
+`QualityValidationTask` runs 300–500 checks covering schema compliance, statistical properties, and referential integrity. It also checks dataset distribution balance across three dimensions:
 
 | Dimension | Check | Threshold |
 |---|---|---|
@@ -60,18 +80,143 @@ Inter-task data is passed through Airflow **XCom**. The NetworkX graph object is
 
 If the overall quality score drops below **85%**, the pipeline raises `DataQualityError` and halts before writing to the database.
 
-### Error Handling
+---
+
+## Error Handling
 
 Each task raises typed exceptions from `src/utils/errors.py`:
 
 | Exception | Raised by | Condition |
 |---|---|---|
-| `ValidationError` | T2, T1 | Missing required fields, invalid types, >10% error rate |
-| `DataQualityError` | T7 | Quality score below 85% threshold |
+| `ValidationError` | T1, T2 | Missing required fields, invalid types, >10% error rate |
+| `DataQualityError` | T8 | Quality score below 85% threshold |
 | `APIError` | T1 | Semantic Scholar / OpenAlex request failure |
-| `RateLimitError` | T1 | API rate limit exceeded |
+| `RateLimitError` | T1 | API rate limit exceeded (429) |
 
-All exceptions propagate to Airflow which retries the task up to 3 times with a 5-minute delay.
+**Graceful degradation:** Redis down → API-only; DB down → API fallback; rate limited → linear backoff (10 retries, up to 275 s); partial API failures → logged and skipped; SMTP absent → alerts silently skipped; PDF 403/404 → removed from retry queue.
+
+---
+
+## Data Acquisition
+
+**Sources:** Semantic Scholar (primary — metadata, citation intent classifications, influence flags), arXiv (full-text HTML fallback), OpenAlex (API fallback when S2 rate-limits), Google Gemini (comparison pair generation, DAG 2 only).
+
+**Three-layer caching:** Redis (48h TTL, ~60–70% hit) → PostgreSQL (permanent, ~20–30% hit) → live API. Combined live API miss rate: 10–20%.
+
+**Inline filtering** runs before recursive BFS calls — citation intent (methodology/background only), influence flags, citation count threshold, adaptive depth limits (top 5/3/2 per depth). Result: **98% reduction in API calls** (10,000+ → 100–150 per run).
+
+**Output:** JSONL with `instruction`, `prompt`, `response`, and `metadata` (paper IDs, years, citations, fields, depth, lineage chain). Supports `backward` / `forward` / `both` traversal. State file enables resume; fixed random seed ensures reproducibility.
+
+---
+
+## Data Preprocessing
+
+### DAG 1 — Tasks 2–5
+
+| Task | Key details |
+|---|---|
+| **T2 — Data Validation** | Schema, field presence, type/range checks; >10% error rate raises `ValidationError` and halts |
+| **T3 — Data Cleaning** | Text normalisation, venue standardisation, deduplication, self-citation removal; ~80% of raw edges filtered |
+| **T4 — Citation Graph** | NetworkX `DiGraph`; PageRank (α = 0.85), betweenness centrality, in/out-degree, connected components |
+| **T5 — Feature Engineering** | Citation velocity, recency score, temporal category, years-from-target, composite influence score |
+
+### DAG 2 — Preprocessing steps
+
+- **Step 3 (preprocessing):** Scans JSONL for malformed records, missing fields, empty responses; drops and flags bad records.
+- **Step 4 (repair_lineage_chains):** Cross-references shared paper IDs to reconstruct missing metadata, ensuring full provenance before splitting.
+- **Steps 5–6 (split + convert):** Separates training pairs from metadata sidecars; converts to Llama 3.1 8B chat format with full provenance (paper IDs, years, citations, depth, lineage chain).
+
+---
+
+## Pipeline Flow Optimization
+
+### Inline filtering impact
+
+Without filtering the BFS would naively follow every cited paper recursively:
+
+| Scenario | API calls | Time |
+|---|---|---|
+| Without filtering | 10,000+ | ~6 hours (hypothetical — would hit rate limits before completing) |
+| With filtering | 100–150 | 2–3 minutes |
+
+**98% reduction** in API calls; avoids rate-limit cascades entirely.
+
+### Caching response time comparison
+
+| Request type | Response time |
+|---|---|
+| Fresh API call | ~180 s |
+| PostgreSQL cache hit | ~45 s |
+| Redis cache hit | ~15 s |
+
+A warm cache (typical for repeated seeds or shared ancestors) cuts acquisition time by 75–90%.
+
+### Parallelisation
+
+After `data_acquisition` completes, the DAG forks:
+- **Branch A (main chain):** validation → cleaning → graph → features → schema → quality → anomaly → DB write → report
+- **Branch B (parallel):** `pdf_upload` runs concurrently, fetching PDFs from publisher sites and uploading to GCS. It does not block the main chain and has its own 120-minute timeout.
+
+### Gantt chart analysis
+
+Airflow's Gantt view identified `data_acquisition` as the dominant bottleneck. After enabling the full caching stack and inline filtering:
+
+| Metric | Before | After |
+|---|---|---|
+| Total pipeline time | 6m 02s | 3m 15s |
+| Outcome | `database_write` failed (longer acquisition caused downstream timeout) | All 11 tasks successful |
+| Improvement | — | **46% faster** |
+
+**Performance at steady state:**
+
+| Metric | Value |
+|---|---|
+| End-to-end runtime | < 5 minutes |
+| API call reduction | 80–98% |
+| Cache hit rate | 60–80% |
+| Task success rate | 95%+ |
+| Data quality pass rate | 99%+ |
+
+---
+
+## Bias Detection & Mitigation (DAG 2)
+
+> Applies **exclusively to `fine_tuning_pipeline`** (DAG 2). The main `research_lineage_pipeline` runs data quality validation at Task 8 — not bias mitigation.
+
+Llama 3.1 8B is fine-tuned on ancestor paper selection and structured comparison generation. Naive random splitting inflates evaluation metrics because bibliometric signals and lineage graph overlap cause train/test leakage that sample-level deduplication cannot catch.
+
+### Bias 1 — Shared Ancestor Overlap
+
+Different seeds' lineage trees converge on shared papers (e.g. AlexNet, Transformer). A **union-find** algorithm clusters all samples that share any paper ID into the same split, preventing the model from exploiting memorised representations.
+
+| Version | Samples | Clusters | Shared IDs (any split pair) |
+|---|---|---|---|
+| v1 | 184 | 94 | 0 |
+| v2 | 293 | 163 | 0 |
+| v3 | 392 | 259 | 0 |
+
+### Bias 2 — Popularity Bias
+
+Citation-based filtering risks a spurious popularity-relevance correlation. Citation counts are binned into five quantile tiers (`low / medium / high / very_high / landmark`) used as a stratification axis during splitting. All splits verified within **±7 pp** of the overall tier distribution across all versions.
+
+### Bias 3 — Domain Imbalance
+
+Unconstrained seed selection yields ~65% CS. Three rounds of targeted seed collection rebalanced the corpus:
+
+| Field | v1 (184) | v2 (293) | v3 (392) |
+|---|---|---|---|
+| Computer Science | 66.8% | 57.7% | 50.5% |
+| Physics | 19.0% | 27.0% | 34.9% |
+| Mathematics | 14.1% | 15.3% | 14.6% |
+
+Splits use composite keys (domain × tier) to stay within **±5 pp** per field. Math remains underrepresented (~15%) due to sparse S2 coverage and fewer open-access HTML papers — future work includes zbMATH/MathSciNet and lower citation thresholds for math seeds.
+
+### Splitting Procedure
+
+1. **Cluster formation** — union-find on shared paper IDs
+2. **Cluster profiling** — dominant field, popularity tier, max year, size
+3. **Stratified allocation** — composite key (domain × tier), temporal ordering, 70/15/15
+4. **Integrity verification** — zero cross-split paper ID overlap confirmed
 
 ---
 
@@ -80,8 +225,9 @@ All exceptions propagate to Airflow which retries the task up to 3 times with a 
 ```
 .
 ├── dags/
-│   ├── research_lineage_pipeline.py   # Main 10-task citation pipeline DAG
-│   └── fine_tuning_data_pipeline.py   # Fine-tuning data generation DAG
+│   ├── research_lineage_pipeline.py   # Main 11-task citation pipeline DAG
+│   ├── fine_tuning_data_pipeline.py   # Fine-tuning data generation DAG (8 BashOperator tasks)
+│   └── retry_failed_pdfs_dag.py       # Standalone PDF retry DAG
 │
 ├── src/
 │   ├── api/
@@ -94,16 +240,20 @@ All exceptions propagate to Airflow which retries the task up to 3 times with a 
 │   │   ├── connection.py              # SQLAlchemy engine + session factory
 │   │   └── repositories.py            # Upsert helpers for each table
 │   ├── tasks/                         # One class per pipeline task
+│   │   ├── schema_validation.py       # T0 — DB schema existence check
 │   │   ├── data_acquisition.py        # T1 — async BFS crawl
 │   │   ├── data_validation.py         # T2 — schema + type validation
 │   │   ├── data_cleaning.py           # T3 — dedup, normalise
 │   │   ├── citation_graph_construction.py  # T4 — NetworkX graph
 │   │   ├── feature_engineering.py     # T5 — derived features
-│   │   ├── schema_transformation.py   # T6 — flatten to tables
-│   │   ├── quality_validation.py      # T7 — quality + bias checks
-│   │   ├── anomaly_detection.py       # T8 — statistical anomaly detection + email alert
-│   │   ├── database_write.py          # T9 — PostgreSQL upsert
-│   │   └── lineage_pipeline.py        # Fine-tuning pipeline helper
+│   │   ├── schema_transformation.py   # T7 — flatten to tables
+│   │   ├── quality_validation.py      # T8 — 300–500 quality checks
+│   │   ├── anomaly_detection.py       # T9 — statistical anomaly detection + email alert
+│   │   ├── database_write.py          # T10 — PostgreSQL upsert
+│   │   ├── report_generation.py       # T11 — JSON statistics report
+│   │   ├── pdf_upload_task.py         # Parallel branch — fetch + GCS upload
+│   │   ├── retry_failed_pdfs_task.py  # DAG 3 — retry failed PDF fetches
+│   │   └── lineage_pipeline.py        # Fine-tuning pipeline step runner (DAG 2)
 │   └── utils/
 │       ├── config.py                  # Pydantic BaseSettings (reads .env)
 │       ├── errors.py                  # ValidationError, DataQualityError, APIError
@@ -135,12 +285,15 @@ All exceptions propagate to Airflow which retries the task up to 3 times with a 
 │           ├── splits.dvc                 # DVC pointer — train/val/test splits
 │           └── llama_format.dvc           # DVC pointer — Llama chat-format training files
 │
+├── logs/                              # Execution logs and pipeline reports
+├── scripts/                           # Utility and helper scripts
 ├── docker/
 │   └── airflow.Dockerfile             # Airflow image with project deps
 ├── Dockerfile.test                    # Lightweight image for running tests only
 ├── docker-compose.yml                 # Postgres + Redis + Cloud SQL Proxy + Airflow
 ├── pyproject.toml                     # Dependencies (Poetry) + pytest config
 ├── .env.example                       # Template for all required environment variables
+├── .pre-commit-config.yaml            # PEP 8 enforcement (black, ruff, isort)
 └── .dvc/                              # DVC remote config (GCS)
 ```
 
@@ -159,13 +312,13 @@ All exceptions propagate to Airflow which retries the task up to 3 times with a 
 
 ---
 
-## Setup
+## Setup & Reproducibility
 
 ### 1. Clone and configure environment
 
 ```bash
 git clone https://github.com/gautamrajur/ResearchLineage.git
-cd Datapipeline_Jithin_Shivram
+cd ResearchLineage
 
 cp .env.example .env
 ```
@@ -193,17 +346,19 @@ ALERT_EMAIL_TO=alerts@yourdomain.com
 
 A free Semantic Scholar API key gives you 100 req/s (vs 1 req/s unauthenticated).
 
-### 2. Install dependencies (local development)
+### 2. Install dependencies
 
 ```bash
 poetry install --with dev
 ```
 
----
+### 3. Pull versioned datasets
 
-## Running the Pipeline
+```bash
+dvc pull
+```
 
-### Start all services
+### 4. Start all services
 
 ```bash
 docker compose up --build -d
@@ -216,7 +371,7 @@ This starts:
 - **Airflow webserver** (`:8080`) — UI + REST API
 - **Airflow scheduler** — DAG execution engine
 
-### Initialise Airflow (first run only)
+### 5. Initialise Airflow (first run only)
 
 ```bash
 docker compose run --rm airflow-init
@@ -225,6 +380,17 @@ docker compose run --rm airflow-init
 Creates the metadata schema and default admin user:
 - URL: http://localhost:8080
 - Username: `admin` / Password: `admin`
+
+**Reproducibility guarantees:**
+- Poetry lockfile pins all transitive dependencies for deterministic installs
+- Fixed random seed in `lineage_pipeline.py` ensures deterministic splits and sampling
+- DVC pointer files tie every dataset version to a specific git commit — `git checkout <commit> -- <file>.dvc && dvc pull` restores any past run exactly
+- PEP 8 enforced via pre-commit hooks (black, ruff, isort) in `.pre-commit-config.yaml`
+- Pydantic `BaseSettings` loads all config from `.env` with sensible defaults — no hardcoded values
+
+---
+
+## Running the Pipeline
 
 ### Trigger the main pipeline
 
@@ -244,8 +410,6 @@ Creates the metadata schema and default admin user:
 Start with `max_depth: 2` and `direction: backward` for a faster first run.
 
 `direction` options: `backward` (references only), `forward` (citations only), `both`.
-
-**Retries:** 3 attempts per task, 5-minute delay, 60-minute execution timeout.
 
 ### Stop all services
 
@@ -290,18 +454,66 @@ poetry run pytest tests/ -v
 | `test_citation_graph.py` | 18 | Graph construction, metrics, edge cases (empty graph) |
 | `test_feature_engineering.py` | 16 | Feature completeness, normalisation, temporal categories |
 | `test_schema_transformation.py` | 17 | Field mapping, ArXiv ID extraction, author UUID fallback |
-| `test_quality_validation.py` | 21 | Bias detection, referential integrity, 85% quality threshold |
+| `test_quality_validation.py` | 21 | Quality checks, referential integrity, 85% quality threshold |
 | `test_anomaly_detection.py` | 14 | Z-score outliers, duplicates, disconnected nodes |
 | `test_pipeline_e2e.py` | 18 | Full Tasks 2–9 chain, data integrity across stages |
-| **Total** | **171** | |
+| **Total** | **171** | 153 unit + 18 integration |
 
 ---
 
-## Alerting
+## Tracking & Logging
 
-`AnomalyDetectionTask` (T8) sends an email alert whenever anomalies are detected, via `src/utils/email_service.py`.
+All logging is centralised through `src/utils/logging.py`. Every module in the project uses the same entry point:
 
-**Alert format:**
+```python
+from src.utils.logging import get_logger
+logger = get_logger(__name__)
+```
+
+The root logger is auto-configured on first import with a consistent format:
+
+```
+2026-02-23 14:32:01 | INFO     | src.tasks.data_validation | Starting validation
+2026-02-23 14:32:01 | WARNING  | src.tasks.anomaly_detection | Detected 3 anomalies
+```
+
+`LOG_LEVEL` in `.env` controls verbosity (default: `INFO`; set to `DEBUG` for verbose output).
+
+**DAG 1 — Airflow task logs** record per-task progress, validation results, and cache hit rates at each stage.
+
+**DAG 2 — dual-output logging:**
+- Console: `INFO`+ level output, visible in Airflow task logs
+- `data/tasks/pipeline_output/pipeline.log`: full `DEBUG`-level trace including API call details, HTML text extraction, JSON parse attempts, and per-request retry behaviour
+
+**Metrics tracked across both DAGs:**
+
+| Metric | Where logged |
+|---|---|
+| Task execution time | Airflow task duration |
+| API call count | `data_acquisition` task log |
+| Cache hit rate (Redis + DB layers) | `data_acquisition` task log |
+| Validation success rate | `data_validation` task log |
+| Per-seed success / failure | DAG 2 `pipeline.log` |
+
+---
+
+## Anomaly Detection & Alerting
+
+`AnomalyDetectionTask` (T9) detects the following anomaly types:
+
+| Type | Detection method |
+|---|---|
+| Missing data (abstracts, years, venues) | Field presence check on every record |
+| Statistical outliers (citation counts) | Z-score > 3 |
+| Citation anomalies (self-citations, duplicates) | Post-cleaning verification pass |
+| Disconnected papers (zero in/out degree) | Graph connectivity scan |
+| API rate limit threshold breaches | Request counter threshold monitoring |
+
+When `total_anomalies > 0`, an email alert is sent via `src/utils/email_service.py`.
+
+**Email service implementation:** `EmailConfig` dataclass holds SMTP settings; `EmailService` class exposes three methods: `send_alert` (anomaly notification), `send_pipeline_success`, and `send_pipeline_error`. SMTP settings are loaded from `src/utils/config.py` (Pydantic `BaseSettings`).
+
+**Sample alert:**
 
 ```
 Subject: ResearchLineage Anomaly Alert — 5 issue(s) detected
@@ -321,28 +533,6 @@ Check the Airflow logs for full details.
 Alerts are **silently skipped** if SMTP credentials are not configured — the pipeline continues normally.
 
 **Gmail setup:** Enable 2-Step Verification → generate an App Password at `myaccount.google.com/apppasswords` → use the 16-character code as `SMTP_PASSWORD`.
-
----
-
-## Logging
-
-All logging is centralised through `src/utils/logging.py`. Every module in the project uses the same entry point:
-
-```python
-from src.utils.logging import get_logger
-logger = get_logger(__name__)
-```
-
-The root logger is auto-configured on first import with a consistent format:
-
-```
-2026-02-23 14:32:01 | INFO     | src.tasks.data_validation | Starting validation
-2026-02-23 14:32:01 | WARNING  | src.tasks.anomaly_detection | Detected 3 anomalies
-```
-
-The log level is controlled by `LOG_LEVEL` in `.env` (default: `INFO`). Set to `DEBUG` for verbose output during development.
-
-`fine_tuning_data_pipeline` additionally writes a full `DEBUG`-level log to `data/tasks/pipeline_output/pipeline.log` for post-run inspection.
 
 ---
 
@@ -368,6 +558,8 @@ Authentication uses the same GCP credentials as the rest of the project (`GCLOUD
 | `data/processed.dvc` | `research_lineage_pipeline` | Cleaned, validated, and feature-engineered datasets |
 | `data/tasks/pipeline_output/splits.dvc` | `fine_tuning_data_pipeline` | Stratified train / val / test splits (70 / 15 / 15) |
 | `data/tasks/pipeline_output/llama_format.dvc` | `fine_tuning_data_pipeline` | Llama chat-format training files and metadata sidecars |
+
+`.dvc` pointer files are committed to Git; actual data is not.
 
 ### Pull existing data
 
@@ -452,22 +644,87 @@ All settings are loaded from `.env` via `src/utils/config.py` (Pydantic `BaseSet
 ### `research_lineage_pipeline`
 
 **Trigger:** Manual only (`schedule_interval=None`)
+**Operator:** PythonOperator (all tasks)
+**Config:** `max_active_runs=1`, `retries=3`, `retry_delay=5m`, `execution_timeout=60m` (pdf_upload: 120m)
 
-**Config parameters:**
+**Trigger config:**
 ```json
 {
-  "paper_id": "<Semantic Scholar paper ID>",
+  "paper_id": "204e3073870fae3d05bcbc2f6a8e263d9b72e776",
   "max_depth": 3,
   "direction": "both"
 }
 ```
 
-**Retries:** 3 attempts, 5-minute delay between retries, 60-minute execution timeout per task.
+---
 
-### `fine_tuning_data_pipeline`
+### `fine_tuning_pipeline`
 
-Generates structured Gemini fine-tuning data from research lineage chains.
+Generates structured Llama 3.1 8B fine-tuning data from research lineage chains. Output: JSONL with instruction / prompt / response + metadata sidecars → converted to Llama chat format → uploaded to GCS.
 
-**Stages:** `seed_generation → batch_run → preprocessing → repair → stratified_split → convert_to_llama_format → pipeline_report → upload_to_gcs`
+**Trigger:** Manual only (`schedule_interval=None`), no backfill
+**Operator:** BashOperator — each step invoked via `python lineage_pipeline.py --step <name>`
+**Config:** `max_active_runs=1`, `retries=2`, `retry_delay=5m`
 
-Output is written to `data/tasks/pipeline_output/` and uploaded to GCS. Local output is retained after upload (not auto-deleted). The train/validation/test split is 70/15/15.
+**Task flow and timeouts:**
+
+| Task | `--step` flag | Timeout |
+|---|---|---|
+| `seed_generation` | `seed_generation` | 30 min |
+| `batch_run` | `batch_run` | 12 hours |
+| `preprocessing` | `preprocessing` | 10 min |
+| `repair_lineage_chains` | `repair` | 10 min |
+| `stratified_split` | `split` | 10 min |
+| `convert_to_llama_format` | `convert` | 10 min |
+| `pipeline_report` | `report` | 10 min |
+| `upload_to_gcs` | `upload` | 30 min |
+
+All parameters are overridable at trigger time. Defaults come from `src/utils/config.py`.
+
+**Sample trigger config:**
+
+```json
+{
+  "n_seeds": "30",
+  "domains": "cs,physics,math",
+  "min_citations": "50",
+  "per_domain_pool": "20",
+  "seed_query": "deep learning",
+  "max_depth": "3",
+  "max_seeds": "30",
+  "batch_sleep": "2",
+  "train_frac": "0.70",
+  "val_frac": "0.15",
+  "test_frac": "0.15",
+  "split_seed": "42",
+  "bucket": "researchlineage-gcs",
+  "project": "researchlineage",
+  "gcs_prefix": "fine_tuning"
+}
+```
+
+**Pipeline report** (`pipeline_report` task, written in JSON and TXT):
+- Global statistics: sample counts, foundational vs. non-foundational ratio, field and source distributions, breakthrough levels, numeric summaries (mean / median / percentiles / std) for depth, candidate count, year, citations, and temporal gap
+- Per-split statistics: independent distributions for train / val / test with a cross-split comparison table
+- Lineage integrity: zero paper ID overlap verified between all split pairs
+- Token length statistics for each Llama chat-format file
+- File manifest with sizes
+
+---
+
+### `retry_failed_pdfs`
+
+Standalone DAG to retry failed PDF fetches from previous pipeline runs.
+
+**Trigger:** Manual only (`schedule_interval=None`)
+**Config:** `max_active_runs=1`, `retries=1`, `retry_delay=5m`, `execution_timeout=60m`
+
+**What it does:**
+1. Queries the `fetch_pdf_failures` table for rows where `retry_after` has passed
+2. Re-downloads PDFs from publisher sites
+3. Uploads successful fetches to GCS
+4. Removes permanently unfetchable entries (HTTP 403 / 404) from the failures table
+5. Reconciles with GCS (marks as done any entries already present in the bucket)
+6. Sends alerts for PDFs that have exceeded the maximum retry count
+
+This DAG operates independently of the main pipeline and progressively populates the GCS PDF store over time.
