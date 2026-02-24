@@ -334,7 +334,7 @@ The root logger is auto-configured on first import with a consistent format:
 
 The log level is controlled by `LOG_LEVEL` in `.env` (default: `INFO`). Set to `DEBUG` for verbose output during development.
 
-`fine_tuning_data_pipeline` additionally writes a full `DEBUG`-level log to `src/tasks/pipeline_output/pipeline.log` for post-run inspection.
+`fine_tuning_data_pipeline` additionally writes a full `DEBUG`-level log to `data/tasks/pipeline_output/pipeline.log` for post-run inspection.
 
 ---
 
@@ -358,8 +358,8 @@ Authentication uses the same GCP credentials as the rest of the project (`GCLOUD
 |---|---|---|
 | `data/raw.dvc` | `research_lineage_pipeline` | Raw API responses from Semantic Scholar |
 | `data/processed.dvc` | `research_lineage_pipeline` | Cleaned, validated, and feature-engineered datasets |
-| `src/tasks/pipeline_output/splits.dvc` | `fine_tuning_data_pipeline` | Stratified train / val / test splits (70 / 15 / 15) |
-| `src/tasks/pipeline_output/llama_format.dvc` | `fine_tuning_data_pipeline` | Llama chat-format training files and metadata sidecars |
+| `data/tasks/pipeline_output/splits.dvc` | `fine_tuning_data_pipeline` | Stratified train / val / test splits (70 / 15 / 15) |
+| `data/tasks/pipeline_output/llama_format.dvc` | `fine_tuning_data_pipeline` | Llama chat-format training files and metadata sidecars |
 
 ### Pull existing data
 
@@ -381,9 +381,9 @@ git commit -m "Update research lineage datasets"
 **Fine-tuning pipeline** (updates `splits/` and `llama_format/`):
 
 ```bash
-dvc add src/tasks/pipeline_output/splits src/tasks/pipeline_output/llama_format
+dvc add data/tasks/pipeline_output/splits data/tasks/pipeline_output/llama_format
 dvc push
-git add src/tasks/pipeline_output/splits.dvc src/tasks/pipeline_output/llama_format.dvc
+git add data/tasks/pipeline_output/splits.dvc data/tasks/pipeline_output/llama_format.dvc
 git commit -m "Track fine-tuning artifacts from pipeline run"
 ```
 
@@ -460,4 +460,4 @@ Generates structured Gemini fine-tuning data from research lineage chains.
 
 **Stages:** `seed_generation → batch_run → preprocessing → repair → stratified_split → convert_to_llama_format → pipeline_report → upload_to_gcs`
 
-Output is written to `src/tasks/pipeline_output/` and uploaded to GCS. The train/validation/test split is 70/15/15.
+Output is written to `data/tasks/pipeline_output/` and uploaded to GCS. Local output is retained after upload (not auto-deleted). The train/validation/test split is 70/15/15.
