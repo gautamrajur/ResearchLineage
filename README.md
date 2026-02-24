@@ -133,11 +133,11 @@ The pipeline automates schema verification and statistics generation at three po
 
 **Gantt analysis** pinpointed `data_acquisition` as the bottleneck. After enabling caching + filtering: **6m 02s → 3m 15s (46% faster)**, with `database_write` no longer timing out. Steady state: <5 min e2e, 60–80% cache hit rate, 95%+ task success.
 
-Below — pre-optimization run where `database_write` failed after 21+ minutes:
+Below — pre-optimization Gantt showing `data_acquisition` at **6m 02s**:
 
-![Before optimization: database_write failed at 21:23](docs/screenshots/Without-pipeline-optimization.png)
+![Before optimization: data_acquisition run duration 6m 02s](docs/screenshots/Before-pipeline-optimization.png)
 
-After — `data_acquisition` completes in **3m 15s**, all downstream tasks finish in seconds:
+After — `data_acquisition` down to **3m 15s** (46% faster), all downstream tasks finish in seconds:
 
 ![After optimization: Gantt view, data_acquisition run duration 3m 15s](docs/screenshots/With-pipeline-optimization.jpeg)
 
