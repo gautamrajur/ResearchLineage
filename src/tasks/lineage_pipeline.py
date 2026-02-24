@@ -1578,13 +1578,6 @@ def step_upload(bucket, project, gcs_prefix):
     logger.info(f"Uploaded {uploaded} files to gs://{bucket}/{full_prefix}/")
     logger.info(f"Also mirrored to gs://{bucket}/{latest_prefix}/")
 
-    # Clean up local files after successful upload
-    try:
-        shutil.rmtree(str(RUN_DIR))
-        logger.info(f"Cleaned up local output directory: {RUN_DIR}")
-    except Exception as e:
-        logger.warning(f"Failed to clean up local directory {RUN_DIR}: {e}")
-
     return {"uploaded": uploaded, "gcs_path": f"gs://{bucket}/{full_prefix}"}
 
 
