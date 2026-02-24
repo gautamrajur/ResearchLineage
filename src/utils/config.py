@@ -18,8 +18,8 @@ class Settings(BaseSettings):
     semantic_scholar_base_url: str = "https://api.semanticscholar.org/graph/v1"
     semantic_scholar_rate_limit: int = 100
     semantic_scholar_request_timeout: int = 30
-    semantic_scholar_max_retries: int = 3
-    semantic_scholar_retry_base_wait: int = 5
+    semantic_scholar_max_retries: int = 15
+    semantic_scholar_retry_base_wait: int = 1
 
     arxiv_base_url: str = "http://export.arxiv.org/api/query"
     openalex_base_url: str = "https://api.openalex.org"
