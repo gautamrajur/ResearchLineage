@@ -18,6 +18,8 @@ poetry.lock
 # Environment variables
 .env
 .env.local
+*.json
+docker-compose.yml
 
 # IDEs
 .vscode/
@@ -74,3 +76,13 @@ src/tasks/pipeline_output/*
 
 # Test reports (generated artifacts)
 reports/
+postgres_data/
+
+# Test / coverage
+.coverage
+htmlcov/
+
+# Local outputs and binaries
+outputs/
+cloud-sql-proxy
+cloud-sql-proxy.exe

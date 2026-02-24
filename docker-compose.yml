@@ -75,13 +75,25 @@ services:
       dockerfile: docker/airflow.Dockerfile
     container_name: airflow_webserver
     environment:
+      # Airflow Core Settings
       - AIRFLOW__CORE__EXECUTOR=LocalExecutor
       - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://postgres:postgres@postgres:5432/airflow
       - AIRFLOW__CORE__LOAD_EXAMPLES=False
       - AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=True
+      - AIRFLOW__CORE__PARALLELISM=32
+      - AIRFLOW__CORE__DAG_CONCURRENCY=16
+      - AIRFLOW__CORE__MAX_ACTIVE_TASKS_PER_DAG=16
       - PYTHONPATH=/opt/airflow
       - _PIP_ADDITIONAL_REQUIREMENTS=google-genai beautifulsoup4 pydantic-settings
       - GOOGLE_APPLICATION_CREDENTIALS=/gcp/config/application_default_credentials.json
+      # GCP Settings
+      - GOOGLE_CLOUD_PROJECT=researchlineage
+      # Cloud SQL via Proxy (for retry_failed_pdfs DAG)
+      - CLOUD_SQL_HOST=${CLOUD_SQL_HOST}
+      - CLOUD_SQL_PORT=${CLOUD_SQL_PORT}
+      - CLOUD_SQL_DB=${CLOUD_SQL_DB}
+      - CLOUD_SQL_USER=${CLOUD_SQL_USER}
+      - CLOUD_SQL_PASSWORD=${CLOUD_SQL_PASSWORD}
     env_file:
       - .env
     ports:
@@ -106,12 +118,24 @@ services:
       dockerfile: docker/airflow.Dockerfile
     container_name: airflow_scheduler
     environment:
+      # Airflow Core Settings
       - AIRFLOW__CORE__EXECUTOR=LocalExecutor
       - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://postgres:postgres@postgres:5432/airflow
       - AIRFLOW__CORE__LOAD_EXAMPLES=False
+      - AIRFLOW__CORE__PARALLELISM=32
+      - AIRFLOW__CORE__DAG_CONCURRENCY=16
+      - AIRFLOW__CORE__MAX_ACTIVE_TASKS_PER_DAG=16
       - PYTHONPATH=/opt/airflow
       - _PIP_ADDITIONAL_REQUIREMENTS=google-genai beautifulsoup4 pydantic-settings
       - GOOGLE_APPLICATION_CREDENTIALS=/gcp/config/application_default_credentials.json
+      # GCP Settings
+      - GOOGLE_CLOUD_PROJECT=researchlineage
+      # Cloud SQL via Proxy (for retry_failed_pdfs DAG)
+      - CLOUD_SQL_HOST=${CLOUD_SQL_HOST}
+      - CLOUD_SQL_PORT=${CLOUD_SQL_PORT}
+      - CLOUD_SQL_DB=${CLOUD_SQL_DB} 
+      - CLOUD_SQL_USER=${CLOUD_SQL_USER}
+      - CLOUD_SQL_PASSWORD=${CLOUD_SQL_PASSWORD}
     env_file:
       - .env
     command: scheduler

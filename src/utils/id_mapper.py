@@ -62,16 +62,19 @@ class IDMapper:
             paper_data: Paper metadata
 
         Returns:
-            OpenAlex ID or None
+            OpenAlex ID or None (never empty string; invalid/missing id handled gracefully).
         """
-        # From OpenAlex response
-        openalex_url = paper_data.get("id", "")
-        if openalex_url.startswith("https://openalex.org/"):
-            return openalex_url.split("/")[-1]
+        # From OpenAlex response: require id to be a non-empty string
+        openalex_url = paper_data.get("id")
+        if isinstance(openalex_url, str) and openalex_url.startswith("https://openalex.org/"):
+            segment = openalex_url.rstrip("/").split("/")[-1]
+            if segment and segment != "openalex.org":
+                return segment
+            return None
 
         # From Semantic Scholar externalIds
         external_ids = paper_data.get("externalIds", {})
-        if external_ids and external_ids.get("OpenAlex"):
-            return external_ids["OpenAlex"]
-
+        oa = external_ids.get("OpenAlex") if external_ids else None
+        if oa:
+            return oa
         return None
