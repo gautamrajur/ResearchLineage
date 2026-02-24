@@ -9,21 +9,22 @@ Given a seed paper ID, this pipeline crawls the Semantic Scholar citation graph,
 ## Table of Contents
 
 1. [Architecture](#architecture)
-2. [Error Handling](#error-handling)
-3. [Data Acquisition](#data-acquisition)
-4. [Data Preprocessing](#data-preprocessing)
+2. [Data Acquisition](#data-acquisition)
+3. [Data Preprocessing](#data-preprocessing)
+4. [Schema & Statistics Generation](#schema--statistics-generation)
 5. [Pipeline Flow Optimization](#pipeline-flow-optimization)
-6. [Bias Detection & Mitigation (DAG 2)](#bias-detection--mitigation-dag-2)
-7. [Project Structure](#project-structure)
-8. [Prerequisites](#prerequisites)
-9. [Setup & Reproducibility](#setup--reproducibility)
-10. [Running the Pipeline](#running-the-pipeline)
-11. [Running Tests](#running-tests)
-12. [Tracking & Logging](#tracking--logging)
-13. [Anomaly Detection & Alerting](#anomaly-detection--alerting)
-14. [Data Versioning (DVC)](#data-versioning-dvc)
-15. [Configuration Reference](#configuration-reference)
-16. [DAGs](#dags)
+6. [Anomaly Detection & Alerting](#anomaly-detection--alerting)
+7. [Bias Detection & Mitigation (DAG 2)](#bias-detection--mitigation-dag-2)
+8. [Error Handling](#error-handling)
+9. [Tracking & Logging](#tracking--logging)
+10. [Running Tests](#running-tests)
+11. [Data Versioning (DVC)](#data-versioning-dvc)
+12. [Project Structure](#project-structure)
+13. [Prerequisites](#prerequisites)
+14. [Setup & Reproducibility](#setup--reproducibility)
+15. [Running the Pipeline](#running-the-pipeline)
+16. [Configuration Reference](#configuration-reference)
+17. [DAGs](#dags)
 
 ---
 
@@ -42,7 +43,7 @@ Three Airflow DAGs, all running locally via Docker Compose:
 ### `research_lineage_pipeline` — 11-task flow
 
 ```
-[T0]  schema_validation         — verify PostgreSQL tables exist, print schema info; fails if missing
+[T0]  schema_validation         — verify PostgreSQL tables exist
         ↓
 [T1]  data_acquisition          — Semantic Scholar API crawl (async, depth-limited BFS)
         ↓                      ↘
@@ -56,54 +57,24 @@ Three Airflow DAGs, all running locally via Docker Compose:
         ↓
 [T7]  schema_transformation
         ↓
-[T8]  quality_validation         — 300–500 checks (schema compliance, statistical properties,
-        ↓                          referential integrity, distribution balance); ≥85% required
-[T9]  anomaly_detection          — Z-score > 3 outliers, missing data, citation anomalies + email alert
+[T8]  quality_validation         — 300–500 checks; ≥85% required
         ↓
-[T10] database_write             — upsert to Cloud SQL (PostgreSQL) via Cloud SQL Auth Proxy
+[T9]  anomaly_detection          — Z-score > 3 outliers + email alert
         ↓
-[T11] report_generation          — JSON report: total counts, citations by direction, papers-by-year,
-                                   top venues, citation stats, year range
+[T10] database_write             — upsert to Cloud SQL via Auth Proxy
+        ↓
+[T11] report_generation          — JSON stats report (papers, authors, citations, year range)
 ```
 
-Inter-task data passes through Airflow **XCom**. The NetworkX graph object is not serialised to XCom; only derived metrics (graph_stats, metrics, components) are pushed downstream. All tasks use `PythonOperator`.
+Inter-task data passes through Airflow **XCom**. The NetworkX graph is not serialised to XCom; only derived metrics are pushed downstream.
 
-**Config:** `max_active_runs=1`, `retries=3`, `retry_delay=5m`, `execution_timeout=60m` per task (pdf_upload: 120m).
-
-### Data Quality Validation (Task 8)
-
-`QualityValidationTask` runs 300–500 checks covering schema compliance, statistical properties, and referential integrity. It also checks dataset distribution balance across three dimensions:
-
-![Quality validation score: 99.8% (445/446 checks passed)](docs/screenshots/Quality-Score-for-Data-Validation.png)
-
-| Dimension | Check | Threshold |
-|---|---|---|
-| **Temporal** | No single era > 50% of papers | 5 eras: pre-2000, 2000–2010, 2010–2015, 2015–2020, 2020+ |
-| **Citation** | Distribution across high/medium/low cited papers | Flags if >70% high-citation |
-| **Venue** | No single venue type > 60% | top-conference, arXiv, journal |
-
-If the overall quality score drops below **85%**, the pipeline raises `DataQualityError` and halts before writing to the database.
-
----
-
-## Error Handling
-
-Each task raises typed exceptions from `src/utils/errors.py`:
-
-| Exception | Raised by | Condition |
-|---|---|---|
-| `ValidationError` | T1, T2 | Missing required fields, invalid types, >10% error rate |
-| `DataQualityError` | T8 | Quality score below 85% threshold |
-| `APIError` | T1 | Semantic Scholar / OpenAlex request failure |
-| `RateLimitError` | T1 | API rate limit exceeded (429) |
-
-**Graceful degradation:** Redis down → API-only; DB down → API fallback; rate limited → linear backoff (10 retries, up to 275 s); partial API failures → logged and skipped; SMTP absent → alerts silently skipped; PDF 403/404 → removed from retry queue.
+**Config:** `max_active_runs=1`, `retries=3`, `retry_delay=5m`, `execution_timeout=60m` (pdf_upload: 120m).
 
 ---
 
 ## Data Acquisition
 
-**Sources:** Semantic Scholar (primary — metadata, citation intent classifications, influence flags), arXiv (full-text HTML fallback), OpenAlex (API fallback when S2 rate-limits), Google Gemini (comparison pair generation, DAG 2 only).
+**Sources:** Semantic Scholar (primary — metadata, citation intent, influence flags), arXiv (full-text HTML fallback), OpenAlex (API fallback when S2 rate-limits), Google Gemini (comparison pair generation, DAG 2 only).
 
 **Three-layer caching:** Redis (48h TTL, ~60–70% hit) → PostgreSQL (permanent, ~20–30% hit) → live API. Combined live API miss rate: 10–20%.
 
@@ -132,6 +103,28 @@ Each task raises typed exceptions from `src/utils/errors.py`:
 
 ---
 
+## Schema & Statistics Generation
+
+The pipeline automates schema verification and statistics generation at three points:
+
+**T0 — Schema Validation:** `SchemaValidationTask` verifies all required PostgreSQL tables exist before any data is fetched. Fails fast if the schema is missing or incomplete.
+
+**T8 — Quality Validation:** `QualityValidationTask` runs 300–500 checks across schema compliance, statistical properties, referential integrity, and distribution balance. A score below **85%** raises `DataQualityError` and halts before writing to the database.
+
+![Quality validation score: 99.8% (445/446 checks passed)](docs/screenshots/Quality-Score-for-Data-Validation.png)
+
+| Dimension | Check | Threshold |
+|---|---|---|
+| **Temporal** | No single era > 50% of papers | 5 eras: pre-2000, 2000–2010, 2010–2015, 2015–2020, 2020+ |
+| **Citation** | Distribution across high/medium/low cited papers | Flags if >70% high-citation |
+| **Venue** | No single venue type > 60% | top-conference, arXiv, journal |
+
+**T11 — Report Generation:** After each successful run, `ReportGenerationTask` produces a JSON statistics report: total papers, authors, citations, papers-by-year, top venues, citation stats, year range.
+
+![Database stats report: 64 papers, 291 authors, 82 citations, 1951–2025](docs/screenshots/Database-Stats-report.png)
+
+---
+
 ## Pipeline Flow Optimization
 
 **Inline filtering** cuts API calls from 10,000+ (~6 h hypothetical) to 100–150 per run (2–3 min) — 98% reduction.
@@ -147,6 +140,47 @@ Below — pre-optimization run where `database_write` failed after 21+ minutes:
 After — `data_acquisition` completes in **3m 15s**, all downstream tasks finish in seconds:
 
 ![After optimization: Gantt view, data_acquisition run duration 3m 15s](docs/screenshots/With-pipeline-optimization.jpeg)
+
+---
+
+## Anomaly Detection & Alerting
+
+`AnomalyDetectionTask` (T9) detects the following anomaly types:
+
+| Type | Detection method |
+|---|---|
+| Missing data (abstracts, years, venues) | Field presence check on every record |
+| Statistical outliers (citation counts) | Z-score > 3 |
+| Citation anomalies (self-citations, duplicates) | Post-cleaning verification pass |
+| Disconnected papers (zero in/out degree) | Graph connectivity scan |
+| API rate limit threshold breaches | Request counter threshold monitoring |
+
+When `total_anomalies > 0`, an email alert is sent via `EmailService` (`src/utils/email_service.py`) — methods: `send_alert`, `send_pipeline_success`, `send_pipeline_error`.
+
+![Airflow logs: 17 anomalies detected, email sent](docs/screenshots/Anamoly-detection.png)
+
+![Anomaly alert email in Gmail: 17 issues detected](docs/screenshots/Anamoly-alert-mail.png)
+
+**Sample alert:**
+
+```
+Subject: ResearchLineage Anomaly Alert — 5 issue(s) detected
+
+Anomaly detection found 5 issue(s) in pipeline run.
+Target paper: 204e3073870fae3d05bcbc2f6a8e263d9b72e776
+
+Breakdown:
+  missing_data.missing_abstracts: 2
+  missing_data.missing_venues: 1
+  citation_anomalies.duplicate_citations: 1
+  disconnected_papers.disconnected_papers: 1
+
+Check the Airflow logs for full details.
+```
+
+Alerts are **silently skipped** if SMTP credentials are not configured — the pipeline continues normally.
+
+**Gmail setup:** Enable 2-Step Verification → generate an App Password at `myaccount.google.com/apppasswords` → use the 16-character code as `SMTP_PASSWORD`.
 
 ---
 
@@ -180,7 +214,7 @@ Unconstrained seed selection yields ~65% CS. Three rounds of targeted seed colle
 | Physics | 19.0% | 27.0% | 34.9% |
 | Mathematics | 14.1% | 15.3% | 14.6% |
 
-Splits use composite keys (domain × tier) to stay within **±5 pp** per field. Math remains underrepresented (~15%) due to sparse S2 coverage and fewer open-access HTML papers — future work includes zbMATH/MathSciNet and lower citation thresholds for math seeds.
+Splits use composite keys (domain × tier) to stay within **±5 pp** per field. Math remains underrepresented (~15%) due to sparse S2 coverage — future work includes zbMATH/MathSciNet and lower citation thresholds for math seeds.
 
 ### Splitting Procedure
 
@@ -188,6 +222,146 @@ Splits use composite keys (domain × tier) to stay within **±5 pp** per field. 
 2. **Cluster profiling** — dominant field, popularity tier, max year, size
 3. **Stratified allocation** — composite key (domain × tier), temporal ordering, 70/15/15
 4. **Integrity verification** — zero cross-split paper ID overlap confirmed
+
+---
+
+## Error Handling
+
+Each task raises typed exceptions from `src/utils/errors.py`:
+
+| Exception | Raised by | Condition |
+|---|---|---|
+| `ValidationError` | T1, T2 | Missing required fields, invalid types, >10% error rate |
+| `DataQualityError` | T8 | Quality score below 85% threshold |
+| `APIError` | T1 | Semantic Scholar / OpenAlex request failure |
+| `RateLimitError` | T1 | API rate limit exceeded (429) |
+
+**Graceful degradation:** Redis down → API-only; DB down → API fallback; rate limited → linear backoff (10 retries, up to 275 s); partial API failures → logged and skipped; SMTP absent → alerts silently skipped; PDF 403/404 → removed from retry queue.
+
+---
+
+## Tracking & Logging
+
+All logging is centralised through `src/utils/logging.py`. Every module uses the same entry point:
+
+```python
+from src.utils.logging import get_logger
+logger = get_logger(__name__)
+```
+
+The root logger is auto-configured on first import with a consistent format:
+
+```
+2026-02-23 14:32:01 | INFO     | src.tasks.data_validation | Starting validation
+2026-02-23 14:32:01 | WARNING  | src.tasks.anomaly_detection | Detected 3 anomalies
+```
+
+`LOG_LEVEL` in `.env` controls verbosity (default: `INFO`; set to `DEBUG` for verbose output).
+
+**DAG 1** logs per-task progress, validation results, and cache hit rates via Airflow task logs.
+
+**DAG 2** writes dual output: `INFO`+ to Airflow logs and a full `DEBUG`-level trace to `data/tasks/pipeline_output/pipeline.log`.
+
+---
+
+## Running Tests
+
+Tests are fully isolated — no live API calls, no database connections required.
+
+### Option A: Docker (recommended)
+
+```bash
+docker build -f Dockerfile.test -t researchlineage-tests .
+docker run --rm -v $(pwd)/reports:/app/reports researchlineage-tests
+```
+
+Open `reports/report.html` for the full results dashboard.
+
+Expected result: **171 passed, 1 warning**
+
+The warning is a harmless Pydantic v2 deprecation in `src/utils/config.py` — does not affect functionality.
+
+### Option B: Local
+
+```bash
+poetry run pytest tests/ -v
+```
+
+### Test coverage
+
+| File | Tests | Scope |
+|---|---|---|
+| `test_data_acquisition.py` | 29 | Input/output validation, reference/citation filtering logic |
+| `test_data_validation.py` | 21 | Schema checks, 10% error-rate threshold, self-citation removal |
+| `test_data_cleaning.py` | 18 | Deduplication, venue normalisation, referential filtering |
+| `test_citation_graph.py` | 18 | Graph construction, metrics, edge cases (empty graph) |
+| `test_feature_engineering.py` | 16 | Feature completeness, normalisation, temporal categories |
+| `test_schema_transformation.py` | 17 | Field mapping, ArXiv ID extraction, author UUID fallback |
+| `test_quality_validation.py` | 21 | Quality checks, referential integrity, 85% quality threshold |
+| `test_anomaly_detection.py` | 14 | Z-score outliers, duplicates, disconnected nodes |
+| `test_pipeline_e2e.py` | 18 | Full Tasks 2–9 chain, data integrity across stages |
+| **Total** | **171** | 153 unit + 18 integration |
+
+---
+
+## Data Versioning (DVC)
+
+DVC tracks raw/processed research data and fine-tuning artifacts. All data is stored in GCS. The remote is pre-configured in `.dvc/config` — no additional setup required.
+
+### Remote
+
+```
+gs://researchlineage-gcs/dvc-store
+```
+
+Authentication uses the same GCP credentials as the rest of the project (`GCLOUD_CONFIG_DIR`).
+
+### Tracked datasets
+
+| DVC pointer | DAG | Contents |
+|---|---|---|
+| `data/raw.dvc` | `research_lineage_pipeline` | Raw API responses from Semantic Scholar |
+| `data/processed.dvc` | `research_lineage_pipeline` | Cleaned, validated, and feature-engineered datasets |
+| `data/tasks/pipeline_output/splits.dvc` | `fine_tuning_data_pipeline` | Stratified train / val / test splits (70 / 15 / 15) |
+| `data/tasks/pipeline_output/llama_format.dvc` | `fine_tuning_data_pipeline` | Llama chat-format training files and metadata sidecars |
+
+`.dvc` pointer files are committed to Git; actual data is not.
+
+### Pull existing data
+
+```bash
+dvc pull
+```
+
+### Push new data after a pipeline run
+
+> **Note:** Both DAGs automatically upload artifacts to GCS under a timestamped path (`{gcs_prefix}/{run_id}/`) at the end of each run. This is independent of DVC. The steps below are a **manual post-run step** to create a reproducible, git-linked snapshot restorable with `dvc pull`.
+
+**Research lineage pipeline:**
+
+```bash
+dvc add data/raw data/processed
+dvc push
+git add data/raw.dvc data/processed.dvc
+git commit -m "Update research lineage datasets"
+```
+
+**Fine-tuning pipeline:**
+
+```bash
+dvc add data/tasks/pipeline_output/splits data/tasks/pipeline_output/llama_format
+dvc push
+git add data/tasks/pipeline_output/splits.dvc data/tasks/pipeline_output/llama_format.dvc
+git commit -m "Track fine-tuning artifacts from pipeline run"
+```
+
+### Retrieve data from a specific past run
+
+```bash
+git log --oneline data/raw.dvc
+git checkout <commit-hash> -- data/raw.dvc
+dvc pull data/raw.dvc
+```
 
 ---
 
@@ -372,8 +546,7 @@ Creates the metadata schema and default admin user:
 }
 ```
 
-`paper_id` is the Semantic Scholar paper ID — the default above is "Attention Is All You Need".
-Start with `max_depth: 2` and `direction: backward` for a faster first run.
+`paper_id` is the Semantic Scholar paper ID — the default above is "Attention Is All You Need". Start with `max_depth: 2` and `direction: backward` for a faster first run.
 
 `direction` options: `backward` (references only), `forward` (citations only), `both`.
 
@@ -381,183 +554,6 @@ Start with `max_depth: 2` and `direction: backward` for a faster first run.
 
 ```bash
 docker compose down
-```
-
----
-
-## Running Tests
-
-Tests are fully isolated — no live API calls, no database connections required.
-
-### Option A: Docker (recommended)
-
-```bash
-docker build -f Dockerfile.test -t researchlineage-tests .
-
-# Run with HTML report output
-docker run --rm -v $(pwd)/reports:/app/reports researchlineage-tests
-```
-
-Open `reports/report.html` in a browser to see the full results dashboard.
-
-Expected result: **171 passed, 1 warning**
-
-The warning is a harmless Pydantic v2 deprecation in `src/utils/config.py` — does not affect functionality.
-
-### Option B: Local
-
-```bash
-poetry run pytest tests/ -v
-```
-
-### Test coverage
-
-| File | Tests | Scope |
-|---|---|---|
-| `test_data_acquisition.py` | 29 | Input/output validation, reference/citation filtering logic |
-| `test_data_validation.py` | 21 | Schema checks, 10% error-rate threshold, self-citation removal |
-| `test_data_cleaning.py` | 18 | Deduplication, venue normalisation, referential filtering |
-| `test_citation_graph.py` | 18 | Graph construction, metrics, edge cases (empty graph) |
-| `test_feature_engineering.py` | 16 | Feature completeness, normalisation, temporal categories |
-| `test_schema_transformation.py` | 17 | Field mapping, ArXiv ID extraction, author UUID fallback |
-| `test_quality_validation.py` | 21 | Quality checks, referential integrity, 85% quality threshold |
-| `test_anomaly_detection.py` | 14 | Z-score outliers, duplicates, disconnected nodes |
-| `test_pipeline_e2e.py` | 18 | Full Tasks 2–9 chain, data integrity across stages |
-| **Total** | **171** | 153 unit + 18 integration |
-
----
-
-## Tracking & Logging
-
-All logging is centralised through `src/utils/logging.py`. Every module in the project uses the same entry point:
-
-```python
-from src.utils.logging import get_logger
-logger = get_logger(__name__)
-```
-
-The root logger is auto-configured on first import with a consistent format:
-
-```
-2026-02-23 14:32:01 | INFO     | src.tasks.data_validation | Starting validation
-2026-02-23 14:32:01 | WARNING  | src.tasks.anomaly_detection | Detected 3 anomalies
-```
-
-`LOG_LEVEL` in `.env` controls verbosity (default: `INFO`; set to `DEBUG` for verbose output).
-
-**DAG 1** logs per-task progress, validation results, and cache hit rates via Airflow task logs.
-
-**DAG 2** writes dual output: `INFO`+ to Airflow logs and a full `DEBUG`-level trace (API calls, retries, parse attempts) to `data/tasks/pipeline_output/pipeline.log`.
-
----
-
-## Anomaly Detection & Alerting
-
-`AnomalyDetectionTask` (T9) detects the following anomaly types:
-
-| Type | Detection method |
-|---|---|
-| Missing data (abstracts, years, venues) | Field presence check on every record |
-| Statistical outliers (citation counts) | Z-score > 3 |
-| Citation anomalies (self-citations, duplicates) | Post-cleaning verification pass |
-| Disconnected papers (zero in/out degree) | Graph connectivity scan |
-| API rate limit threshold breaches | Request counter threshold monitoring |
-
-When `total_anomalies > 0`, an email alert is sent via `EmailService` (`src/utils/email_service.py`) — methods: `send_alert`, `send_pipeline_success`, `send_pipeline_error`.
-
-![Airflow logs: 17 anomalies detected, email sent](docs/screenshots/Anamoly-detection.png)
-
-![Anomaly alert email in Gmail: 17 issues detected](docs/screenshots/Anamoly-alert-mail.png)
-
-**Sample alert:**
-
-```
-Subject: ResearchLineage Anomaly Alert — 5 issue(s) detected
-
-Anomaly detection found 5 issue(s) in pipeline run.
-Target paper: 204e3073870fae3d05bcbc2f6a8e263d9b72e776
-
-Breakdown:
-  missing_data.missing_abstracts: 2
-  missing_data.missing_venues: 1
-  citation_anomalies.duplicate_citations: 1
-  disconnected_papers.disconnected_papers: 1
-
-Check the Airflow logs for full details.
-```
-
-Alerts are **silently skipped** if SMTP credentials are not configured — the pipeline continues normally.
-
-**Gmail setup:** Enable 2-Step Verification → generate an App Password at `myaccount.google.com/apppasswords` → use the 16-character code as `SMTP_PASSWORD`.
-
----
-
-## Data Versioning (DVC)
-
-DVC tracks raw/processed research data and fine-tuning artifacts. All data is stored in GCS. The remote is pre-configured in `.dvc/config` — no additional setup required.
-
-### Remote
-
-The project uses a GCS remote named `gcs`:
-
-```
-gs://researchlineage-gcs/dvc-store
-```
-
-Authentication uses the same GCP credentials as the rest of the project (`GCLOUD_CONFIG_DIR`).
-
-### Tracked datasets
-
-| DVC pointer | DAG | Contents |
-|---|---|---|
-| `data/raw.dvc` | `research_lineage_pipeline` | Raw API responses from Semantic Scholar |
-| `data/processed.dvc` | `research_lineage_pipeline` | Cleaned, validated, and feature-engineered datasets |
-| `data/tasks/pipeline_output/splits.dvc` | `fine_tuning_data_pipeline` | Stratified train / val / test splits (70 / 15 / 15) |
-| `data/tasks/pipeline_output/llama_format.dvc` | `fine_tuning_data_pipeline` | Llama chat-format training files and metadata sidecars |
-
-`.dvc` pointer files are committed to Git; actual data is not.
-
-### Pull existing data
-
-```bash
-dvc pull
-```
-
-### Push new data after a pipeline run
-
-> **Note:** Both DAGs automatically upload artifacts to GCS under a timestamped path (`{gcs_prefix}/{run_id}/`) at the end of each run. This is a raw archive and is independent of DVC. The steps below are a **manual post-run step** — run them when you want to create a reproducible, git-linked snapshot that others can restore with `dvc pull`.
-
-**Research lineage pipeline** (updates `data/raw/` and `data/processed/`):
-
-```bash
-dvc add data/raw data/processed
-dvc push
-git add data/raw.dvc data/processed.dvc
-git commit -m "Update research lineage datasets"
-```
-
-**Fine-tuning pipeline** (updates `splits/` and `llama_format/`):
-
-```bash
-dvc add data/tasks/pipeline_output/splits data/tasks/pipeline_output/llama_format
-dvc push
-git add data/tasks/pipeline_output/splits.dvc data/tasks/pipeline_output/llama_format.dvc
-git commit -m "Track fine-tuning artifacts from pipeline run"
-```
-
-### Retrieve data from a specific past run
-
-Each `dvc push` is tied to a git commit via the `.dvc` pointer file. To restore an earlier version:
-
-```bash
-# Find the commit where that run was recorded
-git log --oneline data/raw.dvc
-
-# Restore the pointer from that commit
-git checkout <commit-hash> -- data/raw.dvc
-
-# Pull that exact dataset from GCS
-dvc pull data/raw.dvc
 ```
 
 ---
@@ -603,8 +599,6 @@ All settings are loaded from `.env` via `src/utils/config.py` (Pydantic `BaseSet
 **Operator:** PythonOperator (all tasks)
 **Config:** `max_active_runs=1`, `retries=3`, `retry_delay=5m`, `execution_timeout=60m` (pdf_upload: 120m)
 
-![Database stats report: 64 papers, 291 authors, 82 citations, 1951–2025](docs/screenshots/Database-Stats-report.png)
-
 **Trigger config:**
 ```json
 {
@@ -644,11 +638,8 @@ All parameters are overridable at trigger time. Defaults come from `src/utils/co
   "n_seeds": "30",
   "domains": "cs,physics,math",
   "min_citations": "50",
-  "per_domain_pool": "20",
-  "seed_query": "deep learning",
   "max_depth": "3",
   "max_seeds": "30",
-  "batch_sleep": "2",
   "train_frac": "0.70",
   "val_frac": "0.15",
   "test_frac": "0.15",
@@ -659,7 +650,7 @@ All parameters are overridable at trigger time. Defaults come from `src/utils/co
 }
 ```
 
-**Pipeline report** (JSON + TXT): global sample stats, per-split distributions with cross-split comparison, lineage integrity check (zero paper ID overlap), token length stats, file manifest.
+**Pipeline report** (JSON + TXT): global sample stats, per-split distributions, lineage integrity check (zero paper ID overlap), token length stats, file manifest.
 
 ![fine_tuning_pipeline: all 8 tasks green, 7:20 total](docs/screenshots/Fine-tuning-DAG.png)
 
