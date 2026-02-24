@@ -60,6 +60,7 @@ Thumbs.db
 # Database
 *.db
 *.sqlite
+postgres_data/
 
 # Test / coverage
 .coverage
