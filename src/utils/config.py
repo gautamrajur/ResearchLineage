@@ -173,7 +173,7 @@ GCS_UPLOAD_PREFIX: str = settings.gcs_upload_prefix
 # ========================================
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent  # src/utils/config.py -> project root
-RUN_DIR = _PROJECT_ROOT / "src" / "tasks" / "pipeline_output"
+RUN_DIR = _PROJECT_ROOT / "data" / "tasks" / "pipeline_output"
 
 SEEDS_FILE: str = str(RUN_DIR / "seeds.json")
 TRAINING_DATA_FILE: str = str(RUN_DIR / "training_data.jsonl")
