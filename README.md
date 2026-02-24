@@ -127,13 +127,21 @@ All exceptions propagate to Airflow which retries the task up to 3 times with a 
 │       ├── conftest.py                # Full pipeline chain fixture (Tasks 2–9, no live APIs)
 │       └── test_pipeline_e2e.py       # 18 end-to-end tests
 │
+├── data/
+│   ├── raw.dvc                            # DVC pointer — raw Semantic Scholar responses
+│   ├── processed.dvc                      # DVC pointer — cleaned & feature-engineered data
+│   └── tasks/
+│       └── pipeline_output/               # Fine-tuning DAG runtime output (git-ignored)
+│           ├── splits.dvc                 # DVC pointer — train/val/test splits
+│           └── llama_format.dvc           # DVC pointer — Llama chat-format training files
+│
 ├── docker/
 │   └── airflow.Dockerfile             # Airflow image with project deps
 ├── Dockerfile.test                    # Lightweight image for running tests only
 ├── docker-compose.yml                 # Postgres + Redis + Cloud SQL Proxy + Airflow
 ├── pyproject.toml                     # Dependencies (Poetry) + pytest config
 ├── .env.example                       # Template for all required environment variables
-└── .dvc/                              # DVC configuration
+└── .dvc/                              # DVC remote config (GCS)
 ```
 
 ---
