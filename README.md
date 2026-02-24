@@ -144,6 +144,10 @@ Below — pre-optimization run where `database_write` failed after 21+ minutes:
 
 ![Before optimization: database_write failed at 21:23](docs/screenshots/Without-pipeline-optimization.png)
 
+After — `data_acquisition` completes in **3m 15s**, all downstream tasks finish in seconds:
+
+![After optimization: Gantt view, data_acquisition run duration 3m 15s](docs/screenshots/With-pipeline-optimization.jpeg)
+
 ---
 
 ## Bias Detection & Mitigation (DAG 2)
