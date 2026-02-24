@@ -18,6 +18,9 @@ from src.tasks.anomaly_detection import AnomalyDetectionTask  # noqa: E402
 from src.tasks.database_write import DatabaseWriteTask  # noqa: E402
 from src.tasks.data_acquisition import DataAcquisitionTask  # noqa: E402
 from src.tasks.data_validation import DataValidationTask  # noqa: E402
+from src.utils.logging import get_logger  # noqa: E402
+
+logger = get_logger(__name__)
 from src.tasks.data_cleaning import DataCleaningTask  # noqa: E402
 from src.tasks.citation_graph_construction import CitationGraphConstructionTask  # noqa: E402
 from src.tasks.pdf_upload_task import PDFUploadTask  # noqa: E402
@@ -190,8 +193,67 @@ def task_8_quality_validation(**context):
 
     context["task_instance"].xcom_push(key="validated_db_data", value=result)
 
-    quality_score = result["quality_report"]["quality_score"]
-    return f"Quality validation: {quality_score:.1%} score"
+    report = result["quality_report"]
+    quality_score = report["quality_score"]
+    validation_results = report["validation_results"]
+
+    logger.info("=" * 60)
+    logger.info("QUALITY VALIDATION REPORT")
+    logger.info("=" * 60)
+    logger.info(
+        "Overall score: %.1f%% (%d/%d checks passed, %d failed)",
+        quality_score * 100,
+        report["passed_checks"],
+        report["total_checks"],
+        report["failed_checks"],
+    )
+    logger.info("Threshold: 85.0%% — %s", "PASS" if quality_score >= 0.85 else "FAIL")
+    logger.info("-" * 60)
+
+    category_labels = {
+        "schema_validation": "Schema Validation",
+        "statistics_validation": "Statistical Checks",
+        "referential_integrity": "Referential Integrity",
+        "bias_detection": "Bias Detection",
+    }
+    for key, label in category_labels.items():
+        cat = validation_results.get(key, {})
+        n_passed = len(cat.get("passed", []))
+        n_failed = len(cat.get("failed", []))
+        status = "OK" if n_failed == 0 else "ISSUES"
+        logger.info("  %-26s %d passed, %d failed  [%s]", label, n_passed, n_failed, status)
+        for msg in cat.get("failed", []):
+            logger.warning("    ✗ %s", msg)
+
+    bias = validation_results.get("bias_detection", {}).get("bias_report", {})
+    if bias:
+        logger.info("-" * 60)
+        logger.info("Bias breakdown:")
+
+        temporal = bias.get("temporal_bias", {})
+        if temporal:
+            logger.info("  Temporal distribution (%d papers):", temporal.get("total_papers", 0))
+            for era, proportion in temporal.get("distribution", {}).items():
+                logger.info("    %-18s %.1f%%", era, proportion * 100)
+
+        citation = bias.get("citation_bias", {})
+        if citation:
+            logger.info(
+                "  Citation distribution (high-citation proportion: %.1f%%):",
+                citation.get("high_citation_proportion", 0) * 100,
+            )
+            for bucket, proportion in citation.get("distribution", {}).items():
+                logger.info("    %-25s %.1f%%", bucket, proportion * 100)
+
+        venue = bias.get("venue_bias", {})
+        if venue:
+            logger.info("  Venue distribution:")
+            for venue_type, proportion in venue.get("distribution", {}).items():
+                logger.info("    %-20s %.1f%%", venue_type, proportion * 100)
+
+    logger.info("=" * 60)
+
+    return f"Quality validation: {quality_score:.1%} score ({report['passed_checks']}/{report['total_checks']} checks passed)"
 
 
 def task_9_anomaly_detection(**context):
