@@ -122,60 +122,19 @@ Each task raises typed exceptions from `src/utils/errors.py`:
 
 ### DAG 2 — Preprocessing steps
 
-- **Step 3 (preprocessing):** Scans JSONL for malformed records, missing fields, empty responses; drops and flags bad records.
-- **Step 4 (repair_lineage_chains):** Cross-references shared paper IDs to reconstruct missing metadata, ensuring full provenance before splitting.
-- **Steps 5–6 (split + convert):** Separates training pairs from metadata sidecars; converts to Llama 3.1 8B chat format with full provenance (paper IDs, years, citations, depth, lineage chain).
+- **preprocessing:** validates JSONL, drops malformed records
+- **repair_lineage_chains:** reconstructs missing metadata via shared paper ID cross-reference
+- **split + convert:** separates pairs from metadata sidecars; converts to Llama 3.1 8B chat format
 
 ---
 
 ## Pipeline Flow Optimization
 
-### Inline filtering impact
+**Inline filtering** cuts API calls from 10,000+ (~6 h hypothetical) to 100–150 per run (2–3 min) — 98% reduction.
 
-Without filtering the BFS would naively follow every cited paper recursively:
+**Parallelisation:** after `data_acquisition`, `pdf_upload` branches off concurrently (120-min timeout) without blocking the main chain.
 
-| Scenario | API calls | Time |
-|---|---|---|
-| Without filtering | 10,000+ | ~6 hours (hypothetical — would hit rate limits before completing) |
-| With filtering | 100–150 | 2–3 minutes |
-
-**98% reduction** in API calls; avoids rate-limit cascades entirely.
-
-### Caching response time comparison
-
-| Request type | Response time |
-|---|---|
-| Fresh API call | ~180 s |
-| PostgreSQL cache hit | ~45 s |
-| Redis cache hit | ~15 s |
-
-A warm cache (typical for repeated seeds or shared ancestors) cuts acquisition time by 75–90%.
-
-### Parallelisation
-
-After `data_acquisition` completes, the DAG forks:
-- **Branch A (main chain):** validation → cleaning → graph → features → schema → quality → anomaly → DB write → report
-- **Branch B (parallel):** `pdf_upload` runs concurrently, fetching PDFs from publisher sites and uploading to GCS. It does not block the main chain and has its own 120-minute timeout.
-
-### Gantt chart analysis
-
-Airflow's Gantt view identified `data_acquisition` as the dominant bottleneck. After enabling the full caching stack and inline filtering:
-
-| Metric | Before | After |
-|---|---|---|
-| Total pipeline time | 6m 02s | 3m 15s |
-| Outcome | `database_write` failed (longer acquisition caused downstream timeout) | All 11 tasks successful |
-| Improvement | — | **46% faster** |
-
-**Performance at steady state:**
-
-| Metric | Value |
-|---|---|
-| End-to-end runtime | < 5 minutes |
-| API call reduction | 80–98% |
-| Cache hit rate | 60–80% |
-| Task success rate | 95%+ |
-| Data quality pass rate | 99%+ |
+**Gantt analysis** pinpointed `data_acquisition` as the bottleneck. After enabling caching + filtering: **6m 02s → 3m 15s (46% faster)**, with `database_write` no longer timing out. Steady state: <5 min e2e, 60–80% cache hit rate, 95%+ task success.
 
 ---
 
@@ -381,12 +340,7 @@ Creates the metadata schema and default admin user:
 - URL: http://localhost:8080
 - Username: `admin` / Password: `admin`
 
-**Reproducibility guarantees:**
-- Poetry lockfile pins all transitive dependencies for deterministic installs
-- Fixed random seed in `lineage_pipeline.py` ensures deterministic splits and sampling
-- DVC pointer files tie every dataset version to a specific git commit — `git checkout <commit> -- <file>.dvc && dvc pull` restores any past run exactly
-- PEP 8 enforced via pre-commit hooks (black, ruff, isort) in `.pre-commit-config.yaml`
-- Pydantic `BaseSettings` loads all config from `.env` with sensible defaults — no hardcoded values
+**Reproducibility:** Poetry lockfile for deterministic installs; fixed random seed in `lineage_pipeline.py`; DVC pointers git-linked to every dataset version; PEP 8 via pre-commit hooks.
 
 ---
 
@@ -479,21 +433,9 @@ The root logger is auto-configured on first import with a consistent format:
 
 `LOG_LEVEL` in `.env` controls verbosity (default: `INFO`; set to `DEBUG` for verbose output).
 
-**DAG 1 — Airflow task logs** record per-task progress, validation results, and cache hit rates at each stage.
+**DAG 1** logs per-task progress, validation results, and cache hit rates via Airflow task logs.
 
-**DAG 2 — dual-output logging:**
-- Console: `INFO`+ level output, visible in Airflow task logs
-- `data/tasks/pipeline_output/pipeline.log`: full `DEBUG`-level trace including API call details, HTML text extraction, JSON parse attempts, and per-request retry behaviour
-
-**Metrics tracked across both DAGs:**
-
-| Metric | Where logged |
-|---|---|
-| Task execution time | Airflow task duration |
-| API call count | `data_acquisition` task log |
-| Cache hit rate (Redis + DB layers) | `data_acquisition` task log |
-| Validation success rate | `data_validation` task log |
-| Per-seed success / failure | DAG 2 `pipeline.log` |
+**DAG 2** writes dual output: `INFO`+ to Airflow logs and a full `DEBUG`-level trace (API calls, retries, parse attempts) to `data/tasks/pipeline_output/pipeline.log`.
 
 ---
 
@@ -509,9 +451,7 @@ The root logger is auto-configured on first import with a consistent format:
 | Disconnected papers (zero in/out degree) | Graph connectivity scan |
 | API rate limit threshold breaches | Request counter threshold monitoring |
 
-When `total_anomalies > 0`, an email alert is sent via `src/utils/email_service.py`.
-
-**Email service implementation:** `EmailConfig` dataclass holds SMTP settings; `EmailService` class exposes three methods: `send_alert` (anomaly notification), `send_pipeline_success`, and `send_pipeline_error`. SMTP settings are loaded from `src/utils/config.py` (Pydantic `BaseSettings`).
+When `total_anomalies > 0`, an email alert is sent via `EmailService` (`src/utils/email_service.py`) — methods: `send_alert`, `send_pipeline_success`, `send_pipeline_error`.
 
 **Sample alert:**
 
@@ -660,10 +600,8 @@ All settings are loaded from `.env` via `src/utils/config.py` (Pydantic `BaseSet
 
 ### `fine_tuning_pipeline`
 
-Generates structured Llama 3.1 8B fine-tuning data from research lineage chains. Output: JSONL with instruction / prompt / response + metadata sidecars → converted to Llama chat format → uploaded to GCS.
-
 **Trigger:** Manual only (`schedule_interval=None`), no backfill
-**Operator:** BashOperator — each step invoked via `python lineage_pipeline.py --step <name>`
+**Operator:** BashOperator — each step via `python lineage_pipeline.py --step <name>`
 **Config:** `max_active_runs=1`, `retries=2`, `retry_delay=5m`
 
 **Task flow and timeouts:**
@@ -703,12 +641,7 @@ All parameters are overridable at trigger time. Defaults come from `src/utils/co
 }
 ```
 
-**Pipeline report** (`pipeline_report` task, written in JSON and TXT):
-- Global statistics: sample counts, foundational vs. non-foundational ratio, field and source distributions, breakthrough levels, numeric summaries (mean / median / percentiles / std) for depth, candidate count, year, citations, and temporal gap
-- Per-split statistics: independent distributions for train / val / test with a cross-split comparison table
-- Lineage integrity: zero paper ID overlap verified between all split pairs
-- Token length statistics for each Llama chat-format file
-- File manifest with sizes
+**Pipeline report** (JSON + TXT): global sample stats, per-split distributions with cross-split comparison, lineage integrity check (zero paper ID overlap), token length stats, file manifest.
 
 ---
 
@@ -719,12 +652,4 @@ Standalone DAG to retry failed PDF fetches from previous pipeline runs.
 **Trigger:** Manual only (`schedule_interval=None`)
 **Config:** `max_active_runs=1`, `retries=1`, `retry_delay=5m`, `execution_timeout=60m`
 
-**What it does:**
-1. Queries the `fetch_pdf_failures` table for rows where `retry_after` has passed
-2. Re-downloads PDFs from publisher sites
-3. Uploads successful fetches to GCS
-4. Removes permanently unfetchable entries (HTTP 403 / 404) from the failures table
-5. Reconciles with GCS (marks as done any entries already present in the bucket)
-6. Sends alerts for PDFs that have exceeded the maximum retry count
-
-This DAG operates independently of the main pipeline and progressively populates the GCS PDF store over time.
+Queries `fetch_pdf_failures` for eligible retries, re-downloads and uploads to GCS, removes permanent 403/404 failures, reconciles with GCS, and alerts on max-retry exhaustion.
