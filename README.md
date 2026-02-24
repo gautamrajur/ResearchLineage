@@ -37,6 +37,8 @@ Three Airflow DAGs, all running locally via Docker Compose:
 | `fine_tuning_pipeline` | 8 sequential | BashOperator | Manual |
 | `retry_failed_pdfs` | 1 | PythonOperator | Manual |
 
+![All three DAGs in Airflow UI](docs/screenshots/Three-different-DAGS.png)
+
 ### `research_lineage_pipeline` — 11-task flow
 
 ```
@@ -71,6 +73,8 @@ Inter-task data passes through Airflow **XCom**. The NetworkX graph object is no
 ### Data Quality Validation (Task 8)
 
 `QualityValidationTask` runs 300–500 checks covering schema compliance, statistical properties, and referential integrity. It also checks dataset distribution balance across three dimensions:
+
+![Quality validation score: 99.8% (445/446 checks passed)](docs/screenshots/Quality-Score-for-Data-Validation.png)
 
 | Dimension | Check | Threshold |
 |---|---|---|
@@ -135,6 +139,14 @@ Each task raises typed exceptions from `src/utils/errors.py`:
 **Parallelisation:** after `data_acquisition`, `pdf_upload` branches off concurrently (120-min timeout) without blocking the main chain.
 
 **Gantt analysis** pinpointed `data_acquisition` as the bottleneck. After enabling caching + filtering: **6m 02s → 3m 15s (46% faster)**, with `database_write` no longer timing out. Steady state: <5 min e2e, 60–80% cache hit rate, 95%+ task success.
+
+**Before optimization** — `database_write` failing, 21+ min total run time:
+
+![Before optimization: database_write failed at 21:23](docs/screenshots/Without-pipeline-optimization.png)
+
+**After optimization** — all tasks green, `data_acquisition` completes in 6m 02s:
+
+![After optimization: Gantt view with all tasks passing](docs/screenshots/With-pipeline-optimization.png)
 
 ---
 
@@ -453,6 +465,10 @@ The root logger is auto-configured on first import with a consistent format:
 
 When `total_anomalies > 0`, an email alert is sent via `EmailService` (`src/utils/email_service.py`) — methods: `send_alert`, `send_pipeline_success`, `send_pipeline_error`.
 
+![Airflow logs: 17 anomalies detected, email sent](docs/screenshots/Anamoly-detection.png)
+
+![Anomaly alert email in Gmail: 17 issues detected](docs/screenshots/Anamoly-alert-mail.png)
+
 **Sample alert:**
 
 ```
@@ -587,6 +603,8 @@ All settings are loaded from `.env` via `src/utils/config.py` (Pydantic `BaseSet
 **Operator:** PythonOperator (all tasks)
 **Config:** `max_active_runs=1`, `retries=3`, `retry_delay=5m`, `execution_timeout=60m` (pdf_upload: 120m)
 
+![Database stats report: 64 papers, 291 authors, 82 citations, 1951–2025](docs/screenshots/Database-Stats-report.png)
+
 **Trigger config:**
 ```json
 {
@@ -643,6 +661,10 @@ All parameters are overridable at trigger time. Defaults come from `src/utils/co
 
 **Pipeline report** (JSON + TXT): global sample stats, per-split distributions with cross-split comparison, lineage integrity check (zero paper ID overlap), token length stats, file manifest.
 
+![fine_tuning_pipeline: all 8 tasks green, 7:20 total](docs/screenshots/Fine-tuning-DAG.png)
+
+![batch_run logs: S2 rate limiting, Gemini API calls, training examples saved](docs/screenshots/Fine-tuning-DAG-logs.png)
+
 ---
 
 ### `retry_failed_pdfs`
@@ -653,3 +675,5 @@ Standalone DAG to retry failed PDF fetches from previous pipeline runs.
 **Config:** `max_active_runs=1`, `retries=1`, `retry_delay=5m`, `execution_timeout=60m`
 
 Queries `fetch_pdf_failures` for eligible retries, re-downloads and uploads to GCS, removes permanent 403/404 failures, reconciles with GCS, and alerts on max-retry exhaustion.
+
+![retry_failed_pdfs task logs: successful retry execution](docs/screenshots/retry-DAG-for-failed-pdf.png)
