@@ -9,7 +9,8 @@ from datetime import datetime, timedelta  # noqa: E402
 from airflow import DAG  # noqa: E402
 from airflow.operators.python import PythonOperator  # noqa: E402
 import asyncio  # noqa: E402
-
+from src.tasks.schema_validation import SchemaValidationTask  # noqa: E402
+from src.tasks.report_generation import ReportGenerationTask  # noqa: E402
 from src.tasks.feature_engineering import FeatureEngineeringTask  # noqa: E402
 from src.tasks.schema_transformation import SchemaTransformationTask  # noqa: E402
 from src.tasks.quality_validation import QualityValidationTask  # noqa: E402
@@ -51,6 +52,16 @@ dag = DAG(
 def run_async_task(async_func):
     """Wrapper to run async functions in Airflow."""
     return asyncio.run(async_func)
+
+
+def task_0_schema_validation(**context):
+    """Task 0: Validate database schema exists."""
+    task = SchemaValidationTask()
+    result = task.execute()
+
+    context["task_instance"].xcom_push(key="schema_validation", value=result)
+
+    return f"Schema validated: {result['tables_found']}/{result['tables_checked']} tables found"
 
 
 def task_1_data_acquisition(**context):
@@ -216,7 +227,48 @@ def task_10_database_write(**context):
     )
 
 
+def task_11_report_generation(**context):
+    """Task 11: Generate database statistics report."""
+    write_result = context["task_instance"].xcom_pull(
+        task_ids="database_write", key="return_value"
+    )
+
+    # If write_result is string, get the actual data
+    final_data = context["task_instance"].xcom_pull(
+        task_ids="anomaly_detection", key="final_data"
+    )
+
+    # Reconstruct write_result
+    if isinstance(write_result, str):
+        write_result = {
+            "target_paper_id": final_data["target_paper_id"],
+            "write_stats": {
+                "papers_written": 0,
+                "authors_written": 0,
+                "citations_written": 0,
+            },
+            "quality_report": final_data["quality_report"],
+            "anomaly_report": final_data["anomaly_report"],
+        }
+
+    task = ReportGenerationTask()
+    result = task.execute(write_result)
+
+    stats = result["database_stats"]
+    return (
+        f"Report: {stats['total_papers']} papers, "
+        f"{stats['total_authors']} authors, {stats['total_citations']} citations"
+    )
+
+
 # Define tasks
+
+t0_schema = PythonOperator(
+    task_id="schema_validation",
+    python_callable=task_0_schema_validation,
+    dag=dag,
+)
+
 t1_acquisition = PythonOperator(
     task_id="data_acquisition",
     python_callable=task_1_data_acquisition,
@@ -270,10 +322,18 @@ t10_db_write = PythonOperator(
     python_callable=task_10_database_write,
     dag=dag,
 )
+
+t11_report = PythonOperator(
+    task_id="report_generation",
+    python_callable=task_11_report_generation,
+    dag=dag,
+)
+
 # Define task dependencies
-# Define task dependencies - full pipeline
+# Define task dependencies - full pipeline with schema check and report
 (
-    t1_acquisition
+    t0_schema
+    >> t1_acquisition
     >> t2_validation
     >> t3_cleaning
     >> t4_graph
@@ -282,4 +342,5 @@ t10_db_write = PythonOperator(
     >> t8_quality
     >> t9_anomaly
     >> t10_db_write
+    >> t11_report
 )
