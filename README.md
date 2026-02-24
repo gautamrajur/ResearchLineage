@@ -377,6 +377,8 @@ dvc pull
 
 ### Push new data after a pipeline run
 
+> **Note:** Both DAGs automatically upload artifacts to GCS under a timestamped path (`{gcs_prefix}/{run_id}/`) at the end of each run. This is a raw archive and is independent of DVC. The steps below are a **manual post-run step** — run them when you want to create a reproducible, git-linked snapshot that others can restore with `dvc pull`.
+
 **Research lineage pipeline** (updates `data/raw/` and `data/processed/`):
 
 ```bash
