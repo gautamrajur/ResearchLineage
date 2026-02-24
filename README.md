@@ -77,7 +77,12 @@ Inter-task data passes through Airflow **XCom**. The NetworkX graph is not seria
 
 **Three-layer caching:** Redis (48h TTL, ~60–70% hit) → PostgreSQL (permanent, ~20–30% hit) → live API. Combined live API miss rate: 10–20%.
 
-**Inline filtering** runs before recursive BFS calls — citation intent (methodology/background only), influence flags, citation count threshold, adaptive depth limits (top 5/3/2 per depth). Result: **98% reduction in API calls** (10,000+ → 100–150 per run).
+**Inline filtering** runs before recursive BFS calls with the following criteria:
+- Citation intent must be `methodology` or `background`, **or** the paper is marked `isInfluential` by Semantic Scholar
+- Papers are scored: base citation count + **+10K** (influential) + **+5K** (methodology intent)
+- Top N papers taken per depth level — adaptive: 5 at depth 0–1, 3 at depth 2, 2 at depth 3+
+
+Result: **98% reduction in API calls** (10,000+ → 100–150 per run).
 
 **Output:** JSONL with `instruction`, `prompt`, `response`, and `metadata` (paper IDs, years, citations, fields, depth, lineage chain). Supports `backward` / `forward` / `both` traversal. State file enables resume; fixed random seed ensures reproducibility.
 
@@ -214,6 +219,8 @@ Unconstrained seed selection yields ~65% CS. Three rounds of targeted seed colle
 | Mathematics | 14.1% | 15.3% | 14.6% |
 
 Splits use composite keys (domain × tier) to stay within **±5 pp** per field. Math remains underrepresented (~15%) due to sparse S2 coverage — future work includes zbMATH/MathSciNet and lower citation thresholds for math seeds.
+
+CS being over-represented at ~50% is considered an **acceptable structural compromise**: CS algorithms inherently form longer, more densely linked citation chains than physics or math papers, so naive seed sampling will always skew toward CS. Three rounds of targeted rebalancing brought it from 66% → 50%, which is meaningful progress. Rather than force further undersampling now — which would discard valid training signal and inflate fine-tuning cost — the plan is to evaluate model performance across domain slices after fine-tuning and apply corrective resampling only if cross-domain performance gaps are significant.
 
 ### Splitting Procedure
 
