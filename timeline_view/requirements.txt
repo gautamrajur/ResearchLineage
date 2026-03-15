@@ -7,3 +7,4 @@ gcloud
 airflow
 pandas
 numpy
+pymupdf
