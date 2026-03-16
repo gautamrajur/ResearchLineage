@@ -6,12 +6,12 @@ export default function App() {
 
   return (
     <div className="relative">
-      <div className="absolute top-0 left-0 right-0 z-10 px-5 py-4 flex justify-between items-center bg-gradient-to-b from-[#0B0D11] via-[#0B0D11]/80 to-transparent">
-        <h1 className="text-[#EAEDF2] text-lg font-semibold tracking-tight">
+      <div className="absolute top-0 left-0 right-0 z-10 px-5 py-4 flex justify-between items-center bg-gradient-to-b from-[#F5F0E8] via-[#F5F0E8]/80 to-transparent">
+        <h1 className="text-[#1C1510] text-lg font-semibold tracking-tight">
           Research Lineage
         </h1>
 
-        <div className="flex bg-[#12141A] rounded-lg p-1 border border-white/[0.06]">
+        <div className="flex bg-[#EDE6D8] rounded-lg p-1 border border-[#D0C4AD]">
           {(['pre', 'post'] as const).map((v) => (
             <button
               key={v}
@@ -20,8 +20,8 @@ export default function App() {
                 px-4 py-1.5 rounded-md text-[13px] font-medium
                 transition-all duration-200
                 ${view === v
-                  ? 'bg-[#1A1D25] text-[#EAEDF2] shadow-sm'
-                  : 'text-[#8B95A5] hover:text-[#EAEDF2]'
+                  ? 'bg-[#FDFAF6] text-[#1C1510] shadow-sm'
+                  : 'text-[#9B8B77] hover:text-[#1C1510]'
                 }
               `}
             >
