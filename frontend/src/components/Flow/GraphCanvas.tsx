@@ -156,7 +156,7 @@ const buildGraph = (
       type: 'smoothstep',
       animated: false,
       style: {
-        stroke: paper.depth === 1 ? '#9B7A50' : paper.depth === 2 ? '#6B8B6B' : '#7B8FA0',
+        stroke: paper.depth === 1 ? '#C8B272' : paper.depth === 2 ? '#A0A584' : '#697153',
         strokeWidth: paper.depth === 1 ? 1.5 : 1,
         opacity: 0.6,
       },
@@ -296,10 +296,10 @@ export function GraphCanvas({ view }: { view: 'pre' | 'post' }) {
   // Loading state
   if (loading) {
     return (
-      <div className="w-full h-screen flex items-center justify-center" style={{ background: '#F5F0E8' }}>
+      <div className="w-full h-screen flex items-center justify-center" style={{ background: '#43362A' }}>
         <div className="text-center">
-          <div className="text-[#1C1510] text-lg mb-2">Loading graph...</div>
-          <div className="text-[#9B8B77] text-sm">Fetching data from API</div>
+          <div className="text-[#E8DFC8] text-lg mb-2">Loading graph...</div>
+          <div className="text-[#A0A584] text-sm">Fetching data from API</div>
         </div>
       </div>
     );
@@ -308,41 +308,42 @@ export function GraphCanvas({ view }: { view: 'pre' | 'post' }) {
   // Error state
   if (error) {
     return (
-      <div className="w-full h-screen flex items-center justify-center" style={{ background: '#F5F0E8' }}>
+      <div className="w-full h-screen flex items-center justify-center" style={{ background: '#43362A' }}>
         <div className="text-center">
-          <div className="text-[#C4622D] text-lg mb-2">Error loading graph</div>
-          <div className="text-[#9B8B77] text-sm">{error}</div>
+          <div className="text-[#C8B272] text-lg mb-2">Error loading graph</div>
+          <div className="text-[#A0A584] text-sm">{error}</div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="w-full h-screen relative" style={{ background: '#F5F0E8' }}>
+    <div className="w-full h-screen relative" style={{ background: '#43362A' }}>
       {/* Data source status indicator — always visible, centered at top */}
-      <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-[#FDFAF6] rounded-full px-5 py-2 shadow-sm border border-[#D8CCB8]">
+      <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 rounded-full px-5 py-2"
+        style={{ background: '#3A2E21', border: '1px solid rgba(200,178,114,0.25)', boxShadow: '0 2px 8px rgba(0,0,0,0.3)' }}>
         {dataSource === 'mock' && treeStatus !== 'building' && (
           <>
-            <div className="w-2.5 h-2.5 bg-[#C4B89A] rounded-full" />
-            <span className="text-[#1C1510] text-sm font-medium">Mock data</span>
+            <div className="w-2.5 h-2.5 rounded-full" style={{ background: '#697153' }} />
+            <span className="text-[#E8DFC8] text-sm font-medium">Mock data</span>
           </>
         )}
         {treeStatus === 'building' && (
           <>
-            <div className="w-2.5 h-2.5 bg-[#D97706] rounded-full animate-pulse" />
-            <span className="text-[#1C1510] text-sm font-medium">Building live tree&hellip;</span>
+            <div className="w-2.5 h-2.5 rounded-full animate-pulse" style={{ background: '#A88B4C' }} />
+            <span className="text-[#E8DFC8] text-sm font-medium">Building live tree&hellip;</span>
           </>
         )}
         {treeStatus === 'ready' && dataSource === 'live' && (
           <>
-            <div className="w-2.5 h-2.5 bg-[#6B8B6B] rounded-full" />
-            <span className="text-[#1C1510] text-sm font-medium">Live data &mdash; Semantic Scholar</span>
+            <div className="w-2.5 h-2.5 rounded-full" style={{ background: '#A0A584' }} />
+            <span className="text-[#E8DFC8] text-sm font-medium">Live data &mdash; Semantic Scholar</span>
           </>
         )}
         {treeStatus === 'error' && dataSource === 'mock' && (
           <>
-            <div className="w-2.5 h-2.5 bg-[#C4622D] rounded-full" />
-            <span className="text-[#1C1510] text-sm font-medium">Mock data (live fetch failed)</span>
+            <div className="w-2.5 h-2.5 rounded-full" style={{ background: '#C8B272' }} />
+            <span className="text-[#E8DFC8] text-sm font-medium">Mock data (live fetch failed)</span>
           </>
         )}
       </div>
@@ -362,7 +363,7 @@ export function GraphCanvas({ view }: { view: 'pre' | 'post' }) {
         maxZoom={2}
         proOptions={{ hideAttribution: true }}
       >
-        <Background color="#E0D8CC" gap={24} size={1} />
+        <Background color="#3A2E21" gap={24} size={1} />
         <Controls showInteractive={false} />
       </ReactFlow>
     </div>

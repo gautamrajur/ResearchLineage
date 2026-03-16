@@ -16,36 +16,35 @@ export function PaperNode({ data, selected }: PaperNodeProps) {
       whileHover={{ scale: 1.02, y: -2 }}
       transition={{ type: 'spring', stiffness: 400, damping: 25 }}
       className={`
-        bg-[#FDFAF6]
         border rounded-lg
         px-4 py-3 min-w-[220px] max-w-[280px]
         transition-all duration-200
         ${selected
-          ? 'border-[#9B7A50]/60 shadow-[0_0_20px_rgba(155,122,80,0.15)]'
-          : 'border-[#D8CCB8] hover:border-[#C4B89A]'
+          ? 'border-[#C8B272]/60 shadow-[0_0_20px_rgba(200,178,114,0.15)]'
+          : 'border-[#C8B272]/20 hover:border-[#C8B272]/40'
         }
       `}
-      style={{ boxShadow: '0 1px 3px rgba(100,80,50,0.08)' }}
+      style={{ background: '#3A2E21', boxShadow: '0 1px 4px rgba(0,0,0,0.3)' }}
     >
       <Handle type="target" position={Position.Left}
-        className="!bg-[#9B7A50] !border-[#FDFAF6] !border-2 !w-2.5 !h-2.5" />
+        className="!bg-[#C8B272] !border-[#3A2E21] !border-2 !w-2.5 !h-2.5" />
 
-      <p className="text-[#1C1510] font-medium text-[13px] leading-tight line-clamp-2">
+      <p className="text-[#E8DFC8] font-medium text-[13px] leading-tight line-clamp-2">
         {data.title}
       </p>
 
       <div className="flex items-center gap-2 mt-2.5">
-        <span className="text-[#8B5E3C] text-xs font-medium tabular-nums">
+        <span className="text-[#C8B272] text-xs font-medium tabular-nums">
           {data.year}
         </span>
-        <span className="text-[#C4B89A] text-xs">&middot;</span>
-        <span className="text-[#9B8B77] text-xs tabular-nums">
+        <span className="text-[#697153] text-xs">&middot;</span>
+        <span className="text-[#A0A584] text-xs tabular-nums">
           {data.citations.toLocaleString()} cites
         </span>
       </div>
 
       <Handle type="source" position={Position.Right}
-        className="!bg-[#9B7A50] !border-[#FDFAF6] !border-2 !w-2.5 !h-2.5" />
+        className="!bg-[#C8B272] !border-[#3A2E21] !border-2 !w-2.5 !h-2.5" />
     </motion.div>
   );
 }
