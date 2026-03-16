@@ -12,7 +12,7 @@ import '@xyflow/react/dist/style.css';
 import dagre from 'dagre';
 import { PaperNode } from './PaperNode';
 import { SeedNode } from './SeedNode';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 
 const nodeTypes: NodeTypes = { paper: PaperNode, seed: SeedNode } as NodeTypes;
 
@@ -22,7 +22,7 @@ const SEED_WIDTH = 280;
 const SEED_HEIGHT = 90;
 
 // Backend API URL
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';;
+const API_BASE_URL = import.meta.env.VITE_API_URL ?? '';
 
 interface MockPaper {
   paperId: string;
@@ -49,7 +49,7 @@ const buildGraph = (
   view: 'pre' | 'post'
 ) => {
   const g = new dagre.graphlib.Graph().setDefaultEdgeLabel(() => ({}));
-  
+
   // Calculate dynamic spacing based on depth distribution
   const maxDepth = Math.max(...papers.map(p => p.depth), 1);
   const papersPerDepth = new Map<number, number>();
@@ -57,13 +57,13 @@ const buildGraph = (
     papersPerDepth.set(p.depth, (papersPerDepth.get(p.depth) || 0) + 1);
   });
   const maxPapersInAnyDepth = Math.max(...Array.from(papersPerDepth.values()), 1);
-  
+
   console.log(`📊 Papers: ${papers.length}, Max depth: ${maxDepth}, Max papers at any depth: ${maxPapersInAnyDepth}`);
-  
+
   // Dynamic spacing
   const nodesep = Math.min(50 + maxPapersInAnyDepth * 3, 120);
   const ranksep = 180;
-  
+
   g.setGraph({
     rankdir: 'LR',
     ranker: 'network-simplex',
@@ -112,7 +112,7 @@ const buildGraph = (
     id: seed.paperId,
     type: 'seed',
     position: { x: seedPos.x - SEED_WIDTH / 2, y: seedPos.y - SEED_HEIGHT / 2 },
-    data: { 
+    data: {
       title: seed.title,
       year: seed.year,
       citations: seed.citationCount
@@ -127,7 +127,7 @@ const buildGraph = (
       id: paper.paperId,
       type: 'paper',
       position: { x: pos.x - NODE_WIDTH / 2, y: pos.y - NODE_HEIGHT / 2 },
-      data: { 
+      data: {
         title: paper.title,
         year: paper.year,
         citations: paper.citationCount
@@ -138,7 +138,7 @@ const buildGraph = (
     const parentId = paper.parentId;
     let sourceId: string;
     let targetId: string;
-    
+
     if (view === 'pre') {
       // References: paper → parent (paper cites parent)
       sourceId = paper.paperId;
@@ -164,65 +164,104 @@ const buildGraph = (
   });
 
   console.log(`✅ Built graph: ${nodes.length} nodes, ${edges.length} edges`);
-  
+
   return { nodes, edges };
 };
+
+type TreeStatus = 'idle' | 'building' | 'ready' | 'error';
 
 export function GraphCanvas({ view }: { view: 'pre' | 'post' }) {
   const [seedPaper, setSeedPaper] = useState<SeedPaper | null>(null);
   const [papers, setPapers] = useState<MockPaper[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [treeStatus, setTreeStatus] = useState<TreeStatus>('idle');
+  const [dataSource, setDataSource] = useState<'mock' | 'live'>('mock');
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Fetch data from backend API
+  // Fetch papers (references or citations) for the current seed
+  const fetchPapers = useCallback(async (seedId: string) => {
+    const endpoint = view === 'pre' ? 'references' : 'citations';
+    const papersUrl = `${API_BASE_URL}/api/paper/${seedId}/${endpoint}`;
+    const papersResponse = await fetch(papersUrl);
+    if (!papersResponse.ok) {
+      throw new Error(`Failed to fetch ${endpoint}`);
+    }
+    return papersResponse.json();
+  }, [view]);
+
+  // Trigger tree build and start polling
+  const triggerTreeBuild = useCallback(async (seedId: string) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/tree/${seedId}`, { method: 'POST' });
+      if (!res.ok) return;
+      const data = await res.json();
+
+      if (data.status === 'ready') {
+        // Tree was already cached — re-fetch live data now
+        setTreeStatus('ready');
+        setDataSource('live');
+        const papersData = await fetchPapers(seedId);
+        setPapers(papersData);
+        return;
+      }
+
+      setTreeStatus('building');
+
+      // Poll status every 5 seconds
+      pollRef.current = setInterval(async () => {
+        try {
+          const statusRes = await fetch(`${API_BASE_URL}/api/tree/${seedId}/status`);
+          if (!statusRes.ok) return;
+          const statusData = await statusRes.json();
+
+          if (statusData.status === 'ready') {
+            if (pollRef.current) clearInterval(pollRef.current);
+            pollRef.current = null;
+            setTreeStatus('ready');
+            setDataSource('live');
+            // Re-fetch with live data
+            const papersData = await fetchPapers(seedId);
+            setPapers(papersData);
+          } else if (statusData.status === 'error') {
+            if (pollRef.current) clearInterval(pollRef.current);
+            pollRef.current = null;
+            setTreeStatus('error');
+          }
+        } catch {
+          // Ignore polling errors — keep retrying
+        }
+      }, 5000);
+    } catch {
+      // Tree build trigger failed — mock data still works
+      setTreeStatus('error');
+    }
+  }, [fetchPapers]);
+
+  // Initial data fetch
   useEffect(() => {
     const fetchData = async () => {
       try {
         setLoading(true);
         setError(null);
 
-        console.log('🚀 Starting data fetch...');
-        console.log('📍 API_BASE_URL:', API_BASE_URL);
-        console.log('📍 View:', view);
-
         // 1. Get seed paper
-        const seedUrl = `${API_BASE_URL}/api/seed`;
-        console.log('📡 Fetching seed from:', seedUrl);
-        
-        const seedResponse = await fetch(seedUrl);
-        console.log('📥 Seed response status:', seedResponse.status);
-        
+        const seedResponse = await fetch(`${API_BASE_URL}/api/seed`);
         if (!seedResponse.ok) {
           throw new Error('Failed to fetch seed paper');
         }
-        
         const seed = await seedResponse.json();
-        console.log('✅ Seed paper loaded:', seed);
-        console.log('📍 Seed paperId:', seed.paperId);
-        
         setSeedPaper(seed);
 
-        // 2. Get references or citations based on view
-        const endpoint = view === 'pre' ? 'references' : 'citations';
-        const papersUrl = `${API_BASE_URL}/api/paper/${seed.paperId}/${endpoint}`;
-        
-        console.log('📡 Fetching papers from:', papersUrl);
-        
-        const papersResponse = await fetch(papersUrl);
-        console.log('📥 Papers response status:', papersResponse.status);
-        
-        if (!papersResponse.ok) {
-          throw new Error(`Failed to fetch ${endpoint}`);
-        }
-        
-        const papersData = await papersResponse.json();
-        console.log('✅ Papers loaded:', papersData);
-        console.log('📊 Number of papers:', papersData.length);
-        
+        // 2. Get references or citations (initially mock data)
+        const papersData = await fetchPapers(seed.paperId);
         setPapers(papersData);
 
+        // 3. Trigger tree build in background
+        triggerTreeBuild(seed.paperId);
+
       } catch (err) {
-        console.error('❌ Error fetching data:', err);
+        console.error('Error fetching data:', err);
         setError(err instanceof Error ? err.message : 'Failed to load data');
       } finally {
         setLoading(false);
@@ -230,7 +269,14 @@ export function GraphCanvas({ view }: { view: 'pre' | 'post' }) {
     };
 
     fetchData();
-  }, [view]);
+
+    return () => {
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
+    };
+  }, [view, fetchPapers, triggerTreeBuild]);
 
   const { nodes: init, edges: initE } = useMemo(() => {
     if (!seedPaper || papers.length === 0) {
@@ -275,7 +321,34 @@ export function GraphCanvas({ view }: { view: 'pre' | 'post' }) {
   }
 
   return (
-    <div className="w-full h-screen" style={{ background: '#0B0D11' }}>
+    <div className="w-full h-screen relative" style={{ background: '#0B0D11' }}>
+      {/* Data source status indicator — always visible, centered at top */}
+      <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-[#E8EBF0] rounded-full px-5 py-2 shadow-lg">
+        {dataSource === 'mock' && treeStatus !== 'building' && (
+          <>
+            <div className="w-2.5 h-2.5 bg-[#8B95A5] rounded-full" />
+            <span className="text-[#12141A] text-sm font-medium">Mock data</span>
+          </>
+        )}
+        {treeStatus === 'building' && (
+          <>
+            <div className="w-2.5 h-2.5 bg-[#F59E0B] rounded-full animate-pulse" />
+            <span className="text-[#12141A] text-sm font-medium">Building live tree&hellip;</span>
+          </>
+        )}
+        {treeStatus === 'ready' && dataSource === 'live' && (
+          <>
+            <div className="w-2.5 h-2.5 bg-[#22C55E] rounded-full" />
+            <span className="text-[#12141A] text-sm font-medium">Live data &mdash; Semantic Scholar</span>
+          </>
+        )}
+        {treeStatus === 'error' && dataSource === 'mock' && (
+          <>
+            <div className="w-2.5 h-2.5 bg-[#F97066] rounded-full" />
+            <span className="text-[#12141A] text-sm font-medium">Mock data (live fetch failed)</span>
+          </>
+        )}
+      </div>
       <ReactFlow
         nodes={nodes}
         edges={edges}

@@ -2,7 +2,7 @@
 
 MOCK_DATA = {
     "seed": {
-        "paperId": "attention-2017",
+        "paperId": "204e3073870fae3d05bcbc2f6a8e263d9b72e776",
         "title": "Attention Is All You Need",
         "authors": ["Ashish Vaswani", "Noam Shazeer", "Niki Parmar", "Jakob Uszkoreit", "Llion Jones", "Aidan N. Gomez", "Lukasz Kaiser", "Illia Polosukhin"],
         "year": 2017,
@@ -22,7 +22,7 @@ MOCK_DATA = {
             "abstract": "Deep Neural Networks (DNNs) are powerful models that have achieved excellent performance on difficult learning tasks.",
             "venue": "NeurIPS",
             "depth": 1,
-            "parentId": "attention-2017"
+            "parentId": "204e3073870fae3d05bcbc2f6a8e263d9b72e776"
         },
         {
             "paperId": "bahdanau-2015",
@@ -33,7 +33,7 @@ MOCK_DATA = {
             "abstract": "Neural machine translation is a recently proposed approach to machine translation that builds a neural network that reads a sentence and outputs a correct translation.",
             "venue": "ICLR",
             "depth": 1,
-            "parentId": "attention-2017"
+            "parentId": "204e3073870fae3d05bcbc2f6a8e263d9b72e776"
         },
         {
             "paperId": "dropout-2014",
@@ -44,7 +44,7 @@ MOCK_DATA = {
             "abstract": "Deep neural nets with a large number of parameters are very powerful machine learning systems. However, overfitting is a serious problem in such networks.",
             "venue": "JMLR",
             "depth": 1,
-            "parentId": "attention-2017"
+            "parentId": "204e3073870fae3d05bcbc2f6a8e263d9b72e776"
         },
         {
             "paperId": "adam-2015",
@@ -55,7 +55,7 @@ MOCK_DATA = {
             "abstract": "We introduce Adam, an algorithm for first-order gradient-based optimization of stochastic objective functions, based on adaptive estimates of lower-order moments.",
             "venue": "ICLR",
             "depth": 1,
-            "parentId": "attention-2017"
+            "parentId": "204e3073870fae3d05bcbc2f6a8e263d9b72e776"
         },
         {
             "paperId": "resnet-2016",
@@ -66,7 +66,7 @@ MOCK_DATA = {
             "abstract": "Deeper neural networks are more difficult to train. We present a residual learning framework to ease the training of networks that are substantially deeper than those used previously.",
             "venue": "CVPR",
             "depth": 1,
-            "parentId": "attention-2017"
+            "parentId": "204e3073870fae3d05bcbc2f6a8e263d9b72e776"
         },
         
         # Depth 2 - Papers cited by depth 1 papers
@@ -139,7 +139,7 @@ MOCK_DATA = {
             "abstract": "We introduce a new language representation model called BERT, which stands for Bidirectional Encoder Representations from Transformers.",
             "venue": "NAACL",
             "depth": 1,
-            "parentId": "attention-2017"
+            "parentId": "204e3073870fae3d05bcbc2f6a8e263d9b72e776"
         },
         {
             "paperId": "gpt2-2019",
@@ -150,7 +150,7 @@ MOCK_DATA = {
             "abstract": "Natural language processing tasks, such as question answering, machine translation, reading comprehension, and summarization, are typically approached with supervised learning on task-specific datasets.",
             "venue": "OpenAI",
             "depth": 1,
-            "parentId": "attention-2017"
+            "parentId": "204e3073870fae3d05bcbc2f6a8e263d9b72e776"
         },
         {
             "paperId": "vit-2020",
@@ -161,7 +161,7 @@ MOCK_DATA = {
             "abstract": "While the Transformer architecture has become the de-facto standard for natural language processing tasks, its applications to computer vision remain limited.",
             "venue": "ICLR",
             "depth": 1,
-            "parentId": "attention-2017"
+            "parentId": "204e3073870fae3d05bcbc2f6a8e263d9b72e776"
         },
         {
             "paperId": "t5-2020",
@@ -172,7 +172,7 @@ MOCK_DATA = {
             "abstract": "Transfer learning, where a model is first pre-trained on a data-rich task before being fine-tuned on a downstream task, has emerged as a powerful technique in NLP.",
             "venue": "JMLR",
             "depth": 1,
-            "parentId": "attention-2017"
+            "parentId": "204e3073870fae3d05bcbc2f6a8e263d9b72e776"
         },
         {
             "paperId": "xlnet-2019",
@@ -183,7 +183,7 @@ MOCK_DATA = {
             "abstract": "With the capability of modeling bidirectional contexts, denoising autoencoding based pretraining like BERT achieves better performance than pretraining approaches based on autoregressive language modeling.",
             "venue": "NeurIPS",
             "depth": 1,
-            "parentId": "attention-2017"
+            "parentId": "204e3073870fae3d05bcbc2f6a8e263d9b72e776"
         },
         
         # Depth 2 - Papers that cite depth 1 papers
