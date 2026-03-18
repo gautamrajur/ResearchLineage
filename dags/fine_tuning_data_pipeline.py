@@ -7,7 +7,7 @@ Uses the self-contained lineage_pipeline.py for all steps.
                                                      ↓
                                               stratified_split
                                                      ↓
-                                          convert_to_llama_format
+                                           convert_to_qwen_format
                                                      ↓
                                               pipeline_report
                                                      ↓
@@ -158,10 +158,10 @@ with DAG(
     )
 
     # ════════════════════════════════════════
-    # STEP 6: CONVERT TO LLAMA FORMAT
+    # STEP 6: CONVERT TO QWEN FORMAT
     # ════════════════════════════════════════
     convert = BashOperator(
-        task_id="convert_to_llama_format",
+        task_id="convert_to_qwen_format",
         bash_command=f'{_BASE} --step convert ',
         execution_timeout=timedelta(minutes=10),
     )

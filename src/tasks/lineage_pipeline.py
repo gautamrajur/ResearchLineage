@@ -10,7 +10,7 @@ Steps:
     3. preprocessing          — Validate raw training data
     4. repair                 — Fix foundational entries with missing lineage chains
     5. split                  — Cluster-level stratified train/val/test split
-    6. convert                — Convert to Llama chat format + metadata sidecars
+    6. convert                — Convert to chat format + metadata sidecars
     7. report                 — Generate pipeline_report.json + pipeline_report.txt
     8. upload                 — Upload entire pipeline_output/ folder to GCS
 
@@ -50,8 +50,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 from src.utils.config import (
     # Semantic Scholar
     S2_BASE_URL, S2_API_KEY, S2_REQUEST_TIMEOUT, S2_MAX_RETRIES, S2_RETRY_BASE_WAIT,
-    # Gemini
+    # Gemini / Vertex AI
     GEMINI_API_KEY, GEMINI_MODEL, GEMINI_TEMPERATURE, GEMINI_MAX_OUTPUT_TOKENS,
+    VERTEX_API_KEY, VERTEX_PROJECT_ID, VERTEX_REGION,
     # arXiv
     ARXIV_HTML_URLS, HTML_REQUEST_TIMEOUT,
     # Pipeline
@@ -66,13 +67,16 @@ from src.utils.config import (
     GCS_BUCKET_NAME, GCS_PROJECT_ID, GCS_UPLOAD_PREFIX,
     # Paths
     RUN_DIR, SEEDS_FILE, TRAINING_DATA_FILE, REPAIRED_DATA_FILE,
-    SPLITS_DIR, LLAMA_FORMAT_DIR, TIMELINE_OUTPUT_DIR,
+    SPLITS_DIR, QWEN_FORMAT_DIR, TIMELINE_OUTPUT_DIR,
     STATE_FILE, REPORT_JSON, REPORT_TXT, LOG_FILE,
     # Prompts
     MAIN_PROMPT, FOUNDATIONAL_PROMPT,
     # Logging
     VERBOSE,
 )
+
+# Vertex AI API credentials (imported from config.py)
+# Set in .env via VERTEX_API_KEY, VERTEX_PROJECT_ID, and VERTEX_REGION
 
 
 # ════════════════════════════════════════
@@ -192,6 +196,9 @@ def get_references(paper_id):
     result = s2_api_call(f"paper/{paper_id}/references", {"fields": REFERENCE_FIELDS, "limit": 1000})
     if result and "data" in result:
         refs = result["data"]
+        if refs is None:
+            logger.warning(f"S2 data gap for {paper_id} — references exist but endpoint returned null. Stopping chain.")
+            return []
         logger.info(f"Total references: {len(refs)}")
         return refs or []
     logger.warning(f"No references found for: {paper_id}")
@@ -357,14 +364,69 @@ def extract_paper_text(paper_data):
 # ════════════════════════════════════════
 
 _gemini_client = None
+_client_type = None  # 'vertex' or 'gemini_sdk'
 
 
 def _get_gemini_client():
-    global _gemini_client
-    if _gemini_client is None:
-        logger.debug("Initializing Gemini client")
-        _gemini_client = genai.Client(api_key=GEMINI_API_KEY)
-    return _gemini_client
+    """Initialize and return Gemini client (Vertex API or Gemini SDK) based on available credentials."""
+    global _gemini_client, _client_type
+    
+    if _gemini_client is not None:
+        return _gemini_client
+
+    # Attempt Vertex-routed google-genai client.
+    if VERTEX_PROJECT_ID:
+        logger.info(f"Initializing Vertex AI client (project: {VERTEX_PROJECT_ID}, region: {VERTEX_REGION})")
+
+        # First try API-key mode if configured.
+        if VERTEX_API_KEY:
+            try:
+                _gemini_client = genai.Client(
+                    vertexai=True,
+                    project=VERTEX_PROJECT_ID,
+                    location=VERTEX_REGION,
+                    api_key=VERTEX_API_KEY,
+                )
+                _client_type = "vertex"
+                logger.info("Vertex AI client initialized successfully (API key mode)")
+                return _gemini_client
+            except Exception as e:
+                err_text = str(e)
+                if "mutually exclusive" in err_text.lower():
+                    logger.warning(
+                        "Vertex API key mode rejected by client initializer (project/location and api_key are mutually exclusive); "
+                        "retrying with ADC mode."
+                    )
+                else:
+                    logger.warning(f"Failed to initialize Vertex AI client with API key: {e}")
+
+        # Fallback Vertex mode via ADC credentials (project/location only).
+        try:
+            _gemini_client = genai.Client(
+                vertexai=True,
+                project=VERTEX_PROJECT_ID,
+                location=VERTEX_REGION,
+            )
+            _client_type = "vertex"
+            logger.info("Vertex AI client initialized successfully (ADC mode)")
+            return _gemini_client
+        except Exception as e:
+            logger.warning(f"Failed to initialize Vertex AI client: {e}, falling back to Gemini SDK")
+
+    # Fallback to Gemini SDK with API key
+    if GEMINI_API_KEY:
+        try:
+            logger.info("Initializing Gemini SDK client")
+            _gemini_client = genai.Client(api_key=GEMINI_API_KEY)
+            _client_type = "gemini_sdk"
+            logger.debug("Gemini SDK client initialized successfully")
+            return _gemini_client
+        except Exception as e:
+            logger.error(f"Failed to initialize Gemini SDK client: {e}")
+            return None
+    
+    logger.error("No valid API credentials found (needed: VERTEX_API_KEY+VERTEX_PROJECT_ID or GEMINI_API_KEY)")
+    return None
 
 
 def build_main_input(target_text, candidates_with_context, original_target_info=None):
@@ -376,8 +438,9 @@ def build_main_input(target_text, candidates_with_context, original_target_info=
         parts.append(f"Original paper being traced: {original_target_info.get('title', 'Unknown')}")
         parts.append(f"Research domain: {original_target_info.get('domain', 'Unknown')}")
         parts.append("")
-        parts.append("CRITICAL RULE: You MUST select a predecessor that is in the same research domain.")
-        parts.append("If no candidate is in the same domain, STOP and set selected_predecessor_id to null.")
+        parts.append("PREFER predecessors in the same research domain, but cross-domain selections are acceptable")
+        parts.append("if there is a clear methodological link. Only set selected_predecessor_id to null if NO")
+        parts.append("candidate has a meaningful methodological relationship with the target paper.")
 
     parts.extend([f"\n{'='*60}", "TARGET PAPER", f"{'='*60}", target_text])
     parts.extend([f"\n{'='*60}", "CANDIDATE PREDECESSOR PAPERS", f"{'='*60}"])
@@ -399,13 +462,18 @@ def build_foundational_input(paper_text):
 
 def call_gemini(prompt_text, max_retries=3):
     client = _get_gemini_client()
+    if not client:
+        logger.error("No client initialized. Cannot call Gemini.")
+        return None
+    
     token_est = len(prompt_text) // 4
-    logger.info(f"Sending ~{token_est:,} tokens to Gemini ({GEMINI_MODEL})")
+    logger.info(f"Sending ~{token_est:,} tokens to {_client_type or 'unknown'} ({GEMINI_MODEL})")
 
     for attempt in range(max_retries):
         try:
             response = client.models.generate_content(
-                model=GEMINI_MODEL, contents=prompt_text,
+                model=GEMINI_MODEL,
+                contents=prompt_text,
                 config=types.GenerateContentConfig(
                     temperature=GEMINI_TEMPERATURE,
                     max_output_tokens=GEMINI_MAX_OUTPUT_TOKENS,
@@ -413,21 +481,22 @@ def call_gemini(prompt_text, max_retries=3):
                     thinking_config=types.ThinkingConfig(thinking_budget=1024),
                 ),
             )
+            
             if response and response.text:
-                logger.info(f"Gemini responded ({len(response.text)} chars)")
+                logger.info(f"Response received ({len(response.text)} chars)")
                 return response.text
-            logger.warning("Gemini returned empty response")
+            logger.warning("Empty response returned")
             return None
         except Exception as e:
             err = str(e)
-            if any(code in err for code in ["503", "UNAVAILABLE", "429"]):
+            if any(code in err for code in ["503", "UNAVAILABLE", "429", "ResourceExhausted"]):
                 wait = min(15 * (2 ** attempt) + random.uniform(-4, 4), 300)
-                logger.warning(f"Gemini overloaded, waiting {int(wait)}s (attempt {attempt+1}/{max_retries})")
+                logger.warning(f"API overloaded, waiting {int(wait)}s (attempt {attempt+1}/{max_retries})")
                 time.sleep(wait)
                 continue
-            logger.error(f"Gemini API error: {e}")
+            logger.error(f"API error: {e}")
             return None
-    logger.error(f"Gemini failed after {max_retries} retries")
+    logger.error(f"API call failed after {max_retries} retries")
     return None
 
 
@@ -725,6 +794,8 @@ def build_timeline(paper_id, max_depth=MAX_DEPTH):
 
         logger.info(f"PREDECESSOR SELECTED: {predecessor_paper.get('title', '?')[:60]} ({predecessor_paper.get('year', '?')})")
 
+        predicted_domain = analysis.get("target_analysis", {}).get("predicted_domain")
+
         lineage_chain.append(target_paper.get("paperId"))
 
         step = {
@@ -741,6 +812,7 @@ def build_timeline(paper_id, max_depth=MAX_DEPTH):
                 "target_paper_id": target_paper["paperId"], "target_title": target_paper.get("title"),
                 "predecessor_paper_id": predecessor_paper["paperId"], "depth": depth,
                 "candidates_considered": len(candidates), "target_source_type": target_source,
+                "predicted_domain": predicted_domain,
                 "model": GEMINI_MODEL, "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
             },
             target_paper=target_paper, candidates=candidates,
@@ -775,6 +847,7 @@ def _handle_foundational(depth, paper, paper_text, source_type, lineage_chain=No
         return None
 
     bt = analysis.get("target_analysis", {}).get("breakthrough_level", "?")
+    predicted_domain = analysis.get("target_analysis", {}).get("predicted_domain")
     logger.info(f"Foundational paper analyzed (breakthrough: {bt})")
 
     lc = list(lineage_chain or []) + [paper["paperId"]]
@@ -786,7 +859,7 @@ def _handle_foundational(depth, paper, paper_text, source_type, lineage_chain=No
             "target_paper_id": paper["paperId"], "target_title": paper.get("title"),
             "predecessor_paper_id": None, "depth": depth,
             "candidates_considered": 0, "target_source_type": source_type,
-            "is_foundational": True, "model": GEMINI_MODEL,
+            "is_foundational": True, "predicted_domain": predicted_domain, "model": GEMINI_MODEL,
             "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
         },
         target_paper=paper, candidates=None,
@@ -843,7 +916,7 @@ def pick_seeds(n_total, domains, per_domain_pool, seed, min_citations, query):
         pool = _s2_bulk_search(domain, per_domain_pool, query, min_citations)
         logger.info(f"Pool fetched: {len(pool)} papers from {domain}")
 
-        random.shuffle(pool)
+        random.shuffle(pool)  
         count = 0
         for p in pool:
             pid = p.get("paperId")
@@ -1141,7 +1214,12 @@ def step_convert(splits_dir, output_dir):
                     logger.debug(f"Skipping empty sample {i} in {split_name}")
                     continue
 
-                tf.write(json.dumps({"input_text": user_msg, "output_text": asst_msg}, ensure_ascii=False) + "\n")
+                # Qwen-style chat sample format.
+                qwen_text = (
+                    f"<|im_start|>user\n{user_msg}<|im_end|>\n"
+                    f"<|im_start|>assistant\n{asst_msg}<|im_end|>"
+                )
+                tf.write(json.dumps({"text": qwen_text}, ensure_ascii=False) + "\n")
 
                 meta = sample.get("metadata", {}) or {}
                 level = sample.get("level_info", {}) or {}
@@ -1154,6 +1232,7 @@ def step_convert(splits_dir, output_dir):
                     "seed_paper_year": target.get("year"),
                     "seed_citation_count": target.get("citation_count"),
                     "seed_field_of_study": target.get("field_of_study"),
+                    "predicted_domain": meta.get("predicted_domain"),
                     "predecessor_paper_id": meta.get("predecessor_paper_id", predecessor.get("paper_id")),
                     "predecessor_paper_year": predecessor.get("year"),
                     "depth": meta.get("depth", 0),
@@ -1174,7 +1253,7 @@ def step_convert(splits_dir, output_dir):
 # STEP 7: REPORT (JSON + TXT)
 # ════════════════════════════════════════
 
-def step_report(repaired_path, splits_dir, llama_dir):
+def step_report(repaired_path, splits_dir, qwen_dir):
     """Generate pipeline_report.json and pipeline_report.txt with full distributions."""
     logger.info("Generating pipeline report...")
 
@@ -1226,22 +1305,31 @@ def step_report(repaired_path, splits_dir, llama_dir):
     if sr:
         report["splits"] = sr
 
-    # Llama format
+    # Chat format (supports both legacy input/output fields and qwen text field)
     lr = {}
     for name in ["train", "val", "test"]:
-        lf = os.path.join(llama_dir, f"{name}.jsonl")
-        mf = os.path.join(llama_dir, f"{name}_metadata.jsonl")
+        lf = os.path.join(qwen_dir, f"{name}.jsonl")
+        mf = os.path.join(qwen_dir, f"{name}_metadata.jsonl")
         if os.path.exists(lf):
             samples = _load_jsonl(lf)
-            il = [len(s.get("input_text", "")) for s in samples]
-            ol = [len(s.get("output_text", "")) for s in samples]
-            entry = {
-                "count": len(samples),
-                "input_char_length": _numeric_stats(il),
-                "output_char_length": _numeric_stats(ol),
-                "approx_input_tokens": _numeric_stats([l // 4 for l in il]),
-                "approx_output_tokens": _numeric_stats([l // 4 for l in ol]),
-            }
+            has_qwen_text = any("text" in s for s in samples)
+            if has_qwen_text:
+                tl = [len(s.get("text", "")) for s in samples]
+                entry = {
+                    "count": len(samples),
+                    "text_char_length": _numeric_stats(tl),
+                    "approx_text_tokens": _numeric_stats([l // 4 for l in tl]),
+                }
+            else:
+                il = [len(s.get("input_text", "")) for s in samples]
+                ol = [len(s.get("output_text", "")) for s in samples]
+                entry = {
+                    "count": len(samples),
+                    "input_char_length": _numeric_stats(il),
+                    "output_char_length": _numeric_stats(ol),
+                    "approx_input_tokens": _numeric_stats([l // 4 for l in il]),
+                    "approx_output_tokens": _numeric_stats([l // 4 for l in ol]),
+                }
             if os.path.exists(mf):
                 ms = _load_jsonl(mf)
                 st, fi = defaultdict(int), defaultdict(int)
@@ -1258,7 +1346,7 @@ def step_report(repaired_path, splits_dir, llama_dir):
                 })
             lr[name] = entry
     if lr:
-        report["llama_format"] = lr
+        report["qwen_format"] = lr
 
     # Integrity
     report["integrity_checks"] = _check_lineage_integrity(splits_dir)
@@ -1464,14 +1552,14 @@ def _build_txt_report(report):
                     row += f"{pct:>9.1f}%"
                 w(row)
 
-    # Llama format
-    if "llama_format" in report:
+    # Qwen format
+    if "qwen_format" in report:
         w(f"\n{'='*60}")
-        w("LLAMA FORMAT")
+        w("QWEN FORMAT")
         w(f"{'='*60}")
         for name in ["train", "val", "test"]:
-            if name in report["llama_format"]:
-                lf = report["llama_format"][name]
+            if name in report["qwen_format"]:
+                lf = report["qwen_format"][name]
                 w(f"\n  {name.upper()}: {lf['count']} samples")
                 _write_stats(w, "    Input tokens (approx)", lf.get("approx_input_tokens"))
                 _write_stats(w, "    Output tokens (approx)", lf.get("approx_output_tokens"))
@@ -1560,6 +1648,8 @@ def _write_stats(w, label, stats):
 
 def step_upload(bucket, project, gcs_prefix):
     from google.cloud import storage
+
+    logger.info(f"Attempting to push to -- gs://{bucket}/{gcs_prefix} (project: {project})")
 
     client = storage.Client(project=project)
     gcs_bucket = client.get_bucket(bucket)
@@ -1815,7 +1905,7 @@ def main():
     parser.add_argument("--input", type=str, default=TRAINING_DATA_FILE)
     parser.add_argument("--repaired", type=str, default=REPAIRED_DATA_FILE)
     parser.add_argument("--splits-dir", type=str, default=SPLITS_DIR)
-    parser.add_argument("--llama-dir", type=str, default=LLAMA_FORMAT_DIR)
+    parser.add_argument("--qwen-dir", "--llama-dir", dest="qwen_dir", type=str, default=QWEN_FORMAT_DIR)
 
     parser.add_argument("--train-frac", type=float, default=SPLIT_TRAIN_FRAC)
     parser.add_argument("--val-frac", type=float, default=SPLIT_VAL_FRAC)
@@ -1845,9 +1935,20 @@ def main():
     needs_gemini = bool({"batch_run"} & set(steps))
     needs_gcs = bool({"upload"} & set(steps))
 
-    if needs_gemini and not GEMINI_API_KEY:
-        logger.error("GEMINI_API_KEY not set. Run: set GEMINI_API_KEY=your_key")
-        sys.exit(1)
+    if needs_gemini:
+        has_vertex = VERTEX_API_KEY and VERTEX_PROJECT_ID
+        has_gemini = bool(GEMINI_API_KEY)
+        if not (has_vertex or has_gemini):
+            logger.error(
+                "No LLM credentials found. Provide either:\n"
+                "  - Vertex AI: set VERTEX_API_KEY, VERTEX_PROJECT_ID, and optionally VERTEX_REGION\n"
+                "  - Gemini SDK: set GEMINI_API_KEY"
+            )
+            sys.exit(1)
+        if has_vertex:
+            logger.info(f"Using Vertex AI (project: {VERTEX_PROJECT_ID}, region: {VERTEX_REGION})")
+        else:
+            logger.info("Using Gemini SDK")
     if needs_gcs:
         try:
             from google.cloud import storage  # noqa: F401
@@ -1865,8 +1966,8 @@ def main():
         "repair": ("STEP 4: REPAIR LINEAGE CHAINS", lambda: step_repair(args.input, args.repaired)),
         "split": ("STEP 5: STRATIFIED SPLIT", lambda: step_split(
             args.repaired, args.splits_dir, args.train_frac, args.val_frac, args.test_frac, args.seed)),
-        "convert": ("STEP 6: CONVERT TO LLAMA FORMAT", lambda: step_convert(args.splits_dir, args.llama_dir)),
-        "report": ("STEP 7: PIPELINE REPORT", lambda: step_report(args.repaired, args.splits_dir, args.llama_dir)),
+        "convert": ("STEP 6: CONVERT TO QWEN FORMAT", lambda: step_convert(args.splits_dir, args.qwen_dir)),
+        "report": ("STEP 7: PIPELINE REPORT", lambda: step_report(args.repaired, args.splits_dir, args.qwen_dir)),
         "upload": ("STEP 8: UPLOAD TO GCS", lambda: step_upload(args.bucket, args.project, args.gcs_prefix)),
     }
 

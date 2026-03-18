@@ -19,8 +19,8 @@ class Settings(BaseSettings):
     semantic_scholar_base_url: str = "https://api.semanticscholar.org/graph/v1"
     semantic_scholar_rate_limit: int = 100
     semantic_scholar_request_timeout: int = 30
-    semantic_scholar_max_retries: int = 3
-    semantic_scholar_retry_base_wait: int = 5
+    semantic_scholar_max_retries: int = 15
+    semantic_scholar_retry_base_wait: int = 1
 
     arxiv_base_url: str = "http://export.arxiv.org/api/query"
     openalex_base_url: str = "https://api.openalex.org"
@@ -30,6 +30,11 @@ class Settings(BaseSettings):
     gemini_model: str = "gemini-2.5-flash"
     gemini_temperature: float = 0.2
     gemini_max_output_tokens: int = 8192
+
+    # Vertex AI settings
+    vertex_api_key: str = ""
+    vertex_project_id: str = ""
+    vertex_region: str = "us-central1"
 
     # Database settings
     postgres_host: str = "localhost"
@@ -110,6 +115,11 @@ GEMINI_MODEL: str = settings.gemini_model
 GEMINI_TEMPERATURE: float = settings.gemini_temperature
 GEMINI_MAX_OUTPUT_TOKENS: int = settings.gemini_max_output_tokens
 
+# Vertex AI (preferred over Gemini SDK — better rate limits)
+VERTEX_API_KEY: str = settings.vertex_api_key
+VERTEX_PROJECT_ID: str = settings.vertex_project_id
+VERTEX_REGION: str = settings.vertex_region
+
 
 # ========================================
 # arXiv HTML Extraction
@@ -128,17 +138,17 @@ HTML_REQUEST_TIMEOUT: int = 15
 
 SEED_DOMAINS: list = ["Computer Science", "Physics", "Mathematics"]
 SEED_MIN_CITATIONS: int = 5000
-SEED_PER_DOMAIN_POOL: int = 800
-SEED_DEFAULT_COUNT: int = 200
+SEED_PER_DOMAIN_POOL: int = 50
+SEED_DEFAULT_COUNT: int = 50
 SEED_QUERY: str = "model | method | study | analysis"
-SEED_RANDOM_SEED: int = 42
+SEED_RANDOM_SEED: int = 20
 
 
 # ========================================
 # Pipeline / Batch Run (Step 2)
 # ========================================
 
-MAX_DEPTH: int = 5
+MAX_DEPTH: int = 3
 MAX_CANDIDATES: int = 10
 MAX_SEEDS_PER_RUN: int = 50
 BATCH_SLEEP_BETWEEN_SEEDS: float = 2.0
@@ -176,15 +186,44 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent  # src/utils/confi
 RUN_DIR = _PROJECT_ROOT / "src" / "tasks" / "pipeline_output"
 
 SEEDS_FILE: str = str(RUN_DIR / "seeds.json")
-TRAINING_DATA_FILE: str = str(RUN_DIR / "training_data.jsonl")
-REPAIRED_DATA_FILE: str = str(RUN_DIR / "training_data_repaired.jsonl")
+# Canonical artifact names (batch run outputs)
+TRAINING_DATA_FILE: str = str(RUN_DIR / "batch_run_artifacts.jsonl")
+REPAIRED_DATA_FILE: str = str(RUN_DIR / "batch_run_artifacts_repaired.jsonl")
 SPLITS_DIR: str = str(RUN_DIR / "splits")
-LLAMA_FORMAT_DIR: str = str(RUN_DIR / "llama_format")
+# Canonical converted-format directory
+QWEN_FORMAT_DIR: str = str(RUN_DIR / "qwen_format")
+# Backward-compatible alias for older code/CLI options
+LLAMA_FORMAT_DIR: str = QWEN_FORMAT_DIR
 TIMELINE_OUTPUT_DIR: str = str(RUN_DIR / "timelines")
 STATE_FILE: str = str(RUN_DIR / "run_state.jsonl")
 REPORT_JSON: str = str(RUN_DIR / "pipeline_report.json")
 REPORT_TXT: str = str(RUN_DIR / "pipeline_report.txt")
 LOG_FILE: str = str(RUN_DIR / "pipeline.log")
+
+
+# ========================================
+# Domain Classification Instructions
+# (shared block injected into both prompts)
+# ========================================
+
+_DOMAIN_CLASSIFICATION_BLOCK = """
+## DOMAIN CLASSIFICATION
+You MUST classify the primary research domain of the TARGET paper. Choose exactly ONE of:
+- "Computer Science"
+- "Physics"
+- "Mathematics"
+
+Base your classification on the paper's core contribution and problem domain, NOT on
+incidental tools or techniques. For example:
+- A paper about a new optimization algorithm for neural networks → "Computer Science"
+- A paper using neural networks to simulate quantum systems → "Physics"
+- A paper proving convergence bounds for gradient descent → "Mathematics"
+
+If the paper spans multiple domains, pick the one that best describes where this paper
+would be published and who its primary audience is.
+
+Include this as "predicted_domain" inside your target_analysis output.
+"""
 
 
 # ========================================
@@ -216,7 +255,7 @@ Provide a structured analysis with three levels of explanation:
 
 ### 3. COMPARE TARGET WITH PREDECESSOR
 Explain exactly how the target improved upon the selected predecessor.
-
+""" + _DOMAIN_CLASSIFICATION_BLOCK + """
 ## OUTPUT FORMAT
 
 Respond ONLY with valid JSON in this exact structure:
@@ -233,6 +272,7 @@ Respond ONLY with valid JSON in this exact structure:
     ],
 
     "target_analysis": {
+        "predicted_domain": "<Computer Science|Physics|Mathematics>",
         "problem_addressed": "<What specific problem does this paper solve?>",
         "core_method": "<Core approach/methodology in 2-3 sentences>",
         "key_innovation": "<What is genuinely new — the single most important contribution>",
@@ -292,13 +332,14 @@ This paper is at the ROOT of a research lineage — it is the earliest paper in 
 ## YOUR TASK
 
 Provide a structured analysis with three levels of explanation.
-
+""" + _DOMAIN_CLASSIFICATION_BLOCK + """
 ## OUTPUT FORMAT
 
 Respond ONLY with valid JSON in this exact structure:
 
 {
     "target_analysis": {
+        "predicted_domain": "<Computer Science|Physics|Mathematics>",
         "problem_addressed": "<What specific problem does this paper solve?>",
         "core_method": "<Core approach/methodology in 2-3 sentences>",
         "key_innovation": "<What is genuinely new — the single most important contribution>",

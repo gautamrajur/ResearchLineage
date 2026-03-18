@@ -13,6 +13,7 @@ USER airflow
 
 # Install Python dependencies directly with pip
 RUN pip install --no-cache-dir \
+    google-genai==1.67.0 \
     psycopg2-binary \
     httpx \
     networkx \

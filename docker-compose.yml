@@ -52,7 +52,7 @@ services:
       - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://postgres:postgres@postgres:5432/airflow
       - AIRFLOW__CORE__LOAD_EXAMPLES=False
       - AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=True
-      - _PIP_ADDITIONAL_REQUIREMENTS=google-genai beautifulsoup4 pydantic-settings
+      - _PIP_ADDITIONAL_REQUIREMENTS=google-genai==1.67.0 beautifulsoup4 pydantic-settings
     entrypoint: /bin/bash
     command:
       - -c
@@ -80,7 +80,7 @@ services:
       - AIRFLOW__CORE__LOAD_EXAMPLES=False
       - AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=True
       - PYTHONPATH=/opt/airflow
-      - _PIP_ADDITIONAL_REQUIREMENTS=google-genai beautifulsoup4 pydantic-settings
+      - _PIP_ADDITIONAL_REQUIREMENTS=google-genai==1.67.0 beautifulsoup4 pydantic-settings
       - GOOGLE_APPLICATION_CREDENTIALS=/gcp/config/application_default_credentials.json
     env_file:
       - .env
@@ -88,10 +88,12 @@ services:
       - "8080:8080"
     command: webserver
     depends_on:
-      - postgres
-      - redis
-      - cloud-sql-proxy
-      - airflow-init
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
     volumes:
       - ./dags:/opt/airflow/dags
       - ./src:/opt/airflow/src
@@ -109,16 +111,18 @@ services:
       - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://postgres:postgres@postgres:5432/airflow
       - AIRFLOW__CORE__LOAD_EXAMPLES=False
       - PYTHONPATH=/opt/airflow
-      - _PIP_ADDITIONAL_REQUIREMENTS=google-genai beautifulsoup4 pydantic-settings
+      - _PIP_ADDITIONAL_REQUIREMENTS=google-genai==1.67.0 beautifulsoup4 pydantic-settings
       - GOOGLE_APPLICATION_CREDENTIALS=/gcp/config/application_default_credentials.json
     env_file:
       - .env
     command: scheduler
     depends_on:
-      - postgres
-      - redis
-      - cloud-sql-proxy
-      - airflow-init
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
     volumes:
       - ./dags:/opt/airflow/dags
       - ./src:/opt/airflow/src
