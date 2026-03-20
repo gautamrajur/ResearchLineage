@@ -9,11 +9,6 @@ Usage in an Airflow DAG:
         evaluate_all,
         save_results,
     )
-
-    load_task   = PythonOperator(task_id="load",     python_callable=load_eval_data,   op_kwargs={"config": cfg})
-    infer_task  = PythonOperator(task_id="infer",    python_callable=run_inference,    op_kwargs={"config": cfg})
-    eval_task   = PythonOperator(task_id="evaluate", python_callable=evaluate_all,     op_kwargs={"config": cfg})
-    save_task   = PythonOperator(task_id="save",     python_callable=save_results,     op_kwargs={"config": cfg})
 """
 from __future__ import annotations
 
@@ -81,11 +76,9 @@ def load_eval_data(config: EvaluationConfig) -> list[EvalSample]:
     for i, record in enumerate(raw_records):
         try:
             gt_raw = record.get("ground_truth", {})
-            # ground truth may be stored as a nested JSON string
             if isinstance(gt_raw, str):
                 gt_raw = json.loads(gt_raw)
 
-            # flatten nested gt structure to match GroundTruth model
             gt_flat = _flatten_ground_truth(gt_raw)
             ground_truth = GroundTruth(**gt_flat)
 
@@ -118,30 +111,36 @@ def run_inference(
     config: EvaluationConfig,
 ) -> list[InferenceResult]:
     """
-    Run the fine-tuned model on all samples via Vertex AI endpoint.
+    Run the inference model on all samples.
+    Uses ModalClient (Qwen2.5 on Modal) if MODAL_ENDPOINT_URL is set,
+    otherwise falls back to VertexAIClient.
     Concurrent via ThreadPoolExecutor — respects config.max_workers.
     """
     client = build_inference_client(
         endpoint_id=config.vertex_endpoint_id,
-        project_id=config.gcs_project_id,
+        project_id=config.vertex_project_id or config.gcs_project_id,
         location=config.vertex_location,
+        modal_endpoint_url=getattr(config, "modal_endpoint_url", None),
     )
 
     logger.info(
         "Starting inference",
         extra={
             "n_samples": len(samples),
-            "endpoint_id": config.vertex_endpoint_id,
+            "client": type(client).__name__,
             "max_workers": config.max_workers,
         },
     )
 
     results: list[InferenceResult] = []
+    MAX_INPUT_CHARS = 32_000
 
     def _infer_one(sample: EvalSample) -> InferenceResult:
         start = time.monotonic()
         try:
-            raw = client.predict(sample.input_text)
+            input_text = sample.input_text[:MAX_INPUT_CHARS]
+            raw = client.predict(input_text)
+            print(f"DEBUG RAW OUTPUT (full len={len(raw)}):\n{raw}")
             latency_ms = (time.monotonic() - start) * 1000
             parsed, parse_error = _parse_model_output(raw)
             return InferenceResult(
@@ -193,29 +192,30 @@ def evaluate_all(
     run_id = config.run_id or _generate_run_id()
 
     judge_client = build_judge_client(
-        endpoint_id=config.judge_endpoint_id,
-        project_id=config.gcs_project_id,
+        project_id=config.judge_project_id or config.gcs_project_id,
         location=config.judge_location,
+        model_name=config.judge_model_name,
         max_output_tokens=config.judge_max_output_tokens,
         temperature=config.judge_temperature,
+        endpoint_id=config.judge_endpoint_id if config.judge_endpoint_id else None,
     )
     semantic_evaluator = SemanticEvaluator(model_name=config.semantic_model_name)
 
-    # index inference results by sample_id for O(1) lookup
     inference_map: dict[str, InferenceResult] = {
         r.sample_id: r for r in inference_results
     }
 
     eval_results: list[SampleEvalResult] = []
+    total_samples = len(samples)
+    stage_start = time.monotonic()
+    completed_count = 0
 
-    for sample in samples:
-        infer = inference_map.get(sample.sample_id)
-        if infer is None:
-            logger.warning(
-                "No inference result for sample",
-                extra={"sample_id": sample.sample_id},
-            )
-            continue
+    def _evaluate_one(
+        sample: EvalSample,
+        infer: InferenceResult,
+        sample_index: int,
+    ) -> SampleEvalResult:
+        nonlocal completed_count
 
         eval_errors: list[str] = []
         classification_scores = None
@@ -223,10 +223,18 @@ def evaluate_all(
         semantic_scores = None
 
         # -- classification --
+        t0 = time.monotonic()
         try:
             classification_scores = evaluate_classification(
                 prediction=infer.parsed_output,
                 ground_truth=sample.ground_truth,
+            )
+            logger.debug(
+                "Classification complete",
+                extra={
+                    "sample_id": sample.sample_id,
+                    "latency_ms": round((time.monotonic() - t0) * 1000, 1),
+                },
             )
         except Exception as exc:
             msg = f"classification evaluator error: {exc}"
@@ -234,12 +242,23 @@ def evaluate_all(
             logger.error(msg, extra={"sample_id": sample.sample_id})
 
         # -- llm judge --
+        t0 = time.monotonic()
         try:
             judge_scores = evaluate_llm_judge(
                 prediction=infer.parsed_output,
                 ground_truth=sample.ground_truth,
                 judge_client=judge_client,
-                judge_endpoint_id=config.judge_endpoint_id,
+                judge_model_id=config.judge_endpoint_id or config.judge_model_name,
+                sample_id=sample.sample_id,
+                sample_index=sample_index,
+                total_samples=total_samples,
+            )
+            logger.debug(
+                "LLM judge complete",
+                extra={
+                    "sample_id": sample.sample_id,
+                    "latency_ms": round((time.monotonic() - t0) * 1000, 1),
+                },
             )
         except Exception as exc:
             msg = f"llm judge evaluator error: {exc}"
@@ -247,32 +266,80 @@ def evaluate_all(
             logger.error(msg, extra={"sample_id": sample.sample_id})
 
         # -- semantic --
+        t0 = time.monotonic()
         try:
             semantic_scores = semantic_evaluator.evaluate(
                 prediction=infer.parsed_output,
                 ground_truth=sample.ground_truth,
+            )
+            logger.debug(
+                "Semantic evaluation complete",
+                extra={
+                    "sample_id": sample.sample_id,
+                    "latency_ms": round((time.monotonic() - t0) * 1000, 1),
+                },
             )
         except Exception as exc:
             msg = f"semantic evaluator error: {exc}"
             eval_errors.append(msg)
             logger.error(msg, extra={"sample_id": sample.sample_id})
 
-        eval_results.append(
-            SampleEvalResult(
-                sample_id=sample.sample_id,
-                run_id=run_id,
-                input_text=sample.input_text,
-                ground_truth=sample.ground_truth,
-                raw_prediction=infer.raw_output,
-                parsed_prediction=infer.parsed_output,
-                parse_error=infer.parse_error,
-                latency_ms=infer.latency_ms,
-                classification=classification_scores,
-                llm_judge=judge_scores,
-                semantic=semantic_scores,
-                eval_errors=eval_errors,
-            )
+        # progress counter — thread-safe increment
+        completed_count += 1
+        elapsed = time.monotonic() - stage_start
+        avg = elapsed / completed_count
+        eta = avg * (total_samples - completed_count)
+        logger.info(
+            f"Sample evaluated {completed_count}/{total_samples}",
+            extra={
+                "sample_id": sample.sample_id,
+                "elapsed_s": round(elapsed, 1),
+                "eta_s": round(eta, 1),
+                "parse_error": bool(infer.parse_error),
+            },
         )
+
+        return SampleEvalResult(
+            sample_id=sample.sample_id,
+            run_id=run_id,
+            input_text=sample.input_text,
+            ground_truth=sample.ground_truth,
+            raw_prediction=infer.raw_output,
+            parsed_prediction=infer.parsed_output,
+            parse_error=infer.parse_error,
+            latency_ms=infer.latency_ms,
+            classification=classification_scores,
+            llm_judge=judge_scores,
+            semantic=semantic_scores,
+            eval_errors=eval_errors,
+        )
+
+    # build work list — skip samples with no inference result
+    work = []
+    for idx, sample in enumerate(samples, start=1):
+        infer = inference_map.get(sample.sample_id)
+        if infer is None:
+            logger.warning(
+                "No inference result for sample",
+                extra={"sample_id": sample.sample_id},
+            )
+            continue
+        work.append((sample, infer, idx))
+
+    with ThreadPoolExecutor(max_workers=config.max_workers) as executor:
+        futures = {
+            executor.submit(_evaluate_one, s, inf, idx): s.sample_id
+            for s, inf, idx in work
+        }
+        for future in as_completed(futures):
+            try:
+                eval_results.append(future.result())
+            except Exception as exc:
+                sid = futures[future]
+                logger.error(
+                    "Evaluation failed for sample",
+                    extra={"sample_id": sid, "error": str(exc)},
+                )
 
     logger.info(
         "Evaluation complete",
@@ -303,7 +370,6 @@ def save_results(
     per_sample_uri = f"{run_path}/per_sample_results.jsonl"
     aggregate_uri = f"{run_path}/aggregate_report.json"
 
-    # write per-sample JSONL
     per_sample_records = [json.loads(r.model_dump_json()) for r in eval_results]
     save_jsonl_to_gcs(
         records=per_sample_records,
@@ -311,7 +377,6 @@ def save_results(
         project_id=config.gcs_project_id,
     )
 
-    # compute aggregates
     aggregate = _compute_aggregate(eval_results)
 
     report = EvalReport(
@@ -355,7 +420,6 @@ def _flatten_ground_truth(gt: dict[str, Any]) -> dict[str, Any]:
         "selected_predecessor_id": gt.get("selected_predecessor_id"),
         "selection_reasoning": gt.get("selection_reasoning", ""),
         "secondary_influences": gt.get("secondary_influences", []),
-        # target_analysis
         "problem_addressed": ta.get("problem_addressed", ""),
         "core_method": ta.get("core_method", ""),
         "key_innovation": ta.get("key_innovation", ""),
@@ -364,13 +428,10 @@ def _flatten_ground_truth(gt: dict[str, Any]) -> dict[str, Any]:
         "explanation_eli5": ta.get("explanation_eli5", ""),
         "explanation_intuitive": ta.get("explanation_intuitive", ""),
         "explanation_technical": ta.get("explanation_technical", ""),
-        # comparison
         "what_was_improved": comp.get("what_was_improved", ""),
         "how_it_was_improved": comp.get("how_it_was_improved", ""),
         "why_it_matters": comp.get("why_it_matters", ""),
-        "problem_solved_from_predecessor": comp.get(
-            "problem_solved_from_predecessor", ""
-        ),
+        "problem_solved_from_predecessor": comp.get("problem_solved_from_predecessor", ""),
         "remaining_limitations": comp.get("remaining_limitations", []),
     }
 
@@ -378,24 +439,77 @@ def _flatten_ground_truth(gt: dict[str, Any]) -> dict[str, Any]:
 def _parse_model_output(raw: str) -> tuple[dict[str, Any] | None, str | None]:
     """
     Try to extract and parse JSON from the model's raw string output.
+    Handles:
+    - ```json ... ``` fences (closing fence optional for truncated responses)
+    - Missing commas between object fields (Qwen occasionally omits them)
+    - Partial responses missing top-level fields
     Returns (parsed_dict, None) on success, (None, error_msg) on failure.
     """
     cleaned = raw.strip()
 
-    # strip ```json ... ``` fences
-    fence = re.search(r"```(?:json)?\s*([\s\S]+?)```", cleaned)
+    # strip ```json ... ``` fences (closing fence optional)
+    fence = re.search(r"```(?:json)?\s*([\s\S]+?)(?:```|$)", cleaned)
     if fence:
         cleaned = fence.group(1).strip()
     else:
-        # find first { ... } block
         brace = re.search(r"\{[\s\S]+\}", cleaned)
         if brace:
             cleaned = brace.group(0)
 
+    # fix missing commas between fields — only before JSON keys (key: pattern)
+    cleaned = re.sub(
+        r'(["\d\]}\w])\s*\n(\s*"(?:[^"\\]|\\.)*"\s*:)',
+        r'\1,\n\2',
+        cleaned,
+    )
+
     try:
-        return json.loads(cleaned), None
+        parsed = json.loads(cleaned)
+        return _normalize_prediction(parsed), None
     except json.JSONDecodeError as exc:
-        return None, f"JSON parse error: {exc} | raw[:200]: {raw[:200]}"
+        # second attempt: more aggressive comma insertion
+        cleaned2 = re.sub(
+            r'(["\d\]}])\s*\n(\s*")',
+            r'\1,\n\2',
+            cleaned,
+        )
+        try:
+            parsed = json.loads(cleaned2)
+            return _normalize_prediction(parsed), None
+        except json.JSONDecodeError:
+            print(f"DEBUG PARSE ERROR: {exc}")
+            print(f"DEBUG CLEANED[:200]: {cleaned[:200]}")
+            return None, f"JSON parse error: {exc} | raw[:200]: {raw[:200]}"
+
+
+def _normalize_prediction(pred: dict[str, Any]) -> dict[str, Any]:
+    """
+    Fill in missing top-level fields with safe defaults so downstream
+    evaluators never receive a KeyError on expected structure.
+    Handles partial responses that only return target_analysis or comparison.
+    """
+    pred.setdefault("selected_predecessor_id", None)
+    pred.setdefault("selection_reasoning", "")
+    pred.setdefault("secondary_influences", [])
+
+    ta = pred.setdefault("target_analysis", {})
+    ta.setdefault("problem_addressed", "")
+    ta.setdefault("core_method", "")
+    ta.setdefault("key_innovation", "")
+    ta.setdefault("limitations", [])
+    ta.setdefault("breakthrough_level", "")
+    ta.setdefault("explanation_eli5", "")
+    ta.setdefault("explanation_intuitive", "")
+    ta.setdefault("explanation_technical", "")
+
+    comp = pred.setdefault("comparison", {})
+    comp.setdefault("what_was_improved", "")
+    comp.setdefault("how_it_was_improved", "")
+    comp.setdefault("why_it_matters", "")
+    comp.setdefault("problem_solved_from_predecessor", "")
+    comp.setdefault("remaining_limitations", [])
+
+    return pred
 
 
 def _safe_mean(values: list[float]) -> float:
@@ -406,18 +520,16 @@ def _compute_aggregate(results: list[SampleEvalResult]) -> AggregateMetrics:
     n = len(results)
     n_parse_errors = sum(1 for r in results if r.parse_error)
     n_schema_errors = sum(
-        1 for r in results if r.classification and not r.classification.schema_valid
+        1 for r in results
+        if r.classification and not r.classification.schema_valid
     )
 
-    # classification
     def _cls(attr: str) -> list[float]:
         return [
             float(getattr(r.classification, attr))
-            for r in results
-            if r.classification is not None
+            for r in results if r.classification is not None
         ]
 
-    # judge
     def _judge(field: str) -> list[float]:
         out = []
         for r in results:
@@ -428,10 +540,10 @@ def _compute_aggregate(results: list[SampleEvalResult]) -> AggregateMetrics:
                 out.append(score_obj.score)
         return out
 
-    # semantic
     def _sem(attr: str) -> list[float]:
         return [
-            float(getattr(r.semantic, attr)) for r in results if r.semantic is not None
+            float(getattr(r.semantic, attr))
+            for r in results if r.semantic is not None
         ]
 
     judge_fields = [

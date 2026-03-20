@@ -33,19 +33,39 @@ class EvaluationConfig(BaseSettings):
     )
 
     # --------------------------------------------------------- Vertex AI (inference)
+    vertex_project_id: str = Field(
+        default="",
+        description="GCP project ID where the inference endpoint is deployed. "
+        "Defaults to gcs_project_id if empty.",
+    )
     vertex_endpoint_id: str = Field(
-        ...,
-        description="Vertex AI endpoint ID of the fine-tuned model under evaluation.",
+        default="",
+        description="Vertex AI endpoint ID of the fine-tuned model under evaluation. "
+        "Not required when using Modal for inference.",
     )
     vertex_location: str = Field(
         default="us-central1",
         description="GCP region for the Vertex AI inference endpoint.",
     )
 
+    # ------------------------------------------------------- Modal (inference)
+    modal_endpoint_url: str = Field(
+        default="",
+        description="Modal web endpoint URL for Qwen2.5-7B-AWQ inference. "
+        "When set, Modal is used instead of Vertex AI for inference. "
+        "e.g. https://nekkantishiv--researchlineage-qwen-infer.modal.run",
+    )
+
     # --------------------------------------------------------- Vertex AI (judge)
+    judge_project_id: str = Field(
+        default="",
+        description="GCP project ID for the judge model. "
+        "Defaults to gcs_project_id if empty.",
+    )
     judge_endpoint_id: str = Field(
-        ...,
-        description="Vertex AI endpoint ID of the LLM judge model.",
+        default="",
+        description="Vertex AI endpoint ID for a custom judge model. "
+        "Leave empty to use the Gemini managed API instead.",
     )
     judge_location: str = Field(
         default="us-central1",
@@ -66,7 +86,7 @@ class EvaluationConfig(BaseSettings):
 
     # ------------------------------------------------------- Evaluation behaviour
     max_workers: int = Field(
-        default=4,
+        default=1,
         description="Concurrent workers for inference and judge calls.",
     )
     inference_batch_size: int = Field(

@@ -11,23 +11,82 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import sys
 import time
+from pathlib import Path
 
 from dotenv import load_dotenv
 
 load_dotenv()
 
-# configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",
-    datefmt="%H:%M:%S",
-)
+
+# ------------------------------------------------------------------ logging setup
+
+_LOG_RECORD_BUILTINS = frozenset(logging.LogRecord("", 0, "", 0, "", (), None).__dict__)
+
+class CleanFormatter(logging.Formatter):
+    """
+    Compact formatter: timestamp [LEVEL] logger_name — message | key=value ...
+    Only appends extra fields that were explicitly passed by the caller.
+    """
+    def format(self, record: logging.LogRecord) -> str:
+        msg = super().format(record)
+        extras = {
+            k: v for k, v in record.__dict__.items()
+            if k not in _LOG_RECORD_BUILTINS
+            and k not in ("message", "asctime")
+        }
+        if extras:
+            kv = "  ".join(f"{k}={v}" for k, v in extras.items())
+            msg = f"{msg}  |  {kv}"
+        return msg
+
+
+def _setup_logging() -> Path:
+    """
+    Set up console (INFO) and file (DEBUG) handlers.
+    Returns the log file path.
+    """
+    run_ts = time.strftime("%Y%m%d_%H%M%S")
+    log_dir = Path("logs")
+    log_dir.mkdir(exist_ok=True)
+    log_path = log_dir / f"run_{run_ts}.log"
+
+    fmt = CleanFormatter(
+        fmt="%(asctime)s [%(levelname)-8s] %(name)-40s — %(message)s",
+        datefmt="%H:%M:%S",
+    )
+
+    # console handler — INFO only, clean output
+    console = logging.StreamHandler()
+    console.setLevel(logging.INFO)
+    console.setFormatter(fmt)
+
+    # file handler — DEBUG level, real-time flush, captures everything
+    file_handler = logging.FileHandler(log_path, mode="w", encoding="utf-8", delay=False)
+    file_handler.setLevel(logging.DEBUG)
+    file_handler.setFormatter(fmt)
+
+    root = logging.getLogger()
+    root.setLevel(logging.DEBUG)
+    root.handlers = [console, file_handler]
+
+    # silence noisy third-party loggers on console only
+    for noisy in ("httpx", "sentence_transformers", "urllib3", "google"):
+        logging.getLogger(noisy).setLevel(logging.WARNING)
+
+    return log_path
+
 logger = logging.getLogger("run_evaluation")
 
 
+# ------------------------------------------------------------------ main
+
 def main() -> None:
+    log_path = _setup_logging()
+    logger = logging.getLogger("run_evaluation")
+
     parser = argparse.ArgumentParser(description="Run the LLM evaluation pipeline.")
     parser.add_argument(
         "--input",
@@ -54,12 +113,15 @@ def main() -> None:
     if args.input:
         cfg.gcs_input_path = args.input
 
+    model_label = cfg.modal_endpoint_url if cfg.modal_endpoint_url else cfg.vertex_endpoint_id
+
     logger.info("=" * 60)
     logger.info("EVALUATION PIPELINE STARTING")
     logger.info("=" * 60)
+    logger.info(f"Log file : {log_path.resolve()}")
     logger.info(f"Input  : {cfg.gcs_input_path}")
     logger.info(f"Output : {cfg.gcs_output_path}")
-    logger.info(f"Model  : {cfg.vertex_endpoint_id}")
+    logger.info(f"Model  : {model_label}")
     logger.info(f"Judge  : {cfg.judge_model_name}")
 
     # ---------------------------------------------------------------- stage 1: load
@@ -75,7 +137,7 @@ def main() -> None:
         sys.exit(0)
 
     if args.limit:
-        samples = samples[: args.limit]
+        samples = samples[:args.limit]
         logger.info(f"Limited to first {args.limit} samples")
 
     if not samples:
@@ -91,13 +153,13 @@ def main() -> None:
     n_errors = sum(1 for r in inference_results if r.parse_error)
     logger.info(
         f"Inference complete in {time.monotonic()-t0:.1f}s "
-        f"({n_errors} parse errors)"
+        f"({len(inference_results) - n_errors} ok, {n_errors} errors)"
     )
 
     # ---------------------------------------------------------------- stage 3: evaluate
     from src.evaluation.pipeline import evaluate_all
 
-    logger.info("\n[STAGE 3/4] Running evaluators...")
+    logger.info(f"\n[STAGE 3/4] Running evaluators on {len(inference_results)} results...")
     t0 = time.monotonic()
     eval_results = evaluate_all(samples, inference_results, cfg)
     logger.info(f"Evaluation complete in {time.monotonic()-t0:.1f}s")
@@ -105,7 +167,7 @@ def main() -> None:
     # ---------------------------------------------------------------- stage 4: save
     from src.evaluation.pipeline import save_results
 
-    logger.info("\n[STAGE 4/4] Saving results to GCS...")
+    logger.info(f"\n[STAGE 4/4] Saving results to GCS...")
     t0 = time.monotonic()
     report = save_results(eval_results, cfg)
     logger.info(f"Saved in {time.monotonic()-t0:.1f}s")

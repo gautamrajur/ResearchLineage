@@ -66,67 +66,87 @@ class VertexAIClient(ModelClient):
         )
 
     def predict(self, prompt: str) -> str:
+        import time as _time
+
         import google.auth
         import google.auth.transport.requests
         import requests as req
 
-        start = time.monotonic()
-        try:
-            # refresh credentials
-            creds, _ = google.auth.default(
-                scopes=["https://www.googleapis.com/auth/cloud-platform"]
-            )
-            creds.refresh(google.auth.transport.requests.Request())
+        start = _time.monotonic()
+        max_retries = 3
+        retry_delays = [10, 30, 60]
 
-            # Llama 3 Instruct requires chat template tokens
-            formatted_prompt = (
-                "<|begin_of_text|><|start_header_id|>user<|end_header_id|>\n"
-                f"{prompt}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n"
-            )
+        # Llama 3 Instruct requires chat template tokens
+        formatted_prompt = (
+            "<|begin_of_text|><|start_header_id|>user<|end_header_id|>\n"
+            f"{prompt}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n"
+        )
 
-            response = req.post(
-                self._url,
-                json={
-                    "instances": [
-                        {
+        for attempt in range(max_retries + 1):
+            try:
+                creds, _ = google.auth.default(
+                    scopes=["https://www.googleapis.com/auth/cloud-platform"]
+                )
+                creds.refresh(google.auth.transport.requests.Request())
+
+                # DEBUG — remove once 503 is resolved
+                print(f"DEBUG URL: {self._url}")
+                print(f"DEBUG project_id: {self.project_id}")
+                print(f"DEBUG prompt[:100]: {formatted_prompt[:100]}")
+
+                response = req.post(
+                    self._url,
+                    json={
+                        "instances": [{
                             "prompt": formatted_prompt,
                             "max_tokens": self.max_output_tokens,
                             "temperature": self.temperature,
-                        }
-                    ]
-                },
-                headers={
-                    "Authorization": f"Bearer {creds.token}",
-                    "Content-Type": "application/json",
-                },
-                timeout=self.timeout,
-            )
-            response.raise_for_status()
+                        }]
+                    },
+                    headers={
+                        "Authorization": f"Bearer {creds.token}",
+                        "Content-Type": "application/json",
+                    },
+                    timeout=self.timeout,
+                )
+                response.raise_for_status()
 
-            preds = response.json().get("predictions", [])
-            if not preds:
-                raise ValueError("Empty predictions from endpoint.")
+                preds = response.json().get("predictions", [])
+                if not preds:
+                    raise ValueError("Empty predictions from endpoint.")
 
-            raw = str(preds[0])
+                raw = str(preds[0])
+                latency_ms = (_time.monotonic() - start) * 1000
+                logger.debug(
+                    "VertexAI predict succeeded",
+                    extra={"latency_ms": round(latency_ms, 1)},
+                )
 
-            latency_ms = (time.monotonic() - start) * 1000
-            logger.debug(
-                "VertexAI predict succeeded",
-                extra={"latency_ms": round(latency_ms, 1)},
-            )
+                if "Output:\n" in raw:
+                    return raw.split("Output:\n", 1)[1].strip()
+                return raw.strip()
 
-            # extract Output section from "Prompt:\n...\nOutput:\n..."
-            if "Output:\n" in raw:
-                return raw.split("Output:\n", 1)[1].strip()
-            return raw.strip()
+            except Exception as exc:
+                is_503 = "503" in str(exc)
+                is_last = attempt == max_retries
 
-        except Exception as exc:
-            latency_ms = (time.monotonic() - start) * 1000
-            logger.error(
-                "Vertex AI predict call failed",
-                extra={"latency_ms": round(latency_ms, 1), "error": str(exc)},
-            )
-            raise
+                if is_last or not is_503:
+                    latency_ms = (_time.monotonic() - start) * 1000
+                    logger.error(
+                        "Vertex AI predict call failed",
+                        extra={"latency_ms": round(latency_ms, 1), "error": str(exc)},
+                    )
+                    raise
+
+                delay = retry_delays[attempt]
+                logger.warning(
+                    f"503 on attempt {attempt + 1}/{max_retries} — "
+                    f"retrying in {delay}s",
+                    extra={"error": str(exc)},
+                )
+                _time.sleep(delay)
+
+        raise RuntimeError("predict: exhausted retries")
 
     def health_check(self) -> bool:
         try:
@@ -207,6 +227,76 @@ class GeminiClient(ModelClient):
             return False
 
 
+# =============================================================== Modal client
+
+
+class ModalClient(ModelClient):
+    """
+    Client for Qwen2.5-7B-AWQ hosted on Modal via vLLM.
+    After deploying modal_app.py, set the printed endpoint URL
+    as MODAL_ENDPOINT_URL in your .env file.
+    """
+
+    def __init__(
+        self,
+        endpoint_url: str,
+        max_tokens: int = 8192,
+        temperature: float = 0.0,
+        timeout: float = 600.0,
+    ) -> None:
+        self.endpoint_url = endpoint_url.rstrip("/")
+        self.max_tokens = max_tokens
+        self.temperature = temperature
+        self.timeout = timeout
+        logger.info(
+            "ModalClient initialised",
+            extra={"endpoint_url": endpoint_url},
+        )
+
+    def predict(self, prompt: str) -> str:
+        import requests as req
+
+        start = time.monotonic()
+        try:
+            response = req.post(
+                self.endpoint_url,
+                json={
+                    "prompt": prompt,
+                    "max_tokens": self.max_tokens,
+                    "temperature": self.temperature,
+                },
+                timeout=self.timeout,
+            )
+            response.raise_for_status()
+            text = response.json().get("text", "")
+            latency_ms = (time.monotonic() - start) * 1000
+            logger.debug(
+                "Modal predict succeeded",
+                extra={"latency_ms": round(latency_ms, 1)},
+            )
+            return text
+        except Exception as exc:
+            latency_ms = (time.monotonic() - start) * 1000
+            logger.error(
+                "Modal predict failed",
+                extra={"latency_ms": round(latency_ms, 1), "error": str(exc)},
+            )
+            raise
+
+    def health_check(self) -> bool:
+        import requests as req
+
+        try:
+            response = req.post(
+                self.endpoint_url,
+                json={"prompt": "ping", "max_tokens": 1},
+                timeout=600.0,
+            )
+            return response.status_code == 200
+        except Exception:
+            return False
+
+
 # =========================================== Factory — keeps callers import-clean
 
 
@@ -214,13 +304,26 @@ def build_inference_client(
     endpoint_id: str,
     project_id: str,
     location: str = "us-central1",
+    modal_endpoint_url: str | None = None,
 ) -> ModelClient:
-    """Build client for the fine-tuned model on a Vertex AI endpoint."""
+    """
+    Build client for the inference model.
+    - If modal_endpoint_url is set: uses ModalClient (Qwen2.5 on Modal).
+    - Otherwise: falls back to VertexAIClient.
+    """
+    if modal_endpoint_url:
+        logger.info("Using ModalClient for inference")
+        return ModalClient(
+            endpoint_url=modal_endpoint_url,
+            max_tokens=8192,
+            temperature=0.0,
+        )
+    logger.info("Using VertexAIClient for inference")
     return VertexAIClient(
         endpoint_id=endpoint_id,
         project_id=project_id,
         location=location,
-        max_output_tokens=2048,
+        max_output_tokens=8192,
         temperature=0.0,
     )
 

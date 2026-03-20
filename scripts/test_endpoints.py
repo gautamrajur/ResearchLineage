@@ -10,6 +10,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 PROJECT_ID = os.getenv("EVAL_GCS_PROJECT_ID", "research-lineage-eval")
+VERTEX_PROJECT_ID = os.getenv("EVAL_VERTEX_PROJECT_ID") or PROJECT_ID
+JUDGE_PROJECT_ID = os.getenv("EVAL_JUDGE_PROJECT_ID") or PROJECT_ID
 LOCATION = os.getenv("EVAL_VERTEX_LOCATION", "us-central1")
 LLAMA_ENDPOINT_ID = os.getenv("EVAL_VERTEX_ENDPOINT_ID", "")
 JUDGE_MODEL_NAME = os.getenv("EVAL_JUDGE_MODEL_NAME", "gemini-2.5-flash")
@@ -33,7 +35,7 @@ def test_llama() -> None:
 
     client = build_inference_client(
         endpoint_id=LLAMA_ENDPOINT_ID,
-        project_id=PROJECT_ID,
+        project_id=VERTEX_PROJECT_ID,
         location=LOCATION,
     )
 
@@ -58,7 +60,7 @@ def test_gemini() -> None:
     from src.evaluation.model_client import build_judge_client
 
     client = build_judge_client(
-        project_id=PROJECT_ID,
+        project_id=JUDGE_PROJECT_ID,
         location=LOCATION,
         model_name=JUDGE_MODEL_NAME,
     )

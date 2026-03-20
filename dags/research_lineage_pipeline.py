@@ -7,6 +7,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from datetime import datetime, timedelta  # noqa: E402
 from airflow import DAG  # noqa: E402
+from airflow.models.param import Param  # noqa: E402
 from airflow.operators.python import PythonOperator  # noqa: E402
 import asyncio  # noqa: E402
 from src.tasks.schema_validation import SchemaValidationTask  # noqa: E402
@@ -50,6 +51,26 @@ dag = DAG(
     catchup=False,
     max_active_runs=1,
     tags=["research", "citations", "ml"],
+    params={
+        "paper_id": Param(
+            "204e3073870fae3d05bcbc2f6a8e263d9b72e776",
+            type="string",
+            description="Seed paper ID from Semantic Scholar (default: Attention Is All You Need)",
+        ),
+        "max_depth": Param(
+            3,
+            type="integer",
+            minimum=1,
+            maximum=5,
+            description="Citation traversal depth (1-5 hops)",
+        ),
+        "direction": Param(
+            "both",
+            type="string",
+            enum=["both", "citing", "cited"],
+            description="Direction of citation traversal",
+        ),
+    },
 )
 
 
@@ -70,11 +91,9 @@ def task_0_schema_validation(**context):
 
 def task_1_data_acquisition(**context):
     """Task 1: Acquire paper metadata and citation network."""
-    paper_id = context["dag_run"].conf.get(
-        "paper_id", "204e3073870fae3d05bcbc2f6a8e263d9b72e776"
-    )
-    max_depth = context["dag_run"].conf.get("max_depth", 3)
-    direction = context["dag_run"].conf.get("direction", "both")
+    paper_id = context["params"]["paper_id"]
+    max_depth = context["params"]["max_depth"]
+    direction = context["params"]["direction"]
 
     async def acquire():
         task = DataAcquisitionTask()
@@ -135,8 +154,6 @@ def task_3a_graph_construction(**context):
     task = CitationGraphConstructionTask()
     result = task.execute(cleaned_data)
 
-    # Note: NetworkX graphs can't be serialized to XCom easily
-    # So we'll store summary data only
     graph_summary = {
         "target_paper_id": result["target_paper_id"],
         "papers": result["papers"],
@@ -293,12 +310,10 @@ def task_11_report_generation(**context):
         task_ids="database_write", key="return_value"
     )
 
-    # If write_result is string, get the actual data
     final_data = context["task_instance"].xcom_pull(
         task_ids="anomaly_detection", key="final_data"
     )
 
-    # Reconstruct write_result
     if isinstance(write_result, str):
         write_result = {
             "target_paper_id": final_data["target_paper_id"],
@@ -321,25 +336,11 @@ def task_11_report_generation(**context):
     )
 
 
-# Define tasks
-
-t0_schema = PythonOperator(
-    task_id="schema_validation",
-    python_callable=task_0_schema_validation,
-    dag=dag,
-)
-
 # ══════════════════════════════════════════════════════════════════════
 # Branch B: PDF Upload (parallel to Branch A)
 # ══════════════════════════════════════════════════════════════════════
 def task_1b_pdf_upload(**context):
-    """
-    Task 1b: Upload PDFs to GCS using pre-fetched acquisition data (Branch B).
-
-    Runs in parallel with the validation/cleaning/graph branch.
-    Uses the same raw_data from data_acquisition task.
-    """
-    # Pull acquisition result from data_acquisition task
+    """Task 1b: Upload PDFs to GCS (Branch B)."""
     acquisition_result = context["task_instance"].xcom_pull(
         task_ids="data_acquisition", key="raw_data"
     )
@@ -353,7 +354,6 @@ def task_1b_pdf_upload(**context):
 
     result = run_async_task(upload())
 
-    # Push result to XCom for potential downstream use
     context["task_instance"].xcom_push(key="pdf_upload_result", value=result)
 
     return (
@@ -367,14 +367,18 @@ def task_1b_pdf_upload(**context):
 # Define Airflow Tasks
 # ══════════════════════════════════════════════════════════════════════
 
-# Task 1: Shared entry point
+t0_schema = PythonOperator(
+    task_id="schema_validation",
+    python_callable=task_0_schema_validation,
+    dag=dag,
+)
+
 t1_acquisition = PythonOperator(
     task_id="data_acquisition",
     python_callable=task_1_data_acquisition,
     dag=dag,
 )
 
-# Branch A: Validation → Cleaning → Graph
 t2_validation = PythonOperator(
     task_id="data_validation",
     python_callable=task_1a_data_validation,
@@ -429,12 +433,10 @@ t11_report = PythonOperator(
     dag=dag,
 )
 
-# Branch B: PDF Upload (parallel)
 t1b_pdf_upload = PythonOperator(
     task_id="pdf_upload",
     python_callable=task_1b_pdf_upload,
     dag=dag,
-    # Longer timeout for PDF downloads
     execution_timeout=timedelta(minutes=120),
 )
 
@@ -443,20 +445,18 @@ t1b_pdf_upload = PythonOperator(
 # Define Task Dependencies (Parallel Branches)
 # ══════════════════════════════════════════════════════════════════════
 
-# Branch A: data_acquisition → validation → cleaning → graph
+# Branch A
 t0_schema >> t1_acquisition >> t2_validation >> t3_cleaning >> t4_graph >> t5_features >> t7_transform >> t8_quality >> t9_anomaly >> t10_db_write >> t11_report
 
-
-# Branch B: data_acquisition → pdf_upload (runs in parallel with Branch A)
+# Branch B (parallel)
 t1_acquisition >> t1b_pdf_upload
-
 
 # ══════════════════════════════════════════════════════════════════════
 # Visual Representation:
 # ══════════════════════════════════════════════════════════════════════
 #
-#                          ┌──→ [t1a_validation] ──→ [t2a_cleaning] ──→ [t3a_graph]
-# [t1_acquisition] ────────┤
-#                          └──→ [t1b_pdf_upload]
+#                          ┌──→ [validation] → [cleaning] → [graph] → ... → [report]
+# [schema] → [acquisition]─┤
+#                          └──→ [pdf_upload]
 #
 # ══════════════════════════════════════════════════════════════════════

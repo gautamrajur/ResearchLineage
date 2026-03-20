@@ -86,3 +86,7 @@ htmlcov/
 outputs/
 cloud-sql-proxy
 cloud-sql-proxy.exe
+
+models/
+
+logs/
