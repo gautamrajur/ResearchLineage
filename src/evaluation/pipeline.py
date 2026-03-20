@@ -365,8 +365,9 @@ def save_results(
         raise ValueError("No evaluation results to save.")
 
     run_id = eval_results[0].run_id
+    model_tag = getattr(config, "inference_model_name", "unknown").replace(" ", "-")
     base_path = config.gcs_output_path.rstrip("/")
-    run_path = f"{base_path}/run_{run_id}"
+    run_path = f"{base_path}/run_{run_id}_{model_tag}"
     per_sample_uri = f"{run_path}/per_sample_results.jsonl"
     aggregate_uri = f"{run_path}/aggregate_report.json"
 

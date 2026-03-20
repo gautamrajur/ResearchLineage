@@ -51,9 +51,14 @@ class EvaluationConfig(BaseSettings):
     # ------------------------------------------------------- Modal (inference)
     modal_endpoint_url: str = Field(
         default="",
-        description="Modal web endpoint URL for Qwen2.5-7B-AWQ inference. "
+        description="Modal web endpoint URL for inference. "
         "When set, Modal is used instead of Vertex AI for inference. "
-        "e.g. https://nekkantishiv--researchlineage-qwen-infer.modal.run",
+        "e.g. https://nekkantishiv--researchlineage-qwen-qwenmodel-infer.modal.run",
+    )
+    inference_model_name: str = Field(
+        default="unknown",
+        description="Human-readable model name stamped on GCS output paths. "
+        "e.g. qwen2.5-7b, llama-3.1-8b, mistral-7b",
     )
 
     # --------------------------------------------------------- Vertex AI (judge)
@@ -72,7 +77,7 @@ class EvaluationConfig(BaseSettings):
         description="GCP region for the Vertex AI judge endpoint.",
     )
     judge_max_output_tokens: int = Field(
-        default=1024,
+        default=2048,
         description="Max tokens for judge responses.",
     )
     judge_temperature: float = Field(
@@ -86,7 +91,7 @@ class EvaluationConfig(BaseSettings):
 
     # ------------------------------------------------------- Evaluation behaviour
     max_workers: int = Field(
-        default=1,
+        default=4,
         description="Concurrent workers for inference and judge calls.",
     )
     inference_batch_size: int = Field(

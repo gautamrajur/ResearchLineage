@@ -97,11 +97,13 @@ class VertexAIClient(ModelClient):
                 response = req.post(
                     self._url,
                     json={
-                        "instances": [{
-                            "prompt": formatted_prompt,
-                            "max_tokens": self.max_output_tokens,
-                            "temperature": self.temperature,
-                        }]
+                        "instances": [
+                            {
+                                "prompt": formatted_prompt,
+                                "max_tokens": self.max_output_tokens,
+                                "temperature": self.temperature,
+                            }
+                        ]
                     },
                     headers={
                         "Authorization": f"Bearer {creds.token}",

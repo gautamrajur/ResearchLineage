@@ -72,8 +72,8 @@ def _setup_logging() -> Path:
     root.setLevel(logging.DEBUG)
     root.handlers = [console, file_handler]
 
-    # silence noisy third-party loggers on console only
-    for noisy in ("httpx", "sentence_transformers", "urllib3", "google"):
+    # silence noisy third-party loggers globally (console + file)
+    for noisy in ("httpx", "httpcore", "sentence_transformers", "urllib3", "google", "pydot"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
 
     return log_path
@@ -121,7 +121,7 @@ def main() -> None:
     logger.info(f"Log file : {log_path.resolve()}")
     logger.info(f"Input  : {cfg.gcs_input_path}")
     logger.info(f"Output : {cfg.gcs_output_path}")
-    logger.info(f"Model  : {model_label}")
+    logger.info(f"Model  : {model_label} ({cfg.inference_model_name})")
     logger.info(f"Judge  : {cfg.judge_model_name}")
 
     # ---------------------------------------------------------------- stage 1: load

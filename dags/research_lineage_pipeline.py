@@ -238,7 +238,9 @@ def task_8_quality_validation(**context):
         n_passed = len(cat.get("passed", []))
         n_failed = len(cat.get("failed", []))
         status = "OK" if n_failed == 0 else "ISSUES"
-        logger.info("  %-26s %d passed, %d failed  [%s]", label, n_passed, n_failed, status)
+        logger.info(
+            "  %-26s %d passed, %d failed  [%s]", label, n_passed, n_failed, status
+        )
         for msg in cat.get("failed", []):
             logger.warning("    ✗ %s", msg)
 
@@ -249,7 +251,9 @@ def task_8_quality_validation(**context):
 
         temporal = bias.get("temporal_bias", {})
         if temporal:
-            logger.info("  Temporal distribution (%d papers):", temporal.get("total_papers", 0))
+            logger.info(
+                "  Temporal distribution (%d papers):", temporal.get("total_papers", 0)
+            )
             for era, proportion in temporal.get("distribution", {}).items():
                 logger.info("    %-18s %.1f%%", era, proportion * 100)
 
@@ -446,7 +450,19 @@ t1b_pdf_upload = PythonOperator(
 # ══════════════════════════════════════════════════════════════════════
 
 # Branch A
-t0_schema >> t1_acquisition >> t2_validation >> t3_cleaning >> t4_graph >> t5_features >> t7_transform >> t8_quality >> t9_anomaly >> t10_db_write >> t11_report
+(
+    t0_schema
+    >> t1_acquisition
+    >> t2_validation
+    >> t3_cleaning
+    >> t4_graph
+    >> t5_features
+    >> t7_transform
+    >> t8_quality
+    >> t9_anomaly
+    >> t10_db_write
+    >> t11_report
+)
 
 # Branch B (parallel)
 t1_acquisition >> t1b_pdf_upload

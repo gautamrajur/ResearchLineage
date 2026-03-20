@@ -99,14 +99,14 @@ print(f"Input length  : {len(sample.input_text)} chars")
 MAX_CHARS = 200_000
 truncated = sample.input_text[:MAX_CHARS]
 print(f"Using up to   : {MAX_CHARS:,} chars (actual: {len(truncated):,})")
-print(f"\nSending to model...")
+print("\nSending to model...")
 
 try:
     raw = inference_client.predict(truncated)
     print(f"\n[OK] Raw response length: {len(raw)}")
-    print(f"\nFirst 500 chars:")
+    print("\nFirst 500 chars:")
     print(raw[:500])
-    print(f"\nLast 200 chars:")
+    print("\nLast 200 chars:")
     print(raw[-200:])
 
     parsed, err = _parse_model_output(raw)
