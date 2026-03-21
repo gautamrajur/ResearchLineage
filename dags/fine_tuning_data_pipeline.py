@@ -60,7 +60,7 @@ DEFAULT_ARGS = {
 }
 
 with DAG(
-    dag_id="fine_tuning_pipeline",
+    dag_id="fine_tuning_data_generation",
     default_args=DEFAULT_ARGS,
     description="End-to-end: seed generation → lineage tracing → split → convert → report → GCS upload",
     schedule_interval=None,
