@@ -1,0 +1,56 @@
+# Custom Training Container for Llama 3 LoRA Fine-tuning on Vertex AI
+#
+# Authentication: ADC (Application Default Credentials)
+#   - Vertex AI injects credentials automatically inside the container
+#   - No GOOGLE_APPLICATION_CREDENTIALS / service account key needed
+#
+# GCS access: GCS FUSE mount (/gcs/<bucket>/...)
+#   - The training script converts gs:// URIs to /gcs/ paths via gcs_to_fuse()
+#   - No gcsfs library needed
+#
+# Build:
+#   docker build -t REGION-docker.pkg.dev/PROJECT/REPO/llama3-lora:latest \
+#                -f Dockerfile.custom .
+#
+# Push:
+#   docker push REGION-docker.pkg.dev/PROJECT/REPO/llama3-lora:latest
+#
+# Artifact Registry repo (one-time setup):
+#   gcloud artifacts repositories create REPO \
+#       --repository-format=docker --location=REGION
+
+FROM pytorch/pytorch:2.2.0-cuda12.1-cudnn8-devel
+
+WORKDIR /app
+
+# System dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    wget \
+    build-essential \
+    ninja-build \
+    && rm -rf /var/lib/apt/lists/*
+
+# Python dependencies
+# Pin versions for reproducibility
+RUN pip install --no-cache-dir \
+    transformers==4.44.0 \
+    peft==0.12.0 \
+    datasets==2.21.0 \
+    accelerate==0.34.0 \
+    bitsandbytes==0.43.3 \
+    scipy \
+    sentencepiece \
+    tensorboard
+
+# Flash Attention 2 — requires CUDA devel image + build tools
+RUN pip install --no-cache-dir flash-attn --no-build-isolation
+
+# Copy only the training script — everything else stays on the host
+COPY ft_custom_train.py /app/ft_custom_train.py
+
+ENV PYTHONUNBUFFERED=1
+ENV TRANSFORMERS_NO_ADVISORY_WARNINGS=1
+
+# ENTRYPOINT is called with training_args appended by the CustomJob container_spec
+ENTRYPOINT ["python", "ft_custom_train.py"]

@@ -90,3 +90,10 @@ cloud-sql-proxy.exe
 models/
 
 logs/
+
+# Terraform (local state)
+temporary/terraform/.terraform/
+temporary/terraform/*.tfstate
+temporary/terraform/*.tfstate.*
+temporary/terraform/.terraform.lock.hcl
+ft_data/

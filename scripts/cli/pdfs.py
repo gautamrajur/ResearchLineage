@@ -147,7 +147,7 @@ async def cmd_upload(acquisition_result: Optional[Dict[str, Any]] = None) -> Non
         gcs = GCSClient()
     except Exception as e:
         print(f"\n  {RED}✗{RESET}  GCS connection failed: {e}")
-        print(f"     Check Application Default Credentials (e.g. gcloud auth application-default login) and GCS_BUCKET in .env")
+        print(f"     Check Application Default Credentials (e.g. gcloud auth application-default login) and GCS_BUCKET_NAME in .env")
         sys.exit(1)
 
     fetcher = PDFFetcher(gcs)
