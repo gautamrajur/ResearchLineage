@@ -92,3 +92,4 @@ temporary/terraform/.terraform/
 temporary/terraform/*.tfstate
 temporary/terraform/*.tfstate.*
 temporary/terraform/.terraform.lock.hcl
+ft_data/
