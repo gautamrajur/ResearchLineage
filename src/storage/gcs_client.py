@@ -41,8 +41,8 @@ class GCSClient:
     """
 
     def __init__(self, bucket_name: Optional[str] = None, prefix: Optional[str] = None):
-        bucket_name = bucket_name or os.environ.get("GCS_BUCKET", "research-lineage-pdfs")
-        prefix = prefix or os.environ.get("GCS_PREFIX", "pdfs/")
+        bucket_name = bucket_name or os.environ.get("GCS_BUCKET_NAME", "research-lineage-pdfs")
+        prefix = prefix or os.environ.get("GCS_PDF_PREFIX", "pdfs/")
 
         self.client = _get_shared_client()
         self.bucket = self.client.bucket(bucket_name)

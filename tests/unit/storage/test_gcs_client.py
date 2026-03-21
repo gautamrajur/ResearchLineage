@@ -50,7 +50,7 @@ class TestInit:
 
     def test_env_defaults(self, mock_gcs):
         from src.storage.gcs_client import GCSClient
-        with patch.dict("os.environ", {"GCS_BUCKET": "env-bucket", "GCS_PREFIX": "env/"}):
+        with patch.dict("os.environ", {"GCS_BUCKET_NAME": "env-bucket", "GCS_PDF_PREFIX": "env/"}):
             gcs = GCSClient()
             assert gcs.bucket_name == "env-bucket"
             assert gcs.prefix == "env/"

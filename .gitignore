@@ -86,3 +86,9 @@ htmlcov/
 outputs/
 cloud-sql-proxy
 cloud-sql-proxy.exe
+
+# Terraform (local state)
+temporary/terraform/.terraform/
+temporary/terraform/*.tfstate
+temporary/terraform/*.tfstate.*
+temporary/terraform/.terraform.lock.hcl
