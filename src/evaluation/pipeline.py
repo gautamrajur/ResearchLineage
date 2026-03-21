@@ -133,7 +133,7 @@ def run_inference(
     )
 
     results: list[InferenceResult] = []
-    MAX_INPUT_CHARS = 32_000
+    MAX_INPUT_CHARS = 350_000
 
     def _infer_one(sample: EvalSample) -> InferenceResult:
         start = time.monotonic()
@@ -432,7 +432,9 @@ def _flatten_ground_truth(gt: dict[str, Any]) -> dict[str, Any]:
         "what_was_improved": comp.get("what_was_improved", ""),
         "how_it_was_improved": comp.get("how_it_was_improved", ""),
         "why_it_matters": comp.get("why_it_matters", ""),
-        "problem_solved_from_predecessor": comp.get("problem_solved_from_predecessor", ""),
+        "problem_solved_from_predecessor": comp.get(
+            "problem_solved_from_predecessor", ""
+        ),
         "remaining_limitations": comp.get("remaining_limitations", []),
     }
 
@@ -460,7 +462,7 @@ def _parse_model_output(raw: str) -> tuple[dict[str, Any] | None, str | None]:
     # fix missing commas between fields — only before JSON keys (key: pattern)
     cleaned = re.sub(
         r'(["\d\]}\w])\s*\n(\s*"(?:[^"\\]|\\.)*"\s*:)',
-        r'\1,\n\2',
+        r"\1,\n\2",
         cleaned,
     )
 
@@ -471,7 +473,7 @@ def _parse_model_output(raw: str) -> tuple[dict[str, Any] | None, str | None]:
         # second attempt: more aggressive comma insertion
         cleaned2 = re.sub(
             r'(["\d\]}])\s*\n(\s*")',
-            r'\1,\n\2',
+            r"\1,\n\2",
             cleaned,
         )
         try:
@@ -521,14 +523,14 @@ def _compute_aggregate(results: list[SampleEvalResult]) -> AggregateMetrics:
     n = len(results)
     n_parse_errors = sum(1 for r in results if r.parse_error)
     n_schema_errors = sum(
-        1 for r in results
-        if r.classification and not r.classification.schema_valid
+        1 for r in results if r.classification and not r.classification.schema_valid
     )
 
     def _cls(attr: str) -> list[float]:
         return [
             float(getattr(r.classification, attr))
-            for r in results if r.classification is not None
+            for r in results
+            if r.classification is not None
         ]
 
     def _judge(field: str) -> list[float]:
@@ -543,8 +545,7 @@ def _compute_aggregate(results: list[SampleEvalResult]) -> AggregateMetrics:
 
     def _sem(attr: str) -> list[float]:
         return [
-            float(getattr(r.semantic, attr))
-            for r in results if r.semantic is not None
+            float(getattr(r.semantic, attr)) for r in results if r.semantic is not None
         ]
 
     judge_fields = [
