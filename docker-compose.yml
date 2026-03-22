@@ -8,6 +8,8 @@ services:
       POSTGRES_DB: airflow
     ports:
       - "5433:5432"
+    volumes:
+      - airflow_metadata:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s
@@ -151,3 +153,6 @@ services:
       - ./tests:/opt/airflow/tests
       - ${GCLOUD_CONFIG_DIR}:/gcp/config:ro
     restart: unless-stopped
+
+volumes:
+  airflow_metadata:
