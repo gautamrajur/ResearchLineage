@@ -87,3 +87,4 @@ outputs/
 cloud-sql-proxy
 cloud-sql-proxy.exe
 "timeline_view/config.py" 
+/timeline_view

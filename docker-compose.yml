@@ -78,7 +78,7 @@ services:
         airflow variables set GCP_PROJECT_ID mlops-researchlineage
         airflow variables set GCP_REGION us-central1
         airflow variables set GCR_IMAGE gcr.io/mlops-researchlineage/lineage-training
-        airflow variables set MIN_NEW_SAMPLES 50
+        airflow variables set MIN_NEW_SAMPLES 0
         airflow variables set GCS_BUCKET researchlineage-data-central1
         airflow variables set MAX_SEQ_LEN 102400
         airflow variables set SERVING_MAX_LEN 102400  
