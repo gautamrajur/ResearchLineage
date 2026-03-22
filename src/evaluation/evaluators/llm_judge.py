@@ -182,30 +182,30 @@ def _judge_single_field(
 
         return JudgeScore(
             field_name=field_name,
-            score=float(parsed.get("overall", 1.0)),
+            score=float(parsed.get("overall", -1.0)),
             reasoning=parsed.get("reasoning", raw_response),
             rubric_axes={
-                "factual_grounding": float(parsed.get("factual_grounding", 1.0)),
-                "logical_coherence": float(parsed.get("logical_coherence", 1.0)),
-                "domain_consistency": float(parsed.get("domain_consistency", 1.0)),
-                "specificity": float(parsed.get("specificity", 1.0)),
+                "factual_grounding": float(parsed.get("factual_grounding", -1.0)),
+                "logical_coherence": float(parsed.get("logical_coherence", -1.0)),
+                "domain_consistency": float(parsed.get("domain_consistency", -1.0)),
+                "specificity": float(parsed.get("specificity", -1.0)),
             },
         )
 
     except Exception as exc:
         latency_ms = (time.monotonic() - start) * 1000
         logger.error(
-            "Judge field call failed",
+            "Judge field call failed: %s",
+            exc,
             extra={
                 "sample_id": sample_id,
                 "field": field_name,
                 "latency_ms": round(latency_ms, 1),
-                "error": str(exc),
             },
         )
         return JudgeScore(
             field_name=field_name,
-            score=1.0,
+            score=-1.0,
             reasoning=f"Judge call failed: {exc}",
             rubric_axes={},
         )
@@ -228,9 +228,12 @@ def _build_judge_prompt(
 def _parse_judge_response(raw: str, sample_id: str = "") -> dict[str, Any]:
     """
     Parse JSON from the judge's response.
-    Handles complete and truncated fenced blocks.
-    Logs full raw response at DEBUG level on parse failure for file inspection.
+    Handles fenced blocks, trailing commas, and empty responses.
     """
+    if not raw or not raw.strip():
+        logger.warning("Judge returned empty response for sample_id=%s", sample_id)
+        return {"overall": -1.0, "reasoning": "Empty response from judge"}
+
     cleaned = raw.strip()
 
     fence_match = re.search(r"```(?:json)?\s*([\s\S]+?)(?:```|$)", cleaned)
@@ -241,20 +244,18 @@ def _parse_judge_response(raw: str, sample_id: str = "") -> dict[str, Any]:
     if brace_match:
         cleaned = brace_match.group(0)
 
+    # Remove trailing commas before } or ] (mirrors _parse_model_output in pipeline.py)
+    cleaned = re.sub(r",\s*([}\]])", r"\1", cleaned)
+
     try:
         return json.loads(cleaned)
     except json.JSONDecodeError as exc:
         logger.warning(
-            "Could not parse judge JSON response",
-            extra={"error": str(exc), "raw_snippet": raw[:200]},
-        )
-        # full raw response only goes to file (DEBUG level) — not console
-        logger.debug(
-            "Judge full raw response on parse failure",
-            extra={"sample_id": sample_id, "full_raw": raw},
+            "Could not parse judge JSON response — error: %s — raw[:300]: %s",
+            exc, repr(raw[:300]),
         )
         return {
-            "overall": 1.0,
+            "overall": -1.0,
             "reasoning": f"Parse error: {exc}. Raw response: {raw[:500]}",
         }
 

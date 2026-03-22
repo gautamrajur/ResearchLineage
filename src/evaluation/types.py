@@ -62,6 +62,9 @@ class ClassificationScores(BaseModel):
     """Scores for fields that have a definite correct answer."""
 
     predecessor_id_correct: bool
+    predecessor_id_soft_correct: bool = Field(
+        description="True if pred matches GT top-1 OR appears in GT secondary_influences.",
+    )
     predecessor_id_mrr: float = Field(
         description="MRR based on position in secondary_influences if not exact match.",
         ge=0.0,
@@ -77,7 +80,7 @@ class JudgeScore(BaseModel):
     """Score for one field evaluated by the LLM judge."""
 
     field_name: str
-    score: float = Field(ge=1.0, le=5.0)
+    score: float = Field(ge=-1.0, le=5.0)
     reasoning: str = Field(description="The judge's full reasoning — stored verbatim.")
     rubric_axes: dict[str, float] = Field(
         description="Per-axis scores: factual_grounding, logical_coherence, "
@@ -146,9 +149,17 @@ class AggregateMetrics(BaseModel):
     n_samples: int
     n_parse_errors: int
     n_schema_errors: int
+    n_foundational: int = Field(
+        default=0,
+        description="Samples with no selected_predecessor_id — excluded from predecessor metrics.",
+    )
 
-    # classification
+    # classification (computed over non-foundational samples only)
     predecessor_accuracy: float
+    predecessor_soft_accuracy: float = Field(
+        default=0.0,
+        description="Soft accuracy: exact match OR pred appears in GT secondary_influences.",
+    )
     predecessor_mrr: float
     breakthrough_level_accuracy: float
     secondary_influences_f1_mean: float

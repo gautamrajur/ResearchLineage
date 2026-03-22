@@ -5,7 +5,6 @@ import logging
 from typing import Any
 
 import numpy as np
-from sentence_transformers import SentenceTransformer
 
 from src.evaluation.types import GroundTruth, SemanticScores
 
@@ -57,6 +56,7 @@ class SemanticEvaluator:
     """
 
     def __init__(self, model_name: str = "all-MiniLM-L6-v2") -> None:
+        from sentence_transformers import SentenceTransformer
         logger.info("Loading sentence-transformers model", extra={"model": model_name})
         self._model = SentenceTransformer(model_name)
         logger.info("Sentence-transformers model loaded")

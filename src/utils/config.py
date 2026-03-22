@@ -58,6 +58,17 @@ class Settings(BaseSettings):
     gcs_project_id: str = "researchlineage"
     gcs_upload_prefix: str = "fine-tuning-artifacts/"
 
+    # Evaluation pipeline settings
+    eval_model_endpoint: str = "gemini-2.5-pro"
+    eval_vertex_project: str = "testing-488212"
+    eval_vertex_location: str = "us-central1"
+    eval_max_workers: int = 2
+    eval_output_dir: str = "/tmp/eval_output"
+    eval_finetuning_data_source: str = "local"
+    eval_local_input: str = ""
+    eval_finetuning_data_gcs_path: str = ""
+    eval_judge_model: str = "gemini-2.5-flash"
+
     # Monitoring
     log_level: str = "INFO"
     enable_metrics: bool = True
@@ -166,6 +177,21 @@ SPLIT_RANDOM_SEED: int = 42
 GCS_BUCKET_NAME: str = settings.gcs_bucket_name
 GCS_PROJECT_ID: str = settings.gcs_project_id
 GCS_UPLOAD_PREFIX: str = settings.gcs_upload_prefix
+
+
+# ========================================
+# Evaluation pipeline
+# ========================================
+
+EVAL_MODEL_ENDPOINT: str          = settings.eval_model_endpoint
+EVAL_VERTEX_PROJECT: str          = settings.eval_vertex_project
+EVAL_VERTEX_LOCATION: str         = settings.eval_vertex_location
+EVAL_MAX_WORKERS: int             = settings.eval_max_workers
+EVAL_OUTPUT_DIR: str              = settings.eval_output_dir
+EVAL_FINETUNING_DATA_SOURCE: str  = settings.eval_finetuning_data_source
+EVAL_LOCAL_INPUT: str             = settings.eval_local_input
+EVAL_FINETUNING_DATA_GCS_PATH: str = settings.eval_finetuning_data_gcs_path
+EVAL_JUDGE_MODEL: str             = settings.eval_judge_model
 
 
 # ========================================

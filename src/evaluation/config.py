@@ -16,19 +16,25 @@ class EvaluationConfig(BaseSettings):
 
     model_config = {"env_prefix": "EVAL_", "env_file": ".env", "extra": "ignore"}
 
-    # ------------------------------------------------------------------ GCS
-    gcs_input_path: str = Field(
-        ...,
-        description="GCS URI for evaluation input data. "
-        "e.g. gs://my-bucket/eval/inputs/",
+    # ------------------------------------------------------------------ Input source
+    finetuning_data_source: str = Field(
+        default="local",
+        description="Where to load evaluation input data from: 'local' or 'gcs'.",
     )
+    finetuning_data_gcs_path: str = Field(
+        default="",
+        description="GCS URI for evaluation input data (used when finetuning_data_source='gcs'). "
+        "e.g. gs://my-bucket/eval/inputs/test.jsonl",
+    )
+
+    # ------------------------------------------------------------------ GCS (output + auth)
     gcs_output_path: str = Field(
-        ...,
+        default="",
         description="GCS URI where results are written. "
         "e.g. gs://my-bucket/eval/outputs/",
     )
     gcs_project_id: str = Field(
-        ...,
+        default="",
         description="GCP project ID for GCS authentication.",
     )
 
@@ -48,17 +54,19 @@ class EvaluationConfig(BaseSettings):
         description="GCP region for the Vertex AI inference endpoint.",
     )
 
-    # ------------------------------------------------------- Modal (inference)
-    modal_endpoint_url: str = Field(
+    # ---------------------------------------------------------------- Inference model endpoint
+    model_endpoint: str = Field(
         default="",
-        description="Modal web endpoint URL for inference. "
-        "When set, Modal is used instead of Vertex AI for inference. "
-        "e.g. https://nekkantishiv--researchlineage-qwen-qwenmodel-infer.modal.run",
+        description="Model endpoint for inference. Routing rules: "
+        "  'gemini-*'   → GeminiClient (managed Vertex AI Gemini API); "
+        "  'http*'      → ModalClient (Modal web endpoint URL); "
+        "  anything else → VertexAIClient (Vertex AI endpoint ID). "
+        "e.g. 'gemini-2.5-pro', 'https://...modal.run', '1234567890'",
     )
     inference_model_name: str = Field(
         default="unknown",
         description="Human-readable model name stamped on GCS output paths. "
-        "e.g. qwen2.5-7b, llama-3.1-8b, mistral-7b",
+        "Defaults to model_endpoint value if not set explicitly.",
     )
 
     # --------------------------------------------------------- Vertex AI (judge)
@@ -106,4 +114,14 @@ class EvaluationConfig(BaseSettings):
         default="",
         description="Optional run identifier stamped on all output files. "
         "Auto-generated from timestamp if empty.",
+    )
+
+    # ------------------------------------------------------- Local input (no GCS)
+    local_input_path: str = Field(
+        default="",
+        description="Local filesystem path to a split JSONL file "
+        "(e.g. lineage_llama_format/test.jsonl). "
+        "Used when finetuning_data_source='local'. "
+        "The paired metadata file is expected at the same directory with "
+        "the name <split>_metadata_fixed.jsonl.",
     )
