@@ -1,0 +1,38 @@
+# # Let the base image provide Torch 2.4.0
+# trl>=0.11.0
+# transformers>=4.46.0
+# peft>=0.13.0
+# datasets>=3.0.0
+# bitsandbytes>=0.45.0
+# accelerate>=1.1.0
+# safetensors>=0.4.0
+# google-cloud-storage>=2.10.0
+# scipy
+# sentencepiece
+# protobuf
+
+# CORE STACK (Pinned for 2.4.0 compatibility)
+torch==2.4.0
+torchvision==0.19.0
+# This is the critical pin to stop the 'int1' error
+torchao==0.4.0 
+
+# UNSLOTH (PyPI version is safest)
+unsloth==2024.8
+unsloth_zoo
+
+# SUPPORT STACK (Pinned to avoid pulling in newer incompatible torchao/torch)
+transformers==4.44.2
+xformers==0.0.27.post2
+trl==0.11.0
+peft==0.13.0
+bitsandbytes>=0.45.0
+accelerate>=1.1.0
+
+# UTILS
+datasets>=3.0.0
+google-cloud-storage>=2.10.0
+safetensors>=0.4.0
+scipy
+sentencepiece
+protobuf
