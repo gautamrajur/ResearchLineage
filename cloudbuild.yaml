@@ -1,0 +1,11 @@
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args: 
+      - 'build'
+      - '-f'
+      - 'docker/training.Dockerfile'
+      - '-t'
+      - 'gcr.io/mlops-researchlineage/lineage-training:latest'
+      - '.'
+images:
+  - 'gcr.io/mlops-researchlineage/lineage-training:latest'

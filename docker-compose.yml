@@ -53,29 +53,53 @@ services:
       - AIRFLOW__CORE__LOAD_EXAMPLES=False
       - AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=True
       - _PIP_ADDITIONAL_REQUIREMENTS=google-genai beautifulsoup4 pydantic-settings
+      - GOOGLE_APPLICATION_CREDENTIALS=/gcp/config/application_default_credentials.json
+      - GOOGLE_CLOUD_PROJECT=mlops-researchlineage
+      - MODAL_TOKEN_ID=${MODAL_TOKEN_ID}
+      - MODAL_TOKEN_SECRET=${MODAL_TOKEN_SECRET}
     entrypoint: /bin/bash
     command:
       - -c
       - |
         airflow db init
+
         airflow users create \
           --username admin \
           --firstname Admin \
           --lastname User \
           --role Admin \
           --email admin@example.com \
-          --password admin
+          --password admin || true
+
+        airflow connections delete google_cloud_default || true
+        airflow connections add google_cloud_default \
+          --conn-type google_cloud_platform \
+          --conn-extra '{"project": "mlops-researchlineage", "key_path": "/opt/airflow/secrets/researchlineage-sa-key.json"}'
+        airflow variables set GCP_PROJECT_ID mlops-researchlineage
+        airflow variables set GCP_REGION us-central1
+        airflow variables set GCR_IMAGE gcr.io/mlops-researchlineage/lineage-training
+        airflow variables set MIN_NEW_SAMPLES 50
+        airflow variables set GCS_BUCKET researchlineage-data-central1
+        airflow variables set MAX_SEQ_LEN 102400
+        airflow variables set SERVING_MAX_LEN 102400  
+        airflow variables set MAX_ACCEPTABLE_LOSS 2.5
+        airflow variables set MODAL_APP_NAME research-lineage-serving
+        airflow variables set MODAL_TOKEN_ID your_modal_token_id
+        airflow variables set MODAL_TOKEN_SECRET your_modal_token_secret
+
+        echo "✅ Airflow init complete"
     depends_on:
       postgres:
         condition: service_healthy
-
+    volumes:
+      - ${GCLOUD_CONFIG_DIR}:/gcp/config:ro
+      - ./researchlineage-sa-key.json:/opt/airflow/secrets/researchlineage-sa-key.json:ro
   airflow-webserver:
     build:
       context: .
       dockerfile: docker/airflow.Dockerfile
     container_name: airflow_webserver
     environment:
-      # Airflow Core Settings
       - AIRFLOW__CORE__EXECUTOR=LocalExecutor
       - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://postgres:postgres@postgres:5432/airflow
       - AIRFLOW__CORE__LOAD_EXAMPLES=False
@@ -85,15 +109,15 @@ services:
       - AIRFLOW__CORE__MAX_ACTIVE_TASKS_PER_DAG=16
       - PYTHONPATH=/opt/airflow
       - _PIP_ADDITIONAL_REQUIREMENTS=google-genai beautifulsoup4 pydantic-settings
-      - GOOGLE_APPLICATION_CREDENTIALS=/gcp/config/application_default_credentials.json
-      # GCP Settings
-      - GOOGLE_CLOUD_PROJECT=researchlineage
-      # Cloud SQL via Proxy (for retry_failed_pdfs DAG)
+      - GOOGLE_APPLICATION_CREDENTIALS=/opt/airflow/secrets/researchlineage-sa-key.json
+      - GOOGLE_CLOUD_PROJECT=mlops-researchlineage
       - CLOUD_SQL_HOST=${CLOUD_SQL_HOST}
       - CLOUD_SQL_PORT=${CLOUD_SQL_PORT}
       - CLOUD_SQL_DB=${CLOUD_SQL_DB}
       - CLOUD_SQL_USER=${CLOUD_SQL_USER}
       - CLOUD_SQL_PASSWORD=${CLOUD_SQL_PASSWORD}
+      - MODAL_TOKEN_ID=${MODAL_TOKEN_ID}
+      - MODAL_TOKEN_SECRET=${MODAL_TOKEN_SECRET}
     env_file:
       - .env
     ports:
@@ -110,6 +134,10 @@ services:
       - ./logs:/opt/airflow/logs
       - ./tests:/opt/airflow/tests
       - ${GCLOUD_CONFIG_DIR}:/gcp/config:ro
+      - ./training:/opt/airflow/training
+      - ./researchlineage-sa-key.json:/opt/airflow/secrets/researchlineage-sa-key.json:ro
+      - ./docker:/opt/airflow/docker:ro
+      - ./scripts:/opt/airflow/scripts:ro
     restart: unless-stopped
 
   airflow-scheduler:
@@ -118,7 +146,6 @@ services:
       dockerfile: docker/airflow.Dockerfile
     container_name: airflow_scheduler
     environment:
-      # Airflow Core Settings
       - AIRFLOW__CORE__EXECUTOR=LocalExecutor
       - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://postgres:postgres@postgres:5432/airflow
       - AIRFLOW__CORE__LOAD_EXAMPLES=False
@@ -127,15 +154,15 @@ services:
       - AIRFLOW__CORE__MAX_ACTIVE_TASKS_PER_DAG=16
       - PYTHONPATH=/opt/airflow
       - _PIP_ADDITIONAL_REQUIREMENTS=google-genai beautifulsoup4 pydantic-settings
-      - GOOGLE_APPLICATION_CREDENTIALS=/gcp/config/application_default_credentials.json
-      # GCP Settings
-      - GOOGLE_CLOUD_PROJECT=researchlineage
-      # Cloud SQL via Proxy (for retry_failed_pdfs DAG)
+      - GOOGLE_APPLICATION_CREDENTIALS=/opt/airflow/secrets/researchlineage-sa-key.json
+      - GOOGLE_CLOUD_PROJECT=mlops-researchlineage
       - CLOUD_SQL_HOST=${CLOUD_SQL_HOST}
       - CLOUD_SQL_PORT=${CLOUD_SQL_PORT}
-      - CLOUD_SQL_DB=${CLOUD_SQL_DB} 
+      - CLOUD_SQL_DB=${CLOUD_SQL_DB}
       - CLOUD_SQL_USER=${CLOUD_SQL_USER}
       - CLOUD_SQL_PASSWORD=${CLOUD_SQL_PASSWORD}
+      - MODAL_TOKEN_ID=${MODAL_TOKEN_ID}
+      - MODAL_TOKEN_SECRET=${MODAL_TOKEN_SECRET}
     env_file:
       - .env
     command: scheduler
@@ -150,4 +177,8 @@ services:
       - ./logs:/opt/airflow/logs
       - ./tests:/opt/airflow/tests
       - ${GCLOUD_CONFIG_DIR}:/gcp/config:ro
+      - ./training:/opt/airflow/training
+      - ./researchlineage-sa-key.json:/opt/airflow/secrets/researchlineage-sa-key.json:ro
+      - ./docker:/opt/airflow/docker:ro
+      - ./scripts:/opt/airflow/scripts:ro
     restart: unless-stopped
