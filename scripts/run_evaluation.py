@@ -16,6 +16,10 @@ import sys
 import time
 from pathlib import Path
 
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -91,7 +95,17 @@ def main() -> None:
     parser.add_argument(
         "--input",
         default=None,
-        help="Override GCS input path (default: EVAL_GCS_INPUT_PATH from .env)",
+        help="Override GCS input path (default: EVAL_GCS_INPUT_PATH from .env). "
+             "Ignored when --ft-format is set.",
+    )
+    parser.add_argument(
+        "--ft-format",
+        default=None,
+        metavar="LOCAL_JSONL_PATH",
+        help="Load samples from a local fine-tuning JSONL file (chat format) instead "
+             "of GCS. Extracts input_text from the user section and ground_truth from "
+             "the assistant section on the fly. "
+             "e.g. --ft-format temporary/ft_data/test_converted.jsonl",
     )
     parser.add_argument(
         "--dry-run",
@@ -113,7 +127,14 @@ def main() -> None:
     if args.input:
         cfg.gcs_input_path = args.input
 
-    model_label = cfg.modal_endpoint_url if cfg.modal_endpoint_url else cfg.vertex_endpoint_id
+    ft_format_path = args.ft_format  # local path to FT-format JSONL, or None
+
+    if cfg.openai_base_url and cfg.openai_model:
+        model_label = f"{cfg.openai_model} @ {cfg.openai_base_url}"
+    elif cfg.modal_endpoint_url:
+        model_label = cfg.modal_endpoint_url
+    else:
+        model_label = cfg.vertex_endpoint_id
 
     logger.info("=" * 60)
     logger.info("EVALUATION PIPELINE STARTING")
@@ -125,11 +146,16 @@ def main() -> None:
     logger.info(f"Judge  : {cfg.judge_model_name}")
 
     # ---------------------------------------------------------------- stage 1: load
-    from src.evaluation.pipeline import load_eval_data
+    from src.evaluation.pipeline import load_eval_data, load_ft_format_as_eval_data
 
     logger.info("\n[STAGE 1/4] Loading evaluation data...")
     t0 = time.monotonic()
-    samples = load_eval_data(cfg)
+    if ft_format_path:
+        logger.info(f"Source : FT chat format — {ft_format_path}")
+        samples = load_ft_format_as_eval_data(ft_format_path)
+    else:
+        logger.info(f"Source : GCS — {cfg.gcs_input_path}")
+        samples = load_eval_data(cfg)
     logger.info(f"Loaded {len(samples)} samples in {time.monotonic()-t0:.1f}s")
 
     if args.dry_run:

@@ -229,6 +229,87 @@ class GeminiClient(ModelClient):
             return False
 
 
+# ===================================================== OpenAI-compatible client
+
+
+class OpenAIClient(ModelClient):
+    """
+    OpenAI Chat Completions API (v1) — works with vLLM, Modal OpenAI wrappers, etc.
+    Expects base_url pointing at the API root (e.g. .../v1); the SDK appends
+    /chat/completions as needed.
+    """
+
+    def __init__(
+        self,
+        base_url: str,
+        model: str,
+        api_key: str = "dummy",
+        max_tokens: int = 8192,
+        temperature: float = 0.0,
+        timeout: float = 600.0,
+        max_retries: int = 0,
+    ) -> None:
+        from openai import OpenAI
+
+        self._model = model
+        self._max_tokens = max_tokens
+        self._temperature = temperature
+        self._timeout = timeout
+
+        self._client = OpenAI(
+            base_url=base_url.rstrip("/"),
+            api_key=api_key,
+            max_retries=max_retries,
+            timeout=timeout,
+        )
+
+        logger.info(
+            "OpenAIClient initialised",
+            extra={"base_url": base_url, "model": model},
+        )
+
+    def predict(self, prompt: str) -> str:
+        start = time.monotonic()
+        try:
+            response = self._client.chat.completions.create(
+                model=self._model,
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=self._max_tokens,
+                temperature=self._temperature,
+            )
+            raw = response.choices[0].message.content
+            text = (raw or "").strip()
+            latency_ms = (time.monotonic() - start) * 1000
+            logger.debug(
+                "OpenAI-compatible predict succeeded",
+                extra={"latency_ms": round(latency_ms, 1)},
+            )
+            return text
+        except Exception as exc:
+            latency_ms = (time.monotonic() - start) * 1000
+            logger.error(
+                "OpenAI-compatible predict failed",
+                extra={"latency_ms": round(latency_ms, 1), "error": str(exc)},
+            )
+            raise
+
+    def health_check(self) -> bool:
+        try:
+            self._client.chat.completions.create(
+                model=self._model,
+                messages=[{"role": "user", "content": "ping"}],
+                max_tokens=1,
+                temperature=0.0,
+            )
+            return True
+        except Exception as exc:
+            logger.warning(
+                "OpenAI-compatible health check failed",
+                extra={"error": str(exc)},
+            )
+            return False
+
+
 # =============================================================== Modal client
 
 
@@ -307,12 +388,38 @@ def build_inference_client(
     project_id: str,
     location: str = "us-central1",
     modal_endpoint_url: str | None = None,
+    *,
+    openai_base_url: str | None = None,
+    openai_api_key: str | None = None,
+    openai_model: str | None = None,
+    openai_max_tokens: int = 8192,
+    openai_timeout: float = 600.0,
+    openai_temperature: float = 0.0,
+    openai_max_retries: int = 0,
 ) -> ModelClient:
     """
     Build client for the inference model.
-    - If modal_endpoint_url is set: uses ModalClient (Qwen2.5 on Modal).
-    - Otherwise: falls back to VertexAIClient.
+    - If openai_base_url and openai_model are set: OpenAIClient (highest priority).
+    - Else if modal_endpoint_url is set: ModalClient (custom JSON prompt/text).
+    - Otherwise: VertexAIClient.
     """
+    has_openai = bool(openai_base_url or openai_model)
+    if has_openai and not (openai_base_url and openai_model):
+        raise ValueError(
+            "OpenAI-compatible inference requires both openai_base_url and openai_model "
+            "(set neither to use Modal or Vertex instead)."
+        )
+    if openai_base_url and openai_model:
+        logger.info("Using OpenAIClient for inference")
+        return OpenAIClient(
+            base_url=openai_base_url,
+            model=openai_model,
+            api_key=openai_api_key or "dummy",
+            max_tokens=openai_max_tokens,
+            temperature=openai_temperature,
+            timeout=openai_timeout,
+            max_retries=openai_max_retries,
+        )
     if modal_endpoint_url:
         logger.info("Using ModalClient for inference")
         return ModalClient(

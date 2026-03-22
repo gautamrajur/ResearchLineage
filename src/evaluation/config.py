@@ -51,10 +51,44 @@ class EvaluationConfig(BaseSettings):
     # ------------------------------------------------------- Modal (inference)
     modal_endpoint_url: str = Field(
         default="",
-        description="Modal web endpoint URL for inference. "
-        "When set, Modal is used instead of Vertex AI for inference. "
+        description="Modal web endpoint URL for inference (custom JSON prompt/text). "
+        "Ignored if OpenAI-compatible settings are set. "
+        "When set, ModalClient is used instead of Vertex AI for inference. "
         "e.g. https://nekkantishiv--researchlineage-qwen-qwenmodel-infer.modal.run",
     )
+
+    # -------------------------------------------- OpenAI-compatible API (inference)
+    openai_base_url: str = Field(
+        default="",
+        description="OpenAI-compatible API base URL including /v1 if required by the server. "
+        "When set together with openai_model, OpenAICompatibleClient is used (highest priority). "
+        "e.g. https://user--app-name.modal.run/v1",
+    )
+    openai_api_key: str = Field(
+        default="dummy",
+        description="API key for the OpenAI-compatible endpoint (often unused by Modal; use dummy).",
+    )
+    openai_model: str = Field(
+        default="",
+        description="Model id passed to chat.completions, e.g. /model-cache/v20260320_184258",
+    )
+    openai_max_tokens: int = Field(
+        default=8192,
+        description="Max completion tokens for OpenAI-compatible inference.",
+    )
+    openai_timeout: float = Field(
+        default=600.0,
+        description="Per-request timeout in seconds for OpenAI-compatible inference.",
+    )
+    openai_temperature: float = Field(
+        default=0.0,
+        description="Sampling temperature for OpenAI-compatible inference.",
+    )
+    openai_max_retries: int = Field(
+        default=0,
+        description="Retries on the OpenAI SDK client (0 = fail fast).",
+    )
+
     inference_model_name: str = Field(
         default="unknown",
         description="Human-readable model name stamped on GCS output paths. "

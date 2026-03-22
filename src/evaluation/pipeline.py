@@ -5,6 +5,7 @@ Four DAG-ready functions for the LLM evaluation pipeline.
 Usage in an Airflow DAG:
     from src.evaluation.pipeline import (
         load_eval_data,
+        load_ft_format_as_eval_data,
         run_inference,
         evaluate_all,
         save_results,
@@ -42,6 +43,65 @@ from src.evaluation.types import (
 )
 
 logger = logging.getLogger(__name__)
+
+# ================================================================== Tokenizer
+
+_TOKEN_LIMIT = 98_000   # max input tokens — model limit (102,400) minus output budget (4,096)
+_tokenizer = None        # loaded once on first use
+_tokenizer_loaded = False
+
+
+def _get_tokenizer():
+    """
+    Load the Qwen2.5 tokenizer once and cache it for the process lifetime.
+    Falls back to a character-based estimate (chars // 4) if the tokenizer
+    cannot be loaded — e.g. no internet access or HF not available.
+    Returns the tokenizer object, or None to signal fallback mode.
+    """
+    global _tokenizer, _tokenizer_loaded
+    if _tokenizer_loaded:
+        return _tokenizer
+    _tokenizer_loaded = True
+    try:
+        from transformers import AutoTokenizer
+        logger.info("Loading Qwen2.5 tokenizer for token counting ...")
+        _tokenizer = AutoTokenizer.from_pretrained(
+            "Qwen/Qwen2.5-7B",
+            trust_remote_code=True,
+        )
+        logger.info("Qwen2.5 tokenizer loaded.")
+    except Exception as exc:
+        logger.warning(
+            "Could not load Qwen2.5 tokenizer — falling back to chars//4 estimate. "
+            "Error: %s", exc,
+        )
+        _tokenizer = None
+    return _tokenizer
+
+
+def _count_tokens(text: str) -> int:
+    """
+    Count tokens in text using the Qwen2.5 tokenizer.
+    Falls back to len(text) // 4 if the tokenizer is unavailable.
+    """
+    tok = _get_tokenizer()
+    if tok is not None:
+        return len(tok.encode(text))
+    return len(text) // 4
+
+
+def _remove_abstracts(text: str) -> str:
+    """
+    Strip every '## Abstract' section from the input prompt.
+    Each abstract block runs from '## Abstract\\n' up to (but not including)
+    the next '## ' section header, a '---' separator, or end-of-string.
+    """
+    return re.sub(
+        r"## Abstract\n.*?(?=\n## |\n---|\Z)",
+        "",
+        text,
+        flags=re.DOTALL,
+    )
 
 
 # ================================================================== 1. Load
@@ -103,6 +163,159 @@ def load_eval_data(config: EvaluationConfig) -> list[EvalSample]:
     return samples
 
 
+# ============================================= 1b. Load from FT chat format
+
+
+_FT_USER_START = "<|im_start|>user"
+_FT_ASST_START = "<|im_start|>assistant"
+_FT_TURN_END = "<|im_end|>"
+
+
+def load_ft_format_as_eval_data(
+    local_path: str,
+    sample_id_prefix: str = "sample",
+) -> list[EvalSample]:
+    """
+    Load evaluation samples directly from a fine-tuning JSONL file.
+
+    Each line is expected in the chat format produced during fine-tuning:
+        {"text": "<|im_start|>user\\n[prompt]\\n<|im_end|>\\n<|im_start|>assistant\\n{...JSON...}\\n<|im_end|>"}
+
+    The user section becomes input_text (sent to the model as-is).
+    The assistant section is parsed as the ground truth JSON.
+
+    The 21 records in test_converted.jsonl that have missing commas in the
+    assistant JSON are repaired automatically using the same two-pass regex
+    logic used in _parse_model_output.
+
+    Invalid records (malformed chat tokens, unparseable JSON, failed
+    GroundTruth validation) are skipped and logged — they do not raise.
+
+    Args:
+        local_path:       Path to the JSONL file on the local filesystem.
+        sample_id_prefix: Prefix for generated sample IDs (default: "sample").
+                          IDs are assigned as <prefix>_<line_index> so they
+                          remain stable across repeated loads of the same file.
+
+    Returns:
+        List of EvalSample objects ready for run_inference / evaluate_all.
+    """
+    import pathlib
+
+    path = pathlib.Path(local_path)
+    if not path.exists():
+        raise FileNotFoundError(f"FT-format JSONL not found: {local_path}")
+
+    lines = [l for l in path.read_text("utf-8").splitlines() if l.strip()]
+    logger.info(
+        "Loading FT-format eval data",
+        extra={"path": local_path, "n_lines": len(lines)},
+    )
+
+    samples: list[EvalSample] = []
+    n_skip_chat = n_skip_parse = n_skip_validation = 0
+
+    for idx, raw_line in enumerate(lines):
+        sample_id = f"{sample_id_prefix}_{idx}"
+
+        # --- parse outer JSONL record ---
+        try:
+            record = json.loads(raw_line)
+        except json.JSONDecodeError as exc:
+            logger.warning(
+                "Skipping line — outer JSON invalid",
+                extra={"index": idx, "error": str(exc)},
+            )
+            n_skip_parse += 1
+            continue
+
+        text = record.get("text", "")
+        if not isinstance(text, str) or not text.strip():
+            logger.warning(
+                "Skipping line — 'text' field missing or empty",
+                extra={"index": idx},
+            )
+            n_skip_chat += 1
+            continue
+
+        # --- extract user section ---
+        if _FT_USER_START not in text or _FT_ASST_START not in text:
+            logger.warning(
+                "Skipping line — chat tokens not found",
+                extra={"index": idx},
+            )
+            n_skip_chat += 1
+            continue
+
+        try:
+            user_content = (
+                text.split(_FT_USER_START, 1)[1]
+                .split(_FT_TURN_END, 1)[0]
+                .strip()
+            )
+            asst_content = (
+                text.split(_FT_ASST_START, 1)[1]
+                .split(_FT_TURN_END, 1)[0]
+                .strip()
+            )
+        except IndexError as exc:
+            logger.warning(
+                "Skipping line — failed to split chat sections",
+                extra={"index": idx, "error": str(exc)},
+            )
+            n_skip_chat += 1
+            continue
+
+        if not user_content or not asst_content:
+            logger.warning(
+                "Skipping line — user or assistant section is empty",
+                extra={"index": idx},
+            )
+            n_skip_chat += 1
+            continue
+
+        # --- parse and repair assistant JSON (ground truth) ---
+        gt_dict, parse_error = _parse_model_output(asst_content)
+        if parse_error or gt_dict is None:
+            logger.warning(
+                "Skipping line — assistant JSON unparseable after repair",
+                extra={"index": idx, "error": parse_error},
+            )
+            n_skip_parse += 1
+            continue
+
+        # --- build GroundTruth via the same flatten path used by load_eval_data ---
+        try:
+            gt_flat = _flatten_ground_truth(gt_dict)
+            ground_truth = GroundTruth(**gt_flat)
+        except Exception as exc:
+            logger.warning(
+                "Skipping line — GroundTruth validation failed",
+                extra={"index": idx, "error": str(exc)},
+            )
+            n_skip_validation += 1
+            continue
+
+        samples.append(
+            EvalSample(
+                sample_id=sample_id,
+                input_text=user_content,
+                ground_truth=ground_truth,
+            )
+        )
+
+    logger.info(
+        "FT-format eval data loaded",
+        extra={
+            "n_samples": len(samples),
+            "skipped_chat_format": n_skip_chat,
+            "skipped_json_parse": n_skip_parse,
+            "skipped_validation": n_skip_validation,
+        },
+    )
+    return samples
+
+
 # ================================================================== 2. Infer
 
 
@@ -120,7 +333,14 @@ def run_inference(
         endpoint_id=config.vertex_endpoint_id,
         project_id=config.vertex_project_id or config.gcs_project_id,
         location=config.vertex_location,
-        modal_endpoint_url=getattr(config, "modal_endpoint_url", None),
+        modal_endpoint_url=config.modal_endpoint_url or None,
+        openai_base_url=config.openai_base_url or None,
+        openai_api_key=config.openai_api_key,
+        openai_model=config.openai_model or None,
+        openai_max_tokens=config.openai_max_tokens,
+        openai_timeout=config.openai_timeout,
+        openai_temperature=config.openai_temperature,
+        openai_max_retries=config.openai_max_retries,
     )
 
     logger.info(
@@ -139,10 +359,47 @@ def run_inference(
         start = time.monotonic()
         try:
             input_text = sample.input_text[:MAX_INPUT_CHARS]
+
+            # --- token budget check ---
+            n_tokens = _count_tokens(input_text)
+            print(f"\n[{sample.sample_id}]  tokens={n_tokens:,}")
+
+            if n_tokens > _TOKEN_LIMIT:
+                input_text = _remove_abstracts(input_text)
+                n_tokens_after = _count_tokens(input_text)
+                print(
+                    f"[{sample.sample_id}]  abstracts removed — "
+                    f"tokens {n_tokens:,} → {n_tokens_after:,}"
+                )
+                if n_tokens_after > _TOKEN_LIMIT:
+                    msg = (
+                        f"skipped: {n_tokens_after:,} tokens after abstract removal "
+                        f"still exceeds limit of {_TOKEN_LIMIT:,}"
+                    )
+                    logger.warning(
+                        "Sample skipped — token limit exceeded after abstract removal",
+                        extra={"sample_id": sample.sample_id, "n_tokens": n_tokens_after},
+                    )
+                    print(f"[{sample.sample_id}]  SKIPPED — {msg}")
+                    return InferenceResult(
+                        sample_id=sample.sample_id,
+                        raw_output="",
+                        parsed_output=None,
+                        parse_error=msg,
+                        latency_ms=(time.monotonic() - start) * 1000,
+                    )
+
+            print(f"[{sample.sample_id}]  → sending to model ...")
             raw = client.predict(input_text)
-            print(f"DEBUG RAW OUTPUT (full len={len(raw)}):\n{raw}")
             latency_ms = (time.monotonic() - start) * 1000
             parsed, parse_error = _parse_model_output(raw)
+            print(
+                f"\n{'─' * 60}\n"
+                f"[{sample.sample_id}]  {latency_ms:.0f}ms  "
+                f"parse={'OK' if parse_error is None else 'FAIL'}\n"
+                f"{raw}\n"
+                f"{'─' * 60}"
+            )
             return InferenceResult(
                 sample_id=sample.sample_id,
                 raw_output=raw,
@@ -152,6 +409,11 @@ def run_inference(
             )
         except Exception as exc:
             latency_ms = (time.monotonic() - start) * 1000
+            print(
+                f"\n{'─' * 60}\n"
+                f"[{sample.sample_id}]  {latency_ms:.0f}ms  ERROR: {exc}\n"
+                f"{'─' * 60}"
+            )
             logger.error(
                 "Inference failed for sample",
                 extra={"sample_id": sample.sample_id, "error": str(exc)},

@@ -4,7 +4,7 @@ ResearchLineage LLM Evaluation Pipeline.
 
 Four DAG-ready entry points in src.evaluation.pipeline:
     load_eval_data   — ingest samples from GCS
-    run_inference    — call fine-tuned model on Vertex AI
+    run_inference    — call fine-tuned model (Vertex, Modal JSON, or OpenAI-compatible API)
     evaluate_all     — classification + LLM judge + semantic similarity
     save_results     — write per-sample JSONL + aggregate JSON to GCS
 """
