@@ -51,7 +51,7 @@ Resolve conflicts in `docker-compose.yml`, `pyproject.toml`, `src/utils/config.p
 - `mlflow-db`: Postgres 15 container (port 5434, volume `mlflow_metadata`)
 - `mlflow`: MLflow server (`ghcr.io/mlflow/mlflow:v2.16.0`)
   - Backend: `postgresql+psycopg2://...@mlflow-db:5432/mlflow`
-  - Artifact root: `gs://researchlineage-data/mlflow-artifacts`
+  - Artifact root: `gs://researchlineage-gcs/mlflow-artifacts`
   - Expose port 5001
 - Add `MLFLOW_TRACKING_URI=http://mlflow:5001` to Airflow service environments
 
@@ -167,9 +167,7 @@ This is ~50-80 lines of code, NOT a new module. It reuses existing slicing logic
 **Satisfies rubric:** Notifications and Alerts (§7.5)
 
 ### 5.1 Add Slack/email notifications to all workflows
-- Use `slackapi/slack-github-action@v1.26` in `if: always()` blocks
 - Red alert on failure, green on deploy success
-- Secret: `SLACK_WEBHOOK_URL`
 - Fallback: reuse existing `src/utils/email_service.py` for email alerts
 
 ### 5.2 Create `scripts/notify.py`

@@ -26,7 +26,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.utils.config import GCS_PROJECT_ID, GCS_UPLOAD_PREFIX
 
-GCS_BUCKET = Variable.get("GCS_BUCKET", default_var="researchlineage-data")
+GCS_BUCKET = Variable.get("GCS_BUCKET", default_var="researchlineage-gcs")
 GCP_PROJECT = Variable.get("GCP_PROJECT_ID", default_var=GCS_PROJECT_ID)
 MIN_NEW_SAMPLES = int(Variable.get("MIN_NEW_SAMPLES", default_var="50"))
 
@@ -36,10 +36,10 @@ SERVING_MAX_LEN = 102400
 MODEL_VERSION = "v20260320_184258"
 
 GCS_PREFIX = GCS_UPLOAD_PREFIX.rstrip("/")
-GCS_LLAMA_FORMAT = f"{GCS_PREFIX}/llama_format"
+GCS_QWEN_FORMAT = f"{GCS_PREFIX}/qwen_format"
 GCS_TRAINED_MODELS = "models/trained"
 GCS_PIPELINE_STATE = "pipeline_state.json"
-GCS_SENSOR_OBJECT = f"{GCS_LLAMA_FORMAT}/train.jsonl"
+GCS_SENSOR_OBJECT = f"{GCS_QWEN_FORMAT}/train.jsonl"
 
 LOCAL_TMP = Path("/tmp/lineage_training")
 
@@ -55,7 +55,7 @@ def check_new_data(**ctx):
     bucket = get_gcs_bucket()
     local_train = LOCAL_TMP / "train.jsonl"
 
-    bucket.blob(f"{GCS_LLAMA_FORMAT}/train.jsonl").download_to_filename(str(local_train))
+    bucket.blob(f"{GCS_QWEN_FORMAT}/train.jsonl").download_to_filename(str(local_train))
 
     with open(local_train, "r", encoding="utf-8") as f:
         total_samples = sum(1 for line in f if line.strip())
@@ -90,7 +90,7 @@ def preprocess_data(**ctx):
 
     for split in ["train", "val"]:
         local_path = LOCAL_TMP / f"{split}.jsonl"
-        bucket.blob(f"{GCS_LLAMA_FORMAT}/{split}.jsonl").download_to_filename(str(local_path))
+        bucket.blob(f"{GCS_QWEN_FORMAT}/{split}.jsonl").download_to_filename(str(local_path))
 
         valid_count = 0
         with open(local_path, "r", encoding="utf-8") as f:
@@ -128,6 +128,58 @@ def update_pipeline_state(**ctx):
     )
     print("Updated pipeline_state.json")
     print(json.dumps(state, indent=2))
+
+
+def log_to_mlflow(**ctx):
+    """Log training parameters and metrics to MLflow after training."""
+    from src.mlflow_utils import log_training_run, register_model
+
+    ti = ctx["ti"]
+    model_version = MODEL_VERSION
+    model_uri = f"gs://{GCS_BUCKET}/{GCS_TRAINED_MODELS}/{model_version}"
+
+    params = {
+        "base_model": "unsloth/Qwen2.5-7B-Instruct",
+        "lora_r": 16,
+        "lora_alpha": 16,
+        "lora_dropout": 0.0,
+        "epochs": 3,
+        "learning_rate": 2e-4,
+        "batch_size": 1,
+        "gradient_accumulation_steps": 64,
+        "max_seq_length": SERVING_MAX_LEN,
+        "optimizer": "paged_adamw_8bit",
+    }
+
+    total_samples = ti.xcom_pull(key="total_samples", task_ids="check_new_data") or 0
+    metrics = {
+        "total_training_samples": float(total_samples),
+    }
+
+    # Try to load training_metrics.json from GCS if it exists
+    try:
+        bucket = get_gcs_bucket()
+        metrics_blob = bucket.blob(f"{GCS_TRAINED_MODELS}/{model_version}/training_metrics.json")
+        if metrics_blob.exists():
+            import json as _json
+            train_metrics = _json.loads(metrics_blob.download_as_text())
+            metrics.update({
+                k: float(v) for k, v in train_metrics.items()
+                if isinstance(v, (int, float))
+            })
+    except Exception as e:
+        print(f"Could not load training_metrics.json: {e}")
+
+    run_id = log_training_run(
+        params=params,
+        metrics=metrics,
+        model_uri=model_uri,
+        tags={"model_version": model_version},
+    )
+    print(f"MLflow run logged: {run_id}")
+
+    register_model(run_id=run_id, model_uri=model_uri)
+    print(f"Model registered in MLflow: {model_version}")
 
 
 default_args = {
@@ -191,6 +243,11 @@ with DAG(
     do_xcom_push=True,
 )
 
+    task_log_mlflow = PythonOperator(
+        task_id="log_to_mlflow",
+        python_callable=log_to_mlflow,
+    )
+
     task_update_state = PythonOperator(
         task_id="update_pipeline_state",
         python_callable=update_pipeline_state,
@@ -209,6 +266,7 @@ with DAG(
         >> task_check
         >> task_preprocess
         >> task_train
+        >> task_log_mlflow
         >> task_gate
         >> task_deploy_modal
         >> task_print_endpoint

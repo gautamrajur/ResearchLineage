@@ -121,7 +121,7 @@ def load_eval_data_local(config: EvaluationConfig) -> list[EvalSample]:
     Load evaluation samples from a local JSONL file instead of GCS.
 
     Expects config.local_input_path to point to a split file, e.g.:
-        lineage_llama_format/test.jsonl
+        lineage_qwen_format/test.jsonl
 
     Format per line:
         { "input_text": "...", "output_text": "{...json...}" }
@@ -519,6 +519,30 @@ def save_results(
             "semantic_overall_mean": aggregate.semantic_overall_mean,
         },
     )
+
+    # Log to MLflow if available
+    try:
+        from src.mlflow_utils import log_evaluation_run
+
+        eval_metrics = {
+            "predecessor_accuracy": aggregate.predecessor_accuracy,
+            "predecessor_soft_accuracy": aggregate.predecessor_soft_accuracy,
+            "predecessor_mrr": aggregate.predecessor_mrr,
+            "breakthrough_level_accuracy": aggregate.breakthrough_level_accuracy,
+            "secondary_influences_f1": aggregate.secondary_influences_f1_mean,
+            "judge_overall_mean": aggregate.judge_overall_mean,
+            "semantic_overall_mean": aggregate.semantic_overall_mean,
+            "n_samples": float(aggregate.n_samples),
+            "n_parse_errors": float(aggregate.n_parse_errors),
+        }
+        log_evaluation_run(
+            eval_metrics=eval_metrics,
+            model_version=model_tag,
+            tags={"run_id": run_id, "gcs_report_path": aggregate_uri},
+        )
+    except Exception as exc:
+        logger.warning("MLflow logging skipped: %s", exc)
+
     return report
 
 
@@ -699,3 +723,132 @@ def _compute_aggregate(results: list[SampleEvalResult]) -> AggregateMetrics:
 
 def _generate_run_id() -> str:
     return datetime.now(tz=timezone.utc).strftime("%Y%m%d_%H%M%S")
+
+
+# ================================================================== 5. Bias Analysis
+
+
+def slice_and_report(
+    eval_results: list[SampleEvalResult],
+    samples: list[EvalSample],
+) -> dict[str, Any]:
+    """
+    Slice eval results by domain and popularity, compute per-slice metrics,
+    and return a bias report with pass/fail status.
+
+    Reuses the existing popularity tiers from lineage_pipeline.py and
+    domain classification from paper metadata embedded in input_text.
+
+    Returns:
+        {
+            "passed": bool,
+            "slices": { "<slice_key>": { "n": int, "metrics": {...} }, ... },
+            "disparities": { "<metric>": float, ... },
+            "violations": ["<description>", ...],
+        }
+    """
+    from src.utils.config import (
+        BIAS_MAX_ACCURACY_DISPARITY,
+        BIAS_MAX_JUDGE_DISPARITY,
+        BIAS_MAX_SEMANTIC_DISPARITY,
+    )
+
+    # Extract domain from input_text (look for fieldsOfStudy patterns)
+    def _extract_domain(input_text: str) -> str:
+        text_lower = input_text.lower()
+        for domain in ["computer science", "physics", "mathematics"]:
+            if domain in text_lower:
+                return domain.title()
+        return "Other"
+
+    # Extract citation count from input_text for popularity tier
+    def _extract_popularity_tier(input_text: str) -> str:
+        import re as _re
+        match = _re.search(r"citationcount[\"']?\s*[:=]\s*(\d+)", input_text, _re.IGNORECASE)
+        if not match:
+            match = _re.search(r"citations?[\"']?\s*[:=]\s*(\d+)", input_text, _re.IGNORECASE)
+        if match:
+            count = int(match.group(1))
+            if count < 200:
+                return "low"
+            elif count < 1000:
+                return "medium"
+            elif count < 10000:
+                return "high"
+            else:
+                return "landmark"
+        return "unknown"
+
+    # Build sample metadata map
+    sample_map = {s.sample_id: s for s in samples}
+
+    # Slice results
+    slices: dict[str, list[SampleEvalResult]] = {}
+    for result in eval_results:
+        sample = sample_map.get(result.sample_id)
+        input_text = sample.input_text if sample else result.input_text
+
+        domain = _extract_domain(input_text)
+        tier = _extract_popularity_tier(input_text)
+
+        domain_key = f"domain:{domain}"
+        tier_key = f"popularity:{tier}"
+
+        slices.setdefault(domain_key, []).append(result)
+        slices.setdefault(tier_key, []).append(result)
+
+    # Compute per-slice aggregate metrics
+    slice_metrics: dict[str, dict[str, Any]] = {}
+    for key, results in slices.items():
+        agg = _compute_aggregate(results)
+        slice_metrics[key] = {
+            "n": agg.n_samples,
+            "predecessor_accuracy": agg.predecessor_accuracy,
+            "judge_overall_mean": agg.judge_overall_mean,
+            "semantic_overall_mean": agg.semantic_overall_mean,
+        }
+
+    # Compute disparities per dimension
+    def _disparity(metric: str, dimension_prefix: str) -> float:
+        values = [
+            m[metric]
+            for key, m in slice_metrics.items()
+            if key.startswith(dimension_prefix) and m["n"] >= 3
+        ]
+        if len(values) < 2:
+            return 0.0
+        return max(values) - min(values)
+
+    disparities = {
+        "domain_accuracy": _disparity("predecessor_accuracy", "domain:"),
+        "domain_judge": _disparity("judge_overall_mean", "domain:"),
+        "domain_semantic": _disparity("semantic_overall_mean", "domain:"),
+        "popularity_accuracy": _disparity("predecessor_accuracy", "popularity:"),
+        "popularity_judge": _disparity("judge_overall_mean", "popularity:"),
+        "popularity_semantic": _disparity("semantic_overall_mean", "popularity:"),
+    }
+
+    # Check thresholds
+    violations = []
+    for key, value in disparities.items():
+        if "accuracy" in key and value > BIAS_MAX_ACCURACY_DISPARITY:
+            violations.append(f"{key} disparity {value:.3f} > {BIAS_MAX_ACCURACY_DISPARITY}")
+        if "judge" in key and value > BIAS_MAX_JUDGE_DISPARITY:
+            violations.append(f"{key} disparity {value:.3f} > {BIAS_MAX_JUDGE_DISPARITY}")
+        if "semantic" in key and value > BIAS_MAX_SEMANTIC_DISPARITY:
+            violations.append(f"{key} disparity {value:.3f} > {BIAS_MAX_SEMANTIC_DISPARITY}")
+
+    passed = len(violations) == 0
+
+    report = {
+        "passed": passed,
+        "slices": slice_metrics,
+        "disparities": disparities,
+        "violations": violations,
+    }
+
+    logger.info(
+        "Bias analysis complete",
+        extra={"passed": passed, "n_violations": len(violations), "disparities": disparities},
+    )
+    return report

@@ -120,7 +120,7 @@ class EvaluationConfig(BaseSettings):
     local_input_path: str = Field(
         default="",
         description="Local filesystem path to a split JSONL file "
-        "(e.g. lineage_llama_format/test.jsonl). "
+        "(e.g. lineage_qwen_format/test.jsonl). "
         "Used when finetuning_data_source='local'. "
         "The paired metadata file is expected at the same directory with "
         "the name <split>_metadata_fixed.jsonl.",

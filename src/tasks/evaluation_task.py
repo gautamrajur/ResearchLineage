@@ -638,7 +638,7 @@ def upload(args: argparse.Namespace) -> None:
 
 def _parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Evaluation task runner")
-    p.add_argument("--step", required=True, choices=["run_inference", "evaluate", "upload"])
+    p.add_argument("--step", required=True, choices=["run_inference", "evaluate", "upload", "bias_check"])
 
     # Input
     p.add_argument("--data-source",  default="local", choices=["local", "gcs"],
@@ -671,11 +671,128 @@ def _parse_args() -> argparse.Namespace:
     return p.parse_args()
 
 
+def bias_check(args: argparse.Namespace) -> None:
+    """Check for model-prediction bias across domain and popularity slices.
+
+    Reads the aggregate_report.json (produced by the evaluate step),
+    computes max metric disparity across slices, and fails if any
+    disparity exceeds the configured thresholds.
+    """
+    from src.utils.config import (
+        BIAS_MAX_ACCURACY_DISPARITY,
+        BIAS_MAX_JUDGE_DISPARITY,
+    )
+
+    output_dir = Path(args.output_dir)
+    report_path = output_dir / "aggregate_report.json"
+
+    if not report_path.exists():
+        print("[bias_check] ERROR: aggregate_report.json not found. Run 'evaluate' step first.")
+        sys.exit(1)
+
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+
+    violations = []
+
+    # Check domain bias
+    by_domain = report.get("by_domain", {})
+    if len(by_domain) >= 2:
+        # Classification disparity
+        cls_accs = []
+        for dom, data in by_domain.items():
+            cls = data.get("classification")
+            if cls and cls.get("n", 0) >= 3:
+                cls_accs.append(cls["predecessor_strict"])
+        if len(cls_accs) >= 2:
+            disparity = max(cls_accs) - min(cls_accs)
+            print(f"  Domain accuracy disparity: {disparity:.4f} (threshold: {BIAS_MAX_ACCURACY_DISPARITY})")
+            if disparity > BIAS_MAX_ACCURACY_DISPARITY:
+                violations.append(f"Domain accuracy disparity {disparity:.4f} > {BIAS_MAX_ACCURACY_DISPARITY}")
+
+        # Judge disparity
+        judge_scores = []
+        for dom, data in by_domain.items():
+            judge = data.get("judge")
+            if judge and judge.get("n", 0) >= 3 and judge.get("judge_overall") is not None:
+                judge_scores.append(judge["judge_overall"])
+        if len(judge_scores) >= 2:
+            disparity = max(judge_scores) - min(judge_scores)
+            print(f"  Domain judge disparity: {disparity:.4f} (threshold: {BIAS_MAX_JUDGE_DISPARITY})")
+            if disparity > BIAS_MAX_JUDGE_DISPARITY:
+                violations.append(f"Domain judge disparity {disparity:.4f} > {BIAS_MAX_JUDGE_DISPARITY}")
+
+    # Check popularity/citation-tier bias
+    by_tier = report.get("by_citation_tier", {})
+    if len(by_tier) >= 2:
+        cls_accs = []
+        for tier, data in by_tier.items():
+            cls = data.get("classification")
+            if cls and cls.get("n", 0) >= 3:
+                cls_accs.append(cls["predecessor_strict"])
+        if len(cls_accs) >= 2:
+            disparity = max(cls_accs) - min(cls_accs)
+            print(f"  Popularity accuracy disparity: {disparity:.4f} (threshold: {BIAS_MAX_ACCURACY_DISPARITY})")
+            if disparity > BIAS_MAX_ACCURACY_DISPARITY:
+                violations.append(f"Popularity accuracy disparity {disparity:.4f} > {BIAS_MAX_ACCURACY_DISPARITY}")
+
+        judge_scores = []
+        for tier, data in by_tier.items():
+            judge = data.get("judge")
+            if judge and judge.get("n", 0) >= 3 and judge.get("judge_overall") is not None:
+                judge_scores.append(judge["judge_overall"])
+        if len(judge_scores) >= 2:
+            disparity = max(judge_scores) - min(judge_scores)
+            print(f"  Popularity judge disparity: {disparity:.4f} (threshold: {BIAS_MAX_JUDGE_DISPARITY})")
+            if disparity > BIAS_MAX_JUDGE_DISPARITY:
+                violations.append(f"Popularity judge disparity {disparity:.4f} > {BIAS_MAX_JUDGE_DISPARITY}")
+
+    # Write bias report
+    bias_report = {
+        "passed": len(violations) == 0,
+        "violations": violations,
+        "n_domains": len(by_domain),
+        "n_tiers": len(by_tier),
+    }
+    bias_path = output_dir / "bias_report.json"
+    bias_path.write_text(json.dumps(bias_report, indent=2), encoding="utf-8")
+
+    # Log to MLflow if available
+    try:
+        from src.mlflow_utils import log_bias_report as _log_bias
+
+        flat_metrics = {}
+        for dom, data in by_domain.items():
+            cls = data.get("classification")
+            if cls:
+                flat_metrics[f"bias_domain_{dom}_accuracy"] = cls.get("predecessor_strict", 0.0)
+        for tier, data in by_tier.items():
+            cls = data.get("classification")
+            if cls:
+                flat_metrics[f"bias_tier_{tier}_accuracy"] = cls.get("predecessor_strict", 0.0)
+
+        _log_bias(
+            bias_metrics=flat_metrics,
+            model_version=report.get("generated_at", "unknown"),
+            passed=bias_report["passed"],
+        )
+    except Exception as exc:
+        print(f"  MLflow bias logging skipped: {exc}")
+
+    if violations:
+        print(f"\n[bias_check] FAILED — {len(violations)} violation(s):")
+        for v in violations:
+            print(f"  - {v}")
+        sys.exit(1)
+    else:
+        print("[bias_check] PASSED — no bias threshold violations detected.")
+
+
 if __name__ == "__main__":
     args = _parse_args()
     dispatch = {
         "run_inference": run_inference,
         "evaluate":      evaluate,
         "upload":        upload,
+        "bias_check":    bias_check,
     }
     dispatch[args.step](args)

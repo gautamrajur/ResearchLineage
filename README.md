@@ -103,7 +103,7 @@ Result: **98% reduction in API calls** (10,000+ → 100–150 per run).
 
 - **preprocessing:** validates JSONL, drops malformed records
 - **repair_lineage_chains:** reconstructs missing metadata via shared paper ID cross-reference
-- **split + convert:** separates pairs from metadata sidecars; converts to Llama 3.1 8B chat format
+- **split + convert:** separates pairs from metadata sidecars; converts to Qwen 2.5-7B chat format
 
 ---
 
@@ -329,7 +329,7 @@ Authentication uses the same GCP credentials as the rest of the project (`GCLOUD
 | `data/raw.dvc` | `research_lineage_pipeline` | Raw API responses from Semantic Scholar |
 | `data/processed.dvc` | `research_lineage_pipeline` | Cleaned, validated, and feature-engineered datasets |
 | `data/tasks/pipeline_output/splits.dvc` | `fine_tuning_data_pipeline` | Stratified train / val / test splits (70 / 15 / 15) |
-| `data/tasks/pipeline_output/llama_format.dvc` | `fine_tuning_data_pipeline` | Llama chat-format training files and metadata sidecars |
+| `data/tasks/pipeline_output/qwen_format.dvc` | `fine_tuning_data_pipeline` | Qwen chat-format training files and metadata sidecars |
 
 `.dvc` pointer files are committed to Git; actual data is not.
 
@@ -355,9 +355,9 @@ git commit -m "Update research lineage datasets"
 **Fine-tuning pipeline:**
 
 ```bash
-dvc add data/tasks/pipeline_output/splits data/tasks/pipeline_output/llama_format
+dvc add data/tasks/pipeline_output/splits data/tasks/pipeline_output/qwen_format
 dvc push
-git add data/tasks/pipeline_output/splits.dvc data/tasks/pipeline_output/llama_format.dvc
+git add data/tasks/pipeline_output/splits.dvc data/tasks/pipeline_output/qwen_format.dvc
 git commit -m "Track fine-tuning artifacts from pipeline run"
 ```
 
@@ -434,7 +434,7 @@ dvc pull data/raw.dvc
 │   └── tasks/
 │       └── pipeline_output/               # Fine-tuning DAG runtime output (git-ignored)
 │           ├── splits.dvc                 # DVC pointer — train/val/test splits
-│           └── llama_format.dvc           # DVC pointer — Llama chat-format training files
+│           └── qwen_format.dvc           # DVC pointer — Qwen chat-format training files
 │
 ├── logs/                              # Execution logs and pipeline reports
 ├── scripts/                           # Utility and helper scripts

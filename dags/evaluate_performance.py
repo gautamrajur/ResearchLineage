@@ -140,5 +140,16 @@ with DAG(
         execution_timeout=timedelta(minutes=15),
     )
 
+    # ── STEP 4: Bias check ──────────────────────────────────────────────────
+    bias_check = BashOperator(
+        task_id="bias_check",
+        bash_command=(
+            _BASE + " --step bias_check"
+            " --output-dir '{{ params.output_dir }}'"
+            " "
+        ),
+        execution_timeout=timedelta(minutes=5),
+    )
+
     # ── Flow ──────────────────────────────────────────────────────────────────
-    run_inference >> evaluate >> upload_to_gcs
+    run_inference >> evaluate >> [upload_to_gcs, bias_check]

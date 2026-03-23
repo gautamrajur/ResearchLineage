@@ -1,0 +1,92 @@
+name: Model Evaluation
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/evaluation/**'
+      - 'src/tasks/evaluation_task.py'
+      - 'dags/evaluate_performance.py'
+  workflow_dispatch:
+    inputs:
+      model_endpoint:
+        description: 'Model endpoint (gemini-* or Modal URL)'
+        required: false
+        default: ''
+
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install sentence-transformers google-cloud-storage mlflow
+
+      - name: Run evaluation
+        env:
+          EVAL_MODEL_ENDPOINT: ${{ inputs.model_endpoint || secrets.EVAL_MODEL_ENDPOINT }}
+          MLFLOW_TRACKING_URI: ${{ secrets.MLFLOW_TRACKING_URI }}
+        run: |
+          python src/tasks/evaluation_task.py \
+            --step run_inference \
+            --data-source gcs \
+            --gcs-input "${{ secrets.EVAL_GCS_TEST_PATH }}" \
+            --output-dir /tmp/eval_output \
+            --model-endpoint "$EVAL_MODEL_ENDPOINT" \
+            --vertex-project "${{ secrets.GCP_PROJECT_ID }}" \
+            --max-workers 2
+
+          python src/tasks/evaluation_task.py \
+            --step evaluate \
+            --output-dir /tmp/eval_output \
+            --vertex-project "${{ secrets.GCP_PROJECT_ID }}" \
+            --judge-model gemini-2.5-flash
+
+      - name: Check evaluation thresholds
+        run: |
+          python -c "
+          import json, sys
+          report = json.load(open('/tmp/eval_output/aggregate_report.json'))
+          cls = report.get('overall_classification', {})
+          judge = report.get('overall_judge', {})
+          failures = []
+          acc = cls.get('predecessor_strict', 0)
+          if acc < 0.60:
+              failures.append(f'predecessor_accuracy={acc:.4f} < 0.60')
+          judge_score = judge.get('judge_overall', 0) or 0
+          if judge_score < 3.0:
+              failures.append(f'judge_overall={judge_score:.4f} < 3.0')
+          if failures:
+              print('THRESHOLD GATE FAILED:')
+              for f in failures:
+                  print(f'  - {f}')
+              sys.exit(1)
+          print('All thresholds passed.')
+          "
+
+      - name: Run bias check
+        run: |
+          python src/tasks/evaluation_task.py \
+            --step bias_check \
+            --output-dir /tmp/eval_output
+
+      - name: Upload results to GCS
+        if: always()
+        run: |
+          python src/tasks/evaluation_task.py \
+            --step upload \
+            --output-dir /tmp/eval_output \
+            --gcs-input "${{ secrets.EVAL_GCS_TEST_PATH }}" \
+            --bucket "${{ secrets.GCS_BUCKET_NAME }}" \
+            --project "${{ secrets.GCP_PROJECT_ID }}"

@@ -1,0 +1,128 @@
+name: Model Training
+
+on:
+  workflow_dispatch:
+    inputs:
+      model_version:
+        description: 'Model version tag (auto-generated if empty)'
+        required: false
+        default: ''
+      min_new_samples:
+        description: 'Minimum new samples to trigger training'
+        required: false
+        default: '50'
+      skip_eval:
+        description: 'Skip evaluation after training'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    outputs:
+      model_version: ${{ steps.train.outputs.model_version }}
+      model_gcs_uri: ${{ steps.train.outputs.model_gcs_uri }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Modal CLI
+        run: pip install modal
+
+      - name: Configure Modal
+        env:
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+        run: modal token set --token-id "$MODAL_TOKEN_ID" --token-secret "$MODAL_TOKEN_SECRET"
+
+      - name: Run training on Modal
+        id: train
+        env:
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+        run: |
+          VERSION="${{ inputs.model_version }}"
+          if [ -z "$VERSION" ]; then
+            VERSION="v$(date +%Y%m%d_%H%M%S)"
+          fi
+          echo "model_version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "model_gcs_uri=gs://${{ secrets.GCS_BUCKET_NAME }}/models/trained/$VERSION" >> "$GITHUB_OUTPUT"
+
+          echo "Training model version: $VERSION"
+          modal run scripts/modal_train.py
+
+  log-mlflow:
+    needs: train
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install mlflow google-cloud-storage pydantic pydantic-settings python-dotenv
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Log to MLflow
+        env:
+          MLFLOW_TRACKING_URI: ${{ secrets.MLFLOW_TRACKING_URI }}
+        run: |
+          python -c "
+          from src.mlflow_utils import log_training_run, register_model
+          params = {
+              'base_model': 'unsloth/Qwen2.5-7B-Instruct',
+              'lora_r': 16, 'lora_alpha': 16, 'lora_dropout': 0.0,
+              'epochs': 3, 'learning_rate': 2e-4,
+              'max_seq_length': 102400,
+          }
+          run_id = log_training_run(
+              params=params, metrics={},
+              model_uri='${{ needs.train.outputs.model_gcs_uri }}',
+              tags={'model_version': '${{ needs.train.outputs.model_version }}'},
+          )
+          register_model(run_id=run_id, model_uri='${{ needs.train.outputs.model_gcs_uri }}')
+          print(f'MLflow run: {run_id}')
+          "
+
+  evaluate:
+    needs: train
+    if: ${{ !inputs.skip_eval }}
+    uses: ./.github/workflows/model-evaluation.yml
+    secrets: inherit
+
+  register:
+    needs: [train, log-mlflow]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install google-cloud-storage pydantic pydantic-settings python-dotenv
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Register model in artifact registry
+        run: |
+          python -c "
+          from src.registry.artifact_registry import push_model_to_registry
+          result = push_model_to_registry(
+              model_gcs_uri='${{ needs.train.outputs.model_gcs_uri }}',
+              version='${{ needs.train.outputs.model_version }}',
+              metadata={'training_trigger': 'github_actions'},
+          )
+          print(f'Registered: {result}')
+          "
