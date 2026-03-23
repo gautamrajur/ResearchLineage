@@ -59,22 +59,22 @@ jobs:
     if: failure()
     runs-on: ubuntu-latest
     steps:
-      - name: Notify on failure
-        if: ${{ secrets.SLACK_WEBHOOK_URL != '' }}
-        uses: slackapi/slack-github-action@v1.26.0
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
-          payload: |
-            {
-              "text": ":x: CI failed on ${{ github.ref_name }} — ${{ github.event.head_commit.message }}",
-              "blocks": [
-                {
-                  "type": "section",
-                  "text": {
-                    "type": "mrkdwn",
-                    "text": ":x: *CI Pipeline Failed*\nBranch: `${{ github.ref_name }}`\nCommit: `${{ github.sha }}`\nAuthor: ${{ github.actor }}\n<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Run>"
-                  }
-                }
-              ]
-            }
+          python-version: '3.11'
+      - run: pip install pydantic-settings python-dotenv
+      - name: Send failure email
         env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          ALERT_EMAIL_FROM: ${{ secrets.ALERT_EMAIL_FROM }}
+          ALERT_EMAIL_TO: ${{ secrets.ALERT_EMAIL_TO }}
+        run: |
+          python scripts/notify.py \
+            --channel email \
+            --event "CI Failed on ${{ github.ref_name }}" \
+            --status failure \
+            --details "Commit: ${{ github.sha }} | Author: ${{ github.actor }} | Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
