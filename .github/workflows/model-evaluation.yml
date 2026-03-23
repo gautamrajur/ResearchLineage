@@ -42,9 +42,17 @@ jobs:
         run: |
           mkdir -p /tmp/eval_output
           echo "Downloading existing evaluation artifacts for validation..."
-          gsutil cp "gs://researchlineage-gcs/fine-tuning-artifacts/test-eval-dag/evaluation_artifacts/aggregate_report.json" /tmp/eval_output/
-          gsutil cp "gs://researchlineage-gcs/fine-tuning-artifacts/test-eval-dag/evaluation_artifacts/aggregate_report.txt" /tmp/eval_output/
-          gsutil cp "gs://researchlineage-gcs/fine-tuning-artifacts/test-eval-dag/evaluation_artifacts/per_sample_results.jsonl" /tmp/eval_output/ || true
+          python -c "
+          from google.cloud import storage
+          client = storage.Client()
+          bucket = client.bucket('researchlineage-gcs')
+          prefix = 'fine-tuning-artifacts/test-eval-dag/evaluation_artifacts/'
+          for blob in bucket.list_blobs(prefix=prefix):
+              name = blob.name.split('/')[-1]
+              if name:
+                  blob.download_to_filename(f'/tmp/eval_output/{name}')
+                  print(f'  Downloaded: {name}')
+          "
           echo "Artifacts downloaded — skipping live inference in validation mode."
           ls -la /tmp/eval_output/
 
