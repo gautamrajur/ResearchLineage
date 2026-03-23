@@ -26,8 +26,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: pip install mypy types-redis
-      - run: mypy src/ --ignore-missing-imports
+      - run: pip install mypy types-redis types-requests
+      - run: mypy src/
 
   test:
     runs-on: ubuntu-latest

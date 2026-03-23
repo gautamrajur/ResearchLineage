@@ -106,7 +106,7 @@ def _load_metadata(local_input: str | None, gcs_input: str | None, project_id: s
     e.g. .../test.jsonl → .../test_metadata_fixed.jsonl
     Works for both local and GCS paths.
     """
-    base = local_input or gcs_input
+    base = local_input or gcs_input or ""
     meta_path = re.sub(r"([^/\\]+)\.jsonl$", lambda m: f"{m.group(1)}_metadata_fixed.jsonl", base)
     try:
         records = _load_input(
@@ -773,7 +773,7 @@ def bias_check(args: argparse.Namespace) -> None:
         _log_bias(
             bias_metrics=flat_metrics,
             model_version=report.get("generated_at", "unknown"),
-            passed=bias_report["passed"],
+            passed=bool(bias_report["passed"]),
         )
     except Exception as exc:
         print(f"  MLflow bias logging skipped: {exc}")

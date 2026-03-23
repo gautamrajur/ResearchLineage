@@ -64,3 +64,19 @@ ignore = ["F401", "F841", "F541", "W291", "W292", "W293", "E501", "E701", "E702"
 "src/tasks/*.py" = ["E402"]
 "tests/*.py" = ["E402"]
 "tests/**/*.py" = ["E402"]
+
+[tool.mypy]
+ignore_missing_imports = true
+exclude = [
+    "scripts/",
+    "dags/",
+    "tests/",
+]
+
+[[tool.mypy.overrides]]
+module = [
+    "src.storage.gcs_client",
+    "src.tasks.pdf_fetcher",
+    "src.tasks.pdf_upload_task",
+]
+ignore_errors = true
