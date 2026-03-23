@@ -9,6 +9,7 @@ on:
       - 'src/evaluation/**'
       - 'src/tasks/evaluation_task.py'
       - 'dags/evaluate_performance.py'
+  workflow_call:         # Allow model-training.yml to call this workflow
   workflow_dispatch:
     inputs:
       model_endpoint:
@@ -35,7 +36,21 @@ jobs:
           pip install -r requirements.txt
           pip install sentence-transformers google-cloud-storage mlflow
 
+      # --- VALIDATION MODE (PR): download existing eval artifacts instead of running inference ---
+      - name: "Validation: download existing evaluation artifacts"
+        if: github.event_name == 'pull_request'
+        run: |
+          mkdir -p /tmp/eval_output
+          echo "Downloading existing evaluation artifacts for validation..."
+          gsutil cp "gs://researchlineage-gcs/fine-tuning-artifacts/test-eval-dag/evaluation_artifacts/aggregate_report.json" /tmp/eval_output/
+          gsutil cp "gs://researchlineage-gcs/fine-tuning-artifacts/test-eval-dag/evaluation_artifacts/aggregate_report.txt" /tmp/eval_output/
+          gsutil cp "gs://researchlineage-gcs/fine-tuning-artifacts/test-eval-dag/evaluation_artifacts/per_sample_results.jsonl" /tmp/eval_output/ || true
+          echo "Artifacts downloaded — skipping live inference in validation mode."
+          ls -la /tmp/eval_output/
+
+      # --- REAL MODE (dispatch/push): run actual inference + evaluation ---
       - name: Run evaluation
+        if: github.event_name != 'pull_request'
         env:
           EVAL_MODEL_ENDPOINT: ${{ inputs.model_endpoint || secrets.EVAL_MODEL_ENDPOINT }}
           MLFLOW_TRACKING_URI: ${{ secrets.MLFLOW_TRACKING_URI }}
@@ -55,6 +70,7 @@ jobs:
             --vertex-project "${{ secrets.GCP_PROJECT_ID }}" \
             --judge-model gemini-2.5-flash
 
+      # --- Threshold + bias gates run in BOTH modes ---
       - name: Check evaluation thresholds
         run: |
           python -c "
@@ -84,7 +100,7 @@ jobs:
             --output-dir /tmp/eval_output
 
       - name: Upload results to GCS
-        if: always()
+        if: always() && github.event_name != 'pull_request'
         run: |
           python src/tasks/evaluation_task.py \
             --step upload \

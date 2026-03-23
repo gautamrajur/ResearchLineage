@@ -32,9 +32,11 @@ jobs:
           python-version: '3.11'
 
       - name: Install Modal CLI
+        if: github.event_name != 'pull_request'
         run: pip install modal
 
       - name: Configure Modal
+        if: github.event_name != 'pull_request'
         env:
           MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
           MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
@@ -53,8 +55,13 @@ jobs:
           echo "model_version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "model_gcs_uri=gs://${{ secrets.GCS_BUCKET_NAME }}/models/trained/$VERSION" >> "$GITHUB_OUTPUT"
 
-          echo "Training model version: $VERSION"
-          modal run scripts/modal_train.py
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "VALIDATION MODE: Skipping actual Modal training."
+            echo "Would train model version: $VERSION"
+          else
+            echo "Training model version: $VERSION"
+            modal run scripts/modal_train.py
+          fi
 
   log-mlflow:
     needs: train
@@ -78,6 +85,13 @@ jobs:
           MLFLOW_TRACKING_URI: ${{ secrets.MLFLOW_TRACKING_URI }}
         run: |
           python -c "
+          import os, sys
+
+          tracking_uri = os.environ.get('MLFLOW_TRACKING_URI', '')
+          if not tracking_uri:
+              print('MLFLOW_TRACKING_URI not set — skipping MLflow logging (validation mode)')
+              sys.exit(0)
+
           from src.mlflow_utils import log_training_run, register_model
           params = {
               'base_model': 'unsloth/Qwen2.5-7B-Instruct',
@@ -96,7 +110,7 @@ jobs:
 
   evaluate:
     needs: train
-    if: ${{ !inputs.skip_eval }}
+    if: ${{ github.event_name == 'pull_request' || !inputs.skip_eval }}
     uses: ./.github/workflows/model-evaluation.yml
     secrets: inherit
 
@@ -119,7 +133,11 @@ jobs:
 
       - name: Register model in artifact registry
         run: |
-          python -c "
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "VALIDATION MODE: Skipping registry push."
+            echo "Would register: ${{ needs.train.outputs.model_gcs_uri }}"
+          else
+            python -c "
           from src.registry.artifact_registry import push_model_to_registry
           result = push_model_to_registry(
               model_gcs_uri='${{ needs.train.outputs.model_gcs_uri }}',
@@ -128,3 +146,4 @@ jobs:
           )
           print(f'Registered: {result}')
           "
+          fi

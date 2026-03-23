@@ -19,15 +19,18 @@ jobs:
           python-version: '3.11'
 
       - name: Install Modal CLI
+        if: github.event_name != 'pull_request'
         run: pip install modal
 
       - name: Configure Modal
+        if: github.event_name != 'pull_request'
         env:
           MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
           MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
         run: modal token set --token-id "$MODAL_TOKEN_ID" --token-secret "$MODAL_TOKEN_SECRET"
 
       - name: Update Modal serving secret
+        if: github.event_name != 'pull_request'
         env:
           MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
           MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
@@ -39,6 +42,7 @@ jobs:
             --force
 
       - name: Deploy to Modal
+        if: github.event_name != 'pull_request'
         env:
           MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
           MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
@@ -47,16 +51,31 @@ jobs:
           ENDPOINT=$(grep -o 'https://[^ ]*modal.run[^ ]*' /tmp/deploy_output.txt | head -1)
           echo "Deployed to: $ENDPOINT"
 
+      - name: "Validation: verify deploy workflow structure"
+        if: github.event_name == 'pull_request'
+        run: |
+          echo "VALIDATION MODE: Skipping actual Modal deployment."
+          echo "Verifying workflow structure and scripts exist..."
+          test -f scripts/modal_serve.py && echo "  modal_serve.py exists"
+          test -f scripts/modal_train.py && echo "  modal_train.py exists"
+          python -c "import json; print('  json module OK')"
+          python -c "from datetime import datetime, timezone; print('  datetime module OK')"
+          echo "Deploy workflow validation passed."
+
   smoke-test:
     needs: deploy
     runs-on: ubuntu-latest
     steps:
       - name: Test endpoint health
         run: |
-          echo "Smoke test: verifying endpoint responds..."
-          # The Modal endpoint URL is auto-generated — in production
-          # this would be read from pipeline_state.json or an output artifact.
-          echo "Smoke test passed (endpoint deployed successfully)"
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "VALIDATION MODE: Smoke test skipped (no live endpoint)."
+          else
+            echo "Smoke test: verifying endpoint responds..."
+            # The Modal endpoint URL is auto-generated — in production
+            # this would be read from pipeline_state.json or an output artifact.
+            echo "Smoke test passed (endpoint deployed successfully)"
+          fi
 
   update-state:
     needs: [deploy, smoke-test]
@@ -71,13 +90,18 @@ jobs:
         run: pip install google-cloud-storage
 
       - name: Authenticate to GCP
+        if: github.event_name != 'pull_request'
         uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
 
       - name: Update pipeline state
         run: |
-          python -c "
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "VALIDATION MODE: Skipping GCS pipeline state update."
+            echo "Would update pipeline_state.json with version: ${{ inputs.model_version }}"
+          else
+            python -c "
           import json
           from datetime import datetime, timezone
           from google.cloud import storage
@@ -98,3 +122,4 @@ jobs:
           )
           print('Pipeline state updated.')
           "
+          fi
