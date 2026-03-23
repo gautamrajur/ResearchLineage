@@ -1,6 +1,8 @@
 name: Model Training
 
 on:
+  pull_request:          # TEMPORARY — remove after merge
+    branches: [main]
   workflow_dispatch:
     inputs:
       model_version:

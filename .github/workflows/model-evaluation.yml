@@ -1,6 +1,8 @@
 name: Model Evaluation
 
 on:
+  pull_request:          # TEMPORARY — remove after merge
+    branches: [main]
   push:
     branches: [main]
     paths:
