@@ -70,12 +70,24 @@ def send_slack(event: str, status: str, details: str = "") -> None:
 def send_email(event: str, status: str, details: str = "") -> None:
     """Send notification via email using existing SMTP config."""
     try:
-        from src.utils.email_service import send_alert_email
+        import os
+        from src.utils.email_service import EmailConfig, EmailService
 
+        config = EmailConfig(
+            smtp_host=os.environ.get("SMTP_HOST", "smtp.gmail.com"),
+            smtp_port=int(os.environ.get("SMTP_PORT", "587")),
+            smtp_user=os.environ.get("SMTP_USER", ""),
+            smtp_password=os.environ.get("SMTP_PASSWORD", ""),
+            alert_email_from=os.environ.get("ALERT_EMAIL_FROM", ""),
+            alert_email_to=os.environ.get("ALERT_EMAIL_TO", ""),
+        )
+        service = EmailService(config)
         subject = f"ResearchLineage — {event} ({status})"
         body = f"Event: {event}\nStatus: {status}\n\n{details}"
-        send_alert_email(subject=subject, body=body)
-        print("Email notification sent")
+        if service.send_alert(subject=subject, body=body):
+            print("Email notification sent")
+        else:
+            print("Email not configured, skipping")
     except Exception as exc:
         print(f"Failed to send email: {exc}")
 
