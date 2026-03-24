@@ -1,0 +1,191 @@
+name: Model Comparison
+
+on:
+  pull_request:          # TEMPORARY — remove after merge
+    branches: [main]
+  workflow_call:         # Allow model-training.yml to call this
+  workflow_dispatch:
+    inputs:
+      model_a_endpoint:
+        description: 'Model A endpoint (fine-tuned Qwen 7B)'
+        required: false
+        default: 'https://nekkantishiv--researchlineage-qwen-qwenmodel-infer.modal.run'
+      model_b_endpoint:
+        description: 'Model B endpoint (Gemini 2.5 Pro)'
+        required: false
+        default: 'gemini-2.5-pro'
+
+jobs:
+  # ── Parallel evaluation: 2 models ──────────────────────────────────────────
+  eval-qwen7b:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install sentence-transformers google-cloud-storage mlflow openai matplotlib
+      - name: Run evaluation (Qwen 7B fine-tuned)
+        if: github.event_name != 'pull_request'
+        env:
+          MLFLOW_TRACKING_URI: ${{ secrets.MLFLOW_TRACKING_URI }}
+        run: |
+          ENDPOINT="${{ inputs.model_a_endpoint || 'https://nekkantishiv--researchlineage-qwen-qwenmodel-infer.modal.run' }}"
+          python src/tasks/evaluation_task.py \
+            --step run_inference \
+            --data-source gcs \
+            --gcs-input "${{ secrets.EVAL_GCS_TEST_PATH }}" \
+            --output-dir /tmp/eval_qwen7b \
+            --model-endpoint "$ENDPOINT" \
+            --vertex-project "${{ secrets.GCP_PROJECT_ID }}" \
+            --max-workers 2
+
+          python src/tasks/evaluation_task.py \
+            --step evaluate \
+            --output-dir /tmp/eval_qwen7b \
+            --vertex-project "${{ secrets.GCP_PROJECT_ID }}" \
+            --judge-model gemini-2.5-flash
+      - name: "Validation: download real Qwen 7B eval artifacts"
+        if: github.event_name == 'pull_request'
+        run: |
+          mkdir -p /tmp/eval_qwen7b
+          python -c "
+          from google.cloud import storage
+          client = storage.Client()
+          bucket = client.bucket('researchlineage-gcs')
+          blob = bucket.blob('fine-tuning-artifacts/model_comparison/eval_qwen7b/aggregate_report.json')
+          blob.download_to_filename('/tmp/eval_qwen7b/aggregate_report.json')
+          print('Downloaded real Qwen 7B eval report')
+          "
+      - uses: actions/upload-artifact@v4
+        with:
+          name: eval-qwen7b
+          path: /tmp/eval_qwen7b/aggregate_report.json
+
+  eval-gemini:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install sentence-transformers google-cloud-storage mlflow openai matplotlib google-genai
+      - name: Run evaluation (Gemini 2.5 Pro)
+        if: github.event_name != 'pull_request'
+        env:
+          MLFLOW_TRACKING_URI: ${{ secrets.MLFLOW_TRACKING_URI }}
+        run: |
+          ENDPOINT="${{ inputs.model_b_endpoint || 'gemini-2.5-pro' }}"
+          python src/tasks/evaluation_task.py \
+            --step run_inference \
+            --data-source gcs \
+            --gcs-input "${{ secrets.EVAL_GCS_TEST_PATH }}" \
+            --output-dir /tmp/eval_gemini \
+            --model-endpoint "$ENDPOINT" \
+            --vertex-project "${{ secrets.GCP_PROJECT_ID }}" \
+            --max-workers 2
+
+          python src/tasks/evaluation_task.py \
+            --step evaluate \
+            --output-dir /tmp/eval_gemini \
+            --vertex-project "${{ secrets.GCP_PROJECT_ID }}" \
+            --judge-model gemini-2.5-flash
+      - name: "Validation: download real Gemini eval artifacts"
+        if: github.event_name == 'pull_request'
+        run: |
+          mkdir -p /tmp/eval_gemini
+          python -c "
+          from google.cloud import storage
+          client = storage.Client()
+          bucket = client.bucket('researchlineage-gcs')
+          blob = bucket.blob('fine-tuning-artifacts/model_comparison/eval_gemini/aggregate_report.json')
+          blob.download_to_filename('/tmp/eval_gemini/aggregate_report.json')
+          print('Downloaded real Gemini eval report')
+          "
+      - uses: actions/upload-artifact@v4
+        with:
+          name: eval-gemini
+          path: /tmp/eval_gemini/aggregate_report.json
+
+  # ── Model selection + visualization ──────────────────────────────────────
+  model-selection:
+    needs: [eval-qwen7b, eval-gemini]
+    runs-on: ubuntu-latest
+    outputs:
+      winner: ${{ steps.select.outputs.winner }}
+      promoted: ${{ steps.select.outputs.promoted }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install sentence-transformers google-cloud-storage mlflow openai matplotlib
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: eval-qwen7b
+          path: /tmp/eval_qwen7b
+      - uses: actions/download-artifact@v4
+        with:
+          name: eval-gemini
+          path: /tmp/eval_gemini
+
+      - name: Run model selection + visualization
+        id: select
+        env:
+          MLFLOW_TRACKING_URI: ${{ secrets.MLFLOW_TRACKING_URI }}
+        run: |
+          PROMOTE_FLAG=""
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            PROMOTE_FLAG="--promote"
+          fi
+
+          OUTPUT=$(python src/tasks/model_selection_task.py \
+            --report-dirs /tmp/eval_qwen7b /tmp/eval_gemini \
+            --model-names qwen-7b-finetuned gemini-2.5-pro \
+            --output-dir /tmp/model_comparison \
+            --generate-viz \
+            $PROMOTE_FLAG \
+            --bucket "${{ secrets.GCS_BUCKET_NAME || 'researchlineage-gcs' }}" \
+            --project "${{ secrets.GCP_PROJECT_ID || 'researchlineage' }}")
+
+          echo "$OUTPUT"
+
+          WINNER=$(echo "$OUTPUT" | grep "^WINNER=" | cut -d= -f2)
+          PROMOTED=$(echo "$OUTPUT" | grep "^PROMOTE=" | cut -d= -f2)
+          echo "winner=$WINNER" >> "$GITHUB_OUTPUT"
+          echo "promoted=$PROMOTED" >> "$GITHUB_OUTPUT"
+
+      - name: Upload comparison artifacts to GCS
+        if: github.event_name != 'pull_request'
+        run: |
+          python src/tasks/model_selection_task.py \
+            --report-dirs /tmp/eval_qwen7b /tmp/eval_gemini \
+            --model-names qwen-7b-finetuned gemini-2.5-pro \
+            --output-dir /tmp/model_comparison \
+            --upload \
+            --bucket "${{ secrets.GCS_BUCKET_NAME || 'researchlineage-gcs' }}" \
+            --project "${{ secrets.GCP_PROJECT_ID || 'researchlineage' }}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: model-comparison
+          path: /tmp/model_comparison/

@@ -21,7 +21,10 @@ RUN pip install --no-cache-dir \
     alembic \
     python-dotenv \
     pydantic \
-    pydantic-settings
+    pydantic-settings \
+    mlflow \
+    openai \
+    matplotlib
 
 # Copy source code
 COPY --chown=airflow:root src/ /opt/airflow/src/

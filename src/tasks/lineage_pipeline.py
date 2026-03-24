@@ -10,7 +10,7 @@ Steps:
     3. preprocessing          — Validate raw training data
     4. repair                 — Fix foundational entries with missing lineage chains
     5. split                  — Cluster-level stratified train/val/test split
-    6. convert                — Convert to Llama chat format + metadata sidecars
+    6. convert                — Convert to Qwen chat format + metadata sidecars
     7. report                 — Generate pipeline_report.json + pipeline_report.txt
     8. upload                 — Upload entire pipeline_output/ folder to GCS
 
@@ -66,7 +66,7 @@ from src.utils.config import (
     GCS_BUCKET_NAME, GCS_PROJECT_ID, GCS_UPLOAD_PREFIX,
     # Paths
     RUN_DIR, SEEDS_FILE, TRAINING_DATA_FILE, REPAIRED_DATA_FILE,
-    SPLITS_DIR, LLAMA_FORMAT_DIR, TIMELINE_OUTPUT_DIR,
+    SPLITS_DIR, QWEN_FORMAT_DIR, TIMELINE_OUTPUT_DIR,
     STATE_FILE, REPORT_JSON, REPORT_TXT, LOG_FILE,
     # Prompts
     MAIN_PROMPT, FOUNDATIONAL_PROMPT,
@@ -1160,7 +1160,7 @@ def step_convert(splits_dir, output_dir):
 # STEP 7: REPORT (JSON + TXT)
 # ════════════════════════════════════════
 
-def step_report(repaired_path, splits_dir, llama_dir):
+def step_report(repaired_path, splits_dir, qwen_dir):
     """Generate pipeline_report.json and pipeline_report.txt with full distributions."""
     logger.info("Generating pipeline report...")
 
@@ -1212,11 +1212,11 @@ def step_report(repaired_path, splits_dir, llama_dir):
     if sr:
         report["splits"] = sr
 
-    # Llama format
+    # Qwen format
     lr = {}
     for name in ["train", "val", "test"]:
-        lf = os.path.join(llama_dir, f"{name}.jsonl")
-        mf = os.path.join(llama_dir, f"{name}_metadata.jsonl")
+        lf = os.path.join(qwen_dir, f"{name}.jsonl")
+        mf = os.path.join(qwen_dir, f"{name}_metadata.jsonl")
         if os.path.exists(lf):
             samples = _load_jsonl(lf)
             il = [len(s.get("input_text", "")) for s in samples]
@@ -1244,7 +1244,7 @@ def step_report(repaired_path, splits_dir, llama_dir):
                 })
             lr[name] = entry
     if lr:
-        report["llama_format"] = lr
+        report["qwen_format"] = lr
 
     # Integrity
     report["integrity_checks"] = _check_lineage_integrity(splits_dir)
@@ -1450,14 +1450,14 @@ def _build_txt_report(report):
                     row += f"{pct:>9.1f}%"
                 w(row)
 
-    # Llama format
-    if "llama_format" in report:
+    # Qwen format
+    if "qwen_format" in report:
         w(f"\n{'='*60}")
-        w("LLAMA FORMAT")
+        w("QWEN FORMAT")
         w(f"{'='*60}")
         for name in ["train", "val", "test"]:
-            if name in report["llama_format"]:
-                lf = report["llama_format"][name]
+            if name in report["qwen_format"]:
+                lf = report["qwen_format"][name]
                 w(f"\n  {name.upper()}: {lf['count']} samples")
                 _write_stats(w, "    Input tokens (approx)", lf.get("approx_input_tokens"))
                 _write_stats(w, "    Output tokens (approx)", lf.get("approx_output_tokens"))
@@ -1803,7 +1803,7 @@ def main():
     parser.add_argument("--input", type=str, default=TRAINING_DATA_FILE)
     parser.add_argument("--repaired", type=str, default=REPAIRED_DATA_FILE)
     parser.add_argument("--splits-dir", type=str, default=SPLITS_DIR)
-    parser.add_argument("--llama-dir", type=str, default=LLAMA_FORMAT_DIR)
+    parser.add_argument("--qwen-dir", type=str, default=QWEN_FORMAT_DIR)
 
     parser.add_argument("--train-frac", type=float, default=SPLIT_TRAIN_FRAC)
     parser.add_argument("--val-frac", type=float, default=SPLIT_VAL_FRAC)
@@ -1853,8 +1853,8 @@ def main():
         "repair": ("STEP 4: REPAIR LINEAGE CHAINS", lambda: step_repair(args.input, args.repaired)),
         "split": ("STEP 5: STRATIFIED SPLIT", lambda: step_split(
             args.repaired, args.splits_dir, args.train_frac, args.val_frac, args.test_frac, args.seed)),
-        "convert": ("STEP 6: CONVERT TO LLAMA FORMAT", lambda: step_convert(args.splits_dir, args.llama_dir)),
-        "report": ("STEP 7: PIPELINE REPORT", lambda: step_report(args.repaired, args.splits_dir, args.llama_dir)),
+        "convert": ("STEP 6: CONVERT TO QWEN FORMAT", lambda: step_convert(args.splits_dir, args.qwen_dir)),
+        "report": ("STEP 7: PIPELINE REPORT", lambda: step_report(args.repaired, args.splits_dir, args.qwen_dir)),
         "upload": ("STEP 8: UPLOAD TO GCS", lambda: step_upload(args.bucket, args.project, args.gcs_prefix)),
     }
 

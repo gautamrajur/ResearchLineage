@@ -15,15 +15,19 @@ Given a seed paper ID, this pipeline crawls the Semantic Scholar citation graph,
 5. [Pipeline Flow Optimization](#pipeline-flow-optimization)
 6. [Anomaly Detection & Alerting](#anomaly-detection--alerting)
 7. [Bias Detection & Mitigation (DAG 2)](#bias-detection--mitigation-dag-2)
-8. [Error Handling](#error-handling)
-9. [Tracking & Logging](#tracking--logging)
-10. [Running Tests](#running-tests)
-11. [Data Versioning (DVC)](#data-versioning-dvc)
-12. [Project Structure](#project-structure)
-13. [Prerequisites](#prerequisites)
-14. [Setup & Reproducibility](#setup--reproducibility)
-15. [Running the Pipeline](#running-the-pipeline)
-16. [Configuration Reference](#configuration-reference)
+8. [CI/CD Pipeline](#cicd-pipeline)
+9. [Model Comparison & Selection](#model-comparison--selection)
+10. [Experiment Tracking (MLflow)](#experiment-tracking-mlflow)
+11. [Model Registry & Rollback](#model-registry--rollback)
+12. [Error Handling](#error-handling)
+13. [Tracking & Logging](#tracking--logging)
+14. [Running Tests](#running-tests)
+15. [Data Versioning (DVC)](#data-versioning-dvc)
+16. [Project Structure](#project-structure)
+17. [Prerequisites](#prerequisites)
+18. [Setup & Reproducibility](#setup--reproducibility)
+19. [Running the Pipeline](#running-the-pipeline)
+20. [Configuration Reference](#configuration-reference)
 
 ---
 
@@ -103,7 +107,7 @@ Result: **98% reduction in API calls** (10,000+ → 100–150 per run).
 
 - **preprocessing:** validates JSONL, drops malformed records
 - **repair_lineage_chains:** reconstructs missing metadata via shared paper ID cross-reference
-- **split + convert:** separates pairs from metadata sidecars; converts to Llama 3.1 8B chat format
+- **split + convert:** separates pairs from metadata sidecars; converts to Qwen 2.5-7B chat format
 
 ---
 
@@ -231,6 +235,244 @@ CS being over-represented at ~50% is considered an **acceptable structural compr
 
 ---
 
+## CI/CD Pipeline
+
+Six GitHub Actions workflows automate testing, training, evaluation, model comparison, deployment, and rollback.
+
+### Workflows
+
+| Workflow | File | Trigger | Purpose |
+|---|---|---|---|
+| **CI** | `ci.yml` | Push to any branch, PR to main | Lint (ruff), typecheck (mypy), unit tests (pytest), DAG validation |
+| **Model Training** | `model-training.yml` | Manual dispatch | Train on Modal (A100), log to MLflow, register model, trigger comparison |
+| **Model Comparison** | `model-comparison.yml` | Called by training, manual dispatch | Evaluate multiple models in parallel, select best, generate visualizations |
+| **Model Evaluation** | `model-evaluation.yml` | Manual dispatch, eval code changes to main | Single-model inference + LLM judge scoring, threshold gates, bias check |
+| **Deploy** | `deploy.yml` | Manual dispatch | Deploy to Modal (vLLM serving), smoke test, update pipeline state on GCS |
+| **Rollback** | `rollback.yml` | Manual dispatch | Roll back to a previous model version, redeploy, notify via email |
+
+### CI Pipeline (`ci.yml`)
+
+Runs on every push and PR:
+
+```
+lint (ruff check) ──┐
+typecheck (mypy)  ──┤
+test (pytest)     ──┼──→ notify (email, on failure only)
+dag-validation    ──┘
+```
+
+- **527 tests** across unit and integration suites
+- DAG validation uses AST parsing to verify syntax without importing Airflow
+- Failure notifications sent via email using `scripts/notify.py`
+
+### Model Training → Comparison → Deploy Flow
+
+```
+model-training.yml                          deploy.yml
+┌──────────────────────────────┐           ┌──────────────────────┐
+│ train (Modal A100)           │           │ deploy (Modal vLLM)  │
+│        ↓                     │           │        ↓             │
+│ log-mlflow    model-compare ─┼─calls──→  │ smoke-test           │
+│        ↓      (parallel eval │ model-    │        ↓             │
+│ register       → select      │ comp.yml  │ update-state (GCS)   │
+│ (GCS registry) → visualize)  │           └──────────────────────┘
+└──────────────────────────────┘
+```
+
+### Evaluation Gates
+
+The evaluation workflow enforces quality thresholds before a model can be promoted:
+
+| Gate | Metric | Threshold |
+|---|---|---|
+| **Classification** | `predecessor_strict` accuracy | ≥ 0.60 |
+| **LLM Judge** | `judge_overall` mean score | ≥ 3.0 / 5.0 |
+| **Bias** | Max disparity across domain/popularity slices | ≤ 0.15 |
+
+Scoring formula: `Score = 0.75 * Predecessor_soft + (Judge_overall / 5) * 0.25`
+
+### PR Validation Mode
+
+On pull requests, the training, evaluation, and deploy workflows run in **validation mode**:
+
+- **Training**: Skips actual Modal training; validates workflow structure and output wiring
+- **Evaluation**: Downloads existing evaluation artifacts from GCS instead of running live inference; threshold and bias gates still execute against real results
+- **Deploy**: Skips Modal deployment; verifies required scripts exist and workflow structure is correct
+
+This allows full pipeline verification without incurring GPU costs or long training runs.
+
+---
+
+## Model Comparison & Selection
+
+Multi-model evaluation pipeline that compares candidate models, selects the best one using a composite scoring formula, and generates visualization reports.
+
+### Models Compared
+
+| Model | Endpoint Type | Client |
+|---|---|---|
+| **Qwen 2.5-7B Fine-tuned** | Modal simple POST | `ModalClient` |
+| **Gemini 2.5 Pro** | Vertex AI managed API | `GeminiClient` |
+
+Additional models can be added by passing different `--model-endpoint` values. The client is auto-selected based on the endpoint format:
+- `gemini-*` → `GeminiClient` (Vertex AI)
+- `http*` ending in `/v1` → `OpenAICompatibleClient` (vLLM / OpenAI-compatible)
+- `http*` → `ModalClient` (Modal web endpoint)
+- Anything else → `VertexAIClient` (Vertex AI endpoint ID)
+
+### Selection Formula
+
+```
+Composite Score = 0.75 * predecessor_soft + (judge_overall / 5) * 0.25
+```
+
+- **predecessor_soft** (75% weight): Whether the model correctly identifies the methodological predecessor of a paper (with soft matching against secondary influences)
+- **judge_overall** (25% weight): Mean LLM judge score (1-5 scale) across 5 reasoning dimensions, normalized to 0-1
+
+### How It Works
+
+```
+┌──→ eval_model_a (inference → judge scoring) ──┐
+│                                                ├──→ model_selection → visualization → upload (GCS)
+└──→ eval_model_b (inference → judge scoring) ──┘
+```
+
+1. **Parallel evaluation** — Each model runs inference on the same test set, then an LLM judge (Gemini Flash) scores outputs
+2. **Selection** — `model_selection.py` computes composite scores and picks the winner
+3. **Visualization** — Generates bar charts, radar plots, per-domain/tier comparisons, and a self-contained HTML report
+4. **Logging** — Per-model metrics, rankings, and chart artifacts logged to MLflow
+5. **Promotion** — Winner is compared against current production model; promoted if it scores higher
+
+### Output Artifacts
+
+| Artifact | Location | Description |
+|---|---|---|
+| `model_selection_report.json` | GCS + MLflow | Winner, scores, rankings, formula |
+| `comparison_bar.png` | GCS + MLflow | Side-by-side bar chart of all metrics |
+| `comparison_radar.png` | GCS + MLflow | Spider chart across key metrics |
+| `comparison_by_domain.png` | GCS + MLflow | Per-domain grouped bar chart |
+| `comparison_by_tier.png` | GCS + MLflow | Per-citation-tier grouped bar chart |
+| `model_comparison.html` | GCS + MLflow | Self-contained HTML report with embedded charts |
+
+All artifacts are stored at `gs://researchlineage-gcs/fine-tuning-artifacts/model_comparison/`.
+
+### Airflow DAG
+
+The `compare_models` DAG (`dags/compare_models.py`) orchestrates parallel evaluation with TaskGroups:
+
+```
+eval_model_a ──┐
+eval_model_b ──┼──→ model_selection ──→ upload_comparison
+eval_model_c ──┘
+```
+
+Each eval group runs: `run_inference` → `evaluate`. Model endpoints and names are configurable via DAG params.
+
+### CLI Usage
+
+```bash
+# Run comparison against existing evaluation reports
+python src/tasks/model_selection_task.py \
+  --report-dirs /tmp/eval_qwen7b /tmp/eval_gemini \
+  --model-names qwen-7b-finetuned gemini-2.5-pro \
+  --output-dir /tmp/model_comparison \
+  --generate-viz \
+  --promote \
+  --upload
+```
+
+### Key Files
+
+| File | Purpose |
+|---|---|
+| `src/evaluation/model_selection.py` | Composite scoring, model ranking, legacy format adapter |
+| `src/evaluation/visualization.py` | Chart generation (matplotlib) + HTML report |
+| `src/evaluation/model_client.py` | Client factory for Gemini, Modal, OpenAI-compatible, VertexAI |
+| `src/tasks/model_selection_task.py` | CLI wrapper: select → visualize → MLflow → promote → upload |
+| `dags/compare_models.py` | Airflow DAG for parallel multi-model evaluation |
+| `.github/workflows/model-comparison.yml` | CI/CD workflow (PR: cached artifacts, main: real inference) |
+
+### Required GitHub Secrets
+
+| Secret | Description |
+|---|---|
+| `GCP_SA_KEY` | GCP service account key JSON |
+| `GCP_PROJECT_ID` | GCP project ID |
+| `GCS_BUCKET_NAME` | GCS bucket (e.g. `researchlineage-gcs`) |
+| `MODAL_TOKEN_ID` | Modal authentication token ID |
+| `MODAL_TOKEN_SECRET` | Modal authentication token secret |
+| `MLFLOW_TRACKING_URI` | MLflow server URI |
+| `EVAL_GCS_TEST_PATH` | GCS path to evaluation test data |
+| `EVAL_MODEL_ENDPOINT` | Model endpoint for evaluation (gemini-* or Modal URL) |
+| `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASSWORD` | SMTP config for email notifications |
+| `ALERT_EMAIL_FROM` / `ALERT_EMAIL_TO` | Email sender/recipient for alerts |
+
+---
+
+## Experiment Tracking (MLflow)
+
+MLflow tracks all training runs, evaluation results, and model versions.
+
+### Setup
+
+MLflow runs as part of the Docker Compose stack:
+
+```yaml
+# docker-compose.yml adds:
+mlflow-db:    # Postgres 15 backend (port 5434)
+mlflow:       # MLflow server (port 5001, artifact root: gs://researchlineage-gcs/mlflow-artifacts)
+```
+
+Access the UI at http://localhost:5001 after `docker compose up`.
+
+### What gets logged
+
+| Event | Logged data |
+|---|---|
+| **Training run** | LoRA params (r=16, alpha=16), base model, epochs, learning rate, max_seq_length, model GCS URI |
+| **Evaluation run** | Classification accuracy, judge scores, semantic similarity, per-slice metrics |
+| **Bias report** | Domain/popularity slice metrics, max disparity, pass/fail status |
+| **Model comparison** | Per-model composite scores, winner selection, rankings, visualization charts (PNG + HTML) |
+
+### Integration points
+
+- `src/mlflow_utils.py` — helper functions (`log_training_run`, `log_evaluation_run`, `log_bias_report`, `log_model_comparison`, `register_model`)
+- `dags/training_dag.py` — `log_to_mlflow` task runs after training
+- `src/evaluation/pipeline.py` — logs metrics in `save_results()` (graceful skip if MLflow unavailable)
+- GitHub Actions — model-training workflow logs to MLflow after each run
+
+---
+
+## Model Registry & Rollback
+
+### GCS-based Model Registry
+
+Models are registered in GCS with versioned metadata:
+
+```
+gs://researchlineage-gcs/model-registry/
+  └── researchlineage-model/
+      ├── v20260320_143000/
+      │   └── metadata.json    # version, GCS URI, stage, timestamp
+      └── v20260315_091500/
+          └── metadata.json
+```
+
+- `src/registry/artifact_registry.py` — `push_model_to_registry()`, `list_model_versions()`, `promote_model()`
+- Models are also registered in MLflow Model Registry for experiment lineage
+
+### Rollback
+
+`rollback.yml` (manual dispatch) rolls back to any previous model version:
+
+1. Updates `pipeline_state.json` on GCS with the target version
+2. Redeploys the target model to Modal (vLLM serving)
+3. Sends email notification with rollback status
+
+Programmatic rollback: `src/registry/rollback.py` — `rollback_model()`, `get_rollback_candidates()`
+
+---
+
 ## Error Handling
 
 Each task raises typed exceptions from `src/utils/errors.py`:
@@ -283,7 +525,7 @@ docker run --rm -v $(pwd)/reports:/app/reports researchlineage-tests
 
 Open `reports/report.html` for the full results dashboard.
 
-Expected result: **171 passed, 1 warning**
+Expected result: **527 passed**
 
 The warning is a harmless Pydantic v2 deprecation in `src/utils/config.py` — does not affect functionality.
 
@@ -329,7 +571,7 @@ Authentication uses the same GCP credentials as the rest of the project (`GCLOUD
 | `data/raw.dvc` | `research_lineage_pipeline` | Raw API responses from Semantic Scholar |
 | `data/processed.dvc` | `research_lineage_pipeline` | Cleaned, validated, and feature-engineered datasets |
 | `data/tasks/pipeline_output/splits.dvc` | `fine_tuning_data_pipeline` | Stratified train / val / test splits (70 / 15 / 15) |
-| `data/tasks/pipeline_output/llama_format.dvc` | `fine_tuning_data_pipeline` | Llama chat-format training files and metadata sidecars |
+| `data/tasks/pipeline_output/qwen_format.dvc` | `fine_tuning_data_pipeline` | Qwen chat-format training files and metadata sidecars |
 
 `.dvc` pointer files are committed to Git; actual data is not.
 
@@ -355,9 +597,9 @@ git commit -m "Update research lineage datasets"
 **Fine-tuning pipeline:**
 
 ```bash
-dvc add data/tasks/pipeline_output/splits data/tasks/pipeline_output/llama_format
+dvc add data/tasks/pipeline_output/splits data/tasks/pipeline_output/qwen_format
 dvc push
-git add data/tasks/pipeline_output/splits.dvc data/tasks/pipeline_output/llama_format.dvc
+git add data/tasks/pipeline_output/splits.dvc data/tasks/pipeline_output/qwen_format.dvc
 git commit -m "Track fine-tuning artifacts from pipeline run"
 ```
 
@@ -375,9 +617,19 @@ dvc pull data/raw.dvc
 
 ```
 .
+├── .github/
+│   └── workflows/
+│       ├── ci.yml                     # Lint, typecheck, test, DAG validation
+│       ├── model-training.yml         # Modal training → MLflow → registry
+│       ├── model-evaluation.yml       # Inference + judge scoring + bias gates
+│       ├── deploy.yml                 # Modal deploy + smoke test + state update
+│       └── rollback.yml               # Rollback to previous model version
+│
 ├── dags/
 │   ├── research_lineage_pipeline.py   # Main 11-task citation pipeline DAG
 │   ├── fine_tuning_data_pipeline.py   # Fine-tuning data generation DAG (8 BashOperator tasks)
+│   ├── training_dag.py               # Model training DAG (Modal + MLflow logging)
+│   ├── evaluate_performance.py        # Evaluation DAG (inference + judge + bias)
 │   └── retry_failed_pdfs_dag.py       # Standalone PDF retry DAG
 │
 ├── src/
@@ -390,6 +642,15 @@ dvc pull data/raw.dvc
 │   ├── database/
 │   │   ├── connection.py              # SQLAlchemy engine + session factory
 │   │   └── repositories.py            # Upsert helpers for each table
+│   ├── evaluation/
+│   │   ├── pipeline.py                # Eval pipeline + slice_and_report() bias analysis
+│   │   ├── config.py                  # Evaluation config
+│   │   ├── types.py                   # Evaluation types
+│   │   ├── model_client.py            # Model inference client
+│   │   └── gcs_utils.py              # GCS helpers for eval artifacts
+│   ├── registry/
+│   │   ├── artifact_registry.py       # GCS-based model registry (push, list, promote)
+│   │   └── rollback.py                # Model rollback + pipeline state management
 │   ├── tasks/                         # One class per pipeline task
 │   │   ├── schema_validation.py       # T0 — DB schema existence check
 │   │   ├── data_acquisition.py        # T1 — async BFS crawl
@@ -398,13 +659,15 @@ dvc pull data/raw.dvc
 │   │   ├── citation_graph_construction.py  # T4 — NetworkX graph
 │   │   ├── feature_engineering.py     # T5 — derived features
 │   │   ├── schema_transformation.py   # T7 — flatten to tables
-│   │   ├── quality_validation.py      # T8 — 300–500 quality checks
+│   │   ├── quality_validation.py      # T8 — 300–500 quality checks + data-level bias
 │   │   ├── anomaly_detection.py       # T9 — statistical anomaly detection + email alert
 │   │   ├── database_write.py          # T10 — PostgreSQL upsert
 │   │   ├── report_generation.py       # T11 — JSON statistics report
+│   │   ├── evaluation_task.py         # Evaluation step runner (inference, evaluate, bias_check)
 │   │   ├── pdf_upload_task.py         # Parallel branch — fetch + GCS upload
 │   │   ├── retry_failed_pdfs_task.py  # DAG 3 — retry failed PDF fetches
 │   │   └── lineage_pipeline.py        # Fine-tuning pipeline step runner (DAG 2)
+│   ├── mlflow_utils.py                # MLflow helpers (log runs, register models)
 │   └── utils/
 │       ├── config.py                  # Pydantic BaseSettings (reads .env)
 │       ├── errors.py                  # ValidationError, DataQualityError, APIError
@@ -412,18 +675,26 @@ dvc pull data/raw.dvc
 │       ├── logging.py                 # Centralised logging — single get_logger entry point
 │       └── email_service.py           # SMTP email alert service
 │
+├── scripts/
+│   ├── modal_train.py                 # Modal training script (Qwen2.5-7B + LoRA on A100)
+│   ├── modal_serve.py                 # Modal serving script (vLLM)
+│   ├── validate_dags.py               # AST-based DAG syntax validator
+│   └── notify.py                      # CLI for Slack/email pipeline notifications
+│
 ├── tests/
 │   ├── conftest.py                    # Shared factory helpers (make_paper, make_ref, make_cit)
 │   ├── unit/
 │   │   ├── conftest.py                # Per-task input fixtures
-│   │   ├── test_data_acquisition.py   # 29 tests (all external deps mocked)
+│   │   ├── test_data_acquisition.py   # 29 tests
 │   │   ├── test_data_validation.py    # 21 tests
 │   │   ├── test_data_cleaning.py      # 18 tests
 │   │   ├── test_citation_graph.py     # 18 tests
 │   │   ├── test_feature_engineering.py  # 16 tests
 │   │   ├── test_schema_transformation.py # 17 tests
 │   │   ├── test_quality_validation.py # 21 tests
-│   │   └── test_anomaly_detection.py  # 14 tests
+│   │   ├── test_anomaly_detection.py  # 14 tests
+│   │   ├── test_mlflow_utils.py       # MLflow integration tests (mocked)
+│   │   └── test_registry.py           # Model registry tests (mocked)
 │   └── integration/
 │       ├── conftest.py                # Full pipeline chain fixture (Tasks 2–9, no live APIs)
 │       └── test_pipeline_e2e.py       # 18 end-to-end tests
@@ -434,15 +705,14 @@ dvc pull data/raw.dvc
 │   └── tasks/
 │       └── pipeline_output/               # Fine-tuning DAG runtime output (git-ignored)
 │           ├── splits.dvc                 # DVC pointer — train/val/test splits
-│           └── llama_format.dvc           # DVC pointer — Llama chat-format training files
+│           └── qwen_format.dvc           # DVC pointer — Qwen chat-format training files
 │
 ├── logs/                              # Execution logs and pipeline reports
-├── scripts/                           # Utility and helper scripts
 ├── docker/
-│   └── airflow.Dockerfile             # Airflow image with project deps
-├── Dockerfile.test                    # Lightweight image for running tests only
-├── docker-compose.yml                 # Postgres + Redis + Cloud SQL Proxy + Airflow
-├── pyproject.toml                     # Dependencies (Poetry) + pytest config
+│   └── airflow.Dockerfile             # Airflow image with project deps + MLflow
+├── Dockerfile.test                    # Test image (ruff + mypy + DAG validation + pytest)
+├── docker-compose.yml                 # Postgres + Redis + Cloud SQL Proxy + Airflow + MLflow
+├── pyproject.toml                     # Dependencies (Poetry) + pytest/ruff/mypy config
 ├── .env.example                       # Template for all required environment variables
 ├── .pre-commit-config.yaml            # PEP 8 enforcement (black, ruff, isort)
 └── .dvc/                              # DVC remote config (GCS)
@@ -521,6 +791,8 @@ This starts:
 - **Cloud SQL Proxy** (`:5432`) — GCP Cloud SQL tunnel (requires `GCLOUD_CONFIG_DIR`)
 - **Airflow webserver** (`:8080`) — UI + REST API
 - **Airflow scheduler** — DAG execution engine
+- **MLflow** (`:5001`) — Experiment tracking UI (Postgres backend, GCS artifact store)
+- **MLflow DB** (`:5434`) — MLflow metadata database
 
 ### 5. Initialise Airflow (first run only)
 
@@ -579,5 +851,7 @@ All settings are loaded from `.env` via `src/utils/config.py` (Pydantic `BaseSet
 | `SMTP_PASSWORD` | `""` | SMTP password / Gmail App Password |
 | `ALERT_EMAIL_FROM` | `""` | Sender address for anomaly alerts |
 | `ALERT_EMAIL_TO` | `""` | Recipient address for anomaly alerts |
+| `MLFLOW_TRACKING_URI` | `http://mlflow:5001` | MLflow server URI (auto-set in Docker Compose) |
+| `MLFLOW_EXPERIMENT_NAME` | `researchlineage` | MLflow experiment name |
 | `ENVIRONMENT` | `development` | Runtime environment tag |
 

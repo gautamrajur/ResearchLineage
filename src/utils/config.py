@@ -71,6 +71,27 @@ class Settings(BaseSettings):
     alert_email_from: str = ""
     alert_email_to: str = ""
 
+    # MLflow
+    mlflow_tracking_uri: str = "http://localhost:5001"
+    mlflow_experiment_name: str = "researchlineage"
+    mlflow_model_name: str = "researchlineage-qwen"
+
+    # Bias detection thresholds (model-prediction level)
+    bias_max_accuracy_disparity: float = 0.15
+    bias_max_judge_disparity: float = 0.8
+    bias_max_semantic_disparity: float = 0.10
+
+    # Evaluation pipeline
+    eval_model_endpoint: str = ""
+    eval_vertex_project: str = ""
+    eval_vertex_location: str = "us-central1"
+    eval_max_workers: int = 4
+    eval_output_dir: str = "/tmp/eval_output"
+    eval_finetuning_data_source: str = "local"
+    eval_local_input: str = ""
+    eval_finetuning_data_gcs_path: str = ""
+    eval_judge_model: str = "gemini-2.5-flash"
+
     # Environment
     environment: str = "development"
 
@@ -179,7 +200,7 @@ SEEDS_FILE: str = str(RUN_DIR / "seeds.json")
 TRAINING_DATA_FILE: str = str(RUN_DIR / "training_data.jsonl")
 REPAIRED_DATA_FILE: str = str(RUN_DIR / "training_data_repaired.jsonl")
 SPLITS_DIR: str = str(RUN_DIR / "splits")
-LLAMA_FORMAT_DIR: str = str(RUN_DIR / "llama_format")
+QWEN_FORMAT_DIR: str = str(RUN_DIR / "qwen_format")
 TIMELINE_OUTPUT_DIR: str = str(RUN_DIR / "timelines")
 STATE_FILE: str = str(RUN_DIR / "run_state.jsonl")
 REPORT_JSON: str = str(RUN_DIR / "pipeline_report.json")
@@ -284,6 +305,38 @@ Respond ONLY with valid JSON in this exact structure:
   Signal: Under 200 citations, rarely referenced outside its specific niche.
   Examples: Minor architecture tweaks, hyperparameter studies, small dataset contributions.
 """
+
+# ========================================
+# MLflow
+# ========================================
+
+MLFLOW_TRACKING_URI: str = settings.mlflow_tracking_uri
+MLFLOW_EXPERIMENT_NAME: str = settings.mlflow_experiment_name
+MLFLOW_MODEL_NAME: str = settings.mlflow_model_name
+
+# ========================================
+# Bias Detection Thresholds
+# ========================================
+
+BIAS_MAX_ACCURACY_DISPARITY: float = settings.bias_max_accuracy_disparity
+BIAS_MAX_JUDGE_DISPARITY: float = settings.bias_max_judge_disparity
+BIAS_MAX_SEMANTIC_DISPARITY: float = settings.bias_max_semantic_disparity
+
+
+# ========================================
+# Evaluation Pipeline
+# ========================================
+
+EVAL_MODEL_ENDPOINT: str = settings.eval_model_endpoint
+EVAL_VERTEX_PROJECT: str = settings.eval_vertex_project
+EVAL_VERTEX_LOCATION: str = settings.eval_vertex_location
+EVAL_MAX_WORKERS: int = settings.eval_max_workers
+EVAL_OUTPUT_DIR: str = settings.eval_output_dir
+EVAL_FINETUNING_DATA_SOURCE: str = settings.eval_finetuning_data_source
+EVAL_LOCAL_INPUT: str = settings.eval_local_input
+EVAL_FINETUNING_DATA_GCS_PATH: str = settings.eval_finetuning_data_gcs_path
+EVAL_JUDGE_MODEL: str = settings.eval_judge_model
+
 
 FOUNDATIONAL_PROMPT = """You are an expert research analyst. Analyze this foundational research paper.
 

@@ -72,7 +72,7 @@ cloud-sql-proxy.exe
 src/tasks/pipeline_output/*
 !src/tasks/pipeline_output/.gitignore
 !src/tasks/pipeline_output/splits.dvc
-!src/tasks/pipeline_output/llama_format.dvc
+!src/tasks/pipeline_output/qwen_format.dvc
 
 # Test reports (generated artifacts)
 reports/
@@ -86,3 +86,6 @@ htmlcov/
 outputs/
 cloud-sql-proxy
 cloud-sql-proxy.exe
+
+#Qwen
+Qwen_70B.py

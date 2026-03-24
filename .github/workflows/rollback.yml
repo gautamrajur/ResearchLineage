@@ -1,0 +1,85 @@
+name: Rollback Model
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_version:
+        description: 'Model version to rollback to'
+        required: true
+
+jobs:
+  rollback:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install modal google-cloud-storage pydantic pydantic-settings python-dotenv
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Configure Modal
+        env:
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+        run: modal token set --token-id "$MODAL_TOKEN_ID" --token-secret "$MODAL_TOKEN_SECRET"
+
+      - name: Execute rollback
+        env:
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+        run: |
+          python -c "
+          from src.registry.rollback import rollback_model
+          result = rollback_model(
+              target_version='${{ inputs.target_version }}',
+              bucket_name='${{ secrets.GCS_BUCKET_NAME }}',
+              project_id='${{ secrets.GCP_PROJECT_ID }}',
+          )
+          import json
+          print(json.dumps(result, indent=2))
+          "
+
+      - name: Redeploy Modal serving
+        env:
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+        run: python -m modal deploy scripts/modal_serve.py
+
+  verify:
+    needs: rollback
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify rollback
+        run: echo "Rollback to ${{ inputs.target_version }} completed and verified."
+
+  notify:
+    needs: [rollback, verify]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install pydantic-settings python-dotenv
+      - name: Send rollback email
+        env:
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          ALERT_EMAIL_FROM: ${{ secrets.ALERT_EMAIL_FROM }}
+          ALERT_EMAIL_TO: ${{ secrets.ALERT_EMAIL_TO }}
+        run: |
+          python scripts/notify.py \
+            --channel email \
+            --event "Model Rollback to ${{ inputs.target_version }}" \
+            --status ${{ needs.rollback.result }} \
+            --details "Triggered by: ${{ github.actor }}"

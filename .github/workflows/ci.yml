@@ -1,0 +1,80 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install ruff
+      - run: ruff check .
+      # TODO: enable after codebase-wide format pass
+      # - run: ruff format --check .
+
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install mypy types-redis types-requests
+      - run: mypy src/
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: |
+          pip install pytest pytest-cov pytest-asyncio pytest-mock pytest-html
+          pip install networkx pandas pydantic pydantic-settings python-dotenv httpx
+          pip install mlflow google-cloud-storage
+      - run: pytest tests/unit/ -v --tb=short -m "unit or not integration"
+
+  dag-validation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: |
+          pip install apache-airflow==2.8.1 pydantic-settings python-dotenv
+          pip install google-cloud-storage
+      - run: python scripts/validate_dags.py
+
+  notify:
+    needs: [lint, typecheck, test, dag-validation]
+    if: failure()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install pydantic-settings python-dotenv
+      - name: Send failure email
+        env:
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          ALERT_EMAIL_FROM: ${{ secrets.ALERT_EMAIL_FROM }}
+          ALERT_EMAIL_TO: ${{ secrets.ALERT_EMAIL_TO }}
+        run: |
+          python scripts/notify.py \
+            --channel email \
+            --event "CI Failed on ${{ github.ref_name }}" \
+            --status failure \
+            --details "Commit: ${{ github.sha }} | Author: ${{ github.actor }} | Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"

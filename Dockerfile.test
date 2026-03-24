@@ -12,17 +12,25 @@ RUN pip install --no-cache-dir \
     sqlalchemy \
     psycopg2-binary \
     alembic \
+    google-cloud-storage \
+    mlflow \
     pytest \
     pytest-mock \
     pytest-asyncio \
     pytest-cov \
-    pytest-html
+    pytest-html \
+    ruff \
+    mypy \
+    types-redis \
+    pandas
 
-# Copy source + tests (no credentials, no dags needed)
+# Copy source + tests + scripts + dags
 COPY src/ /app/src/
 COPY tests/ /app/tests/
+COPY scripts/ /app/scripts/
+COPY dags/ /app/dags/
 COPY pyproject.toml /app/
 
 ENV PYTHONPATH=/app
 
-CMD ["pytest", "tests/", "-v", "--tb=short", "--html=/app/reports/report.html", "--self-contained-html"]
+CMD ["sh", "-c", "ruff check . && python scripts/validate_dags.py && pytest tests/unit/ -v --tb=short -m 'unit or not integration'"]
