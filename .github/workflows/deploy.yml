@@ -123,3 +123,37 @@ jobs:
           print('Pipeline state updated.')
           "
           fi
+
+  notify:
+    needs: [deploy, smoke-test, update-state]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install pydantic-settings python-dotenv
+      - name: Send deploy notification
+        env:
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          ALERT_EMAIL_FROM: ${{ secrets.ALERT_EMAIL_FROM }}
+          ALERT_EMAIL_TO: ${{ secrets.ALERT_EMAIL_TO }}
+        run: |
+          if [ "${{ needs.deploy.result }}" = "failure" ] || [ "${{ needs.smoke-test.result }}" = "failure" ]; then
+            STATUS="failure"
+            EVENT="Deploy Failed"
+            DETAILS="Version: ${{ inputs.model_version }} | Deploy: ${{ needs.deploy.result }} | Smoke test: ${{ needs.smoke-test.result }} | State update: ${{ needs.update-state.result }}"
+          else
+            STATUS="success"
+            EVENT="Deploy Complete"
+            DETAILS="Version: ${{ inputs.model_version }} deployed successfully. Smoke test passed."
+          fi
+          python scripts/notify.py \
+            --channel email \
+            --event "$EVENT" \
+            --status "$STATUS" \
+            --details "$DETAILS | Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"

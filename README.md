@@ -19,15 +19,16 @@ Given a seed paper ID, this pipeline crawls the Semantic Scholar citation graph,
 9. [Model Comparison & Selection](#model-comparison--selection)
 10. [Experiment Tracking (MLflow)](#experiment-tracking-mlflow)
 11. [Model Registry & Rollback](#model-registry--rollback)
-12. [Error Handling](#error-handling)
-13. [Tracking & Logging](#tracking--logging)
-14. [Running Tests](#running-tests)
-15. [Data Versioning (DVC)](#data-versioning-dvc)
-16. [Project Structure](#project-structure)
-17. [Prerequisites](#prerequisites)
-18. [Setup & Reproducibility](#setup--reproducibility)
-19. [Running the Pipeline](#running-the-pipeline)
-20. [Configuration Reference](#configuration-reference)
+12. [Notifications & Alerts](#notifications--alerts)
+13. [Error Handling](#error-handling)
+14. [Tracking & Logging](#tracking--logging)
+15. [Running Tests](#running-tests)
+16. [Data Versioning (DVC)](#data-versioning-dvc)
+17. [Project Structure](#project-structure)
+18. [Prerequisites](#prerequisites)
+19. [Setup & Reproducibility](#setup--reproducibility)
+20. [Running the Pipeline](#running-the-pipeline)
+21. [Configuration Reference](#configuration-reference)
 
 ---
 
@@ -473,6 +474,84 @@ Programmatic rollback: `src/registry/rollback.py` — `rollback_model()`, `get_r
 
 ---
 
+## Notifications & Alerts
+
+Email notifications are sent via SMTP for pipeline failures, training completion, model validation results, and bias check outcomes. All notifications use `scripts/notify.py` — a CLI wrapper around `src/utils/email_service.py`.
+
+### Coverage
+
+| Pipeline | Event | When |
+|---|---|---|
+| **CI** (`ci.yml`) | Lint / typecheck / test / DAG validation failure | Any job fails |
+| **Model Training** (`model-training.yml`) | Training complete or failed | Always (after train + log + register) |
+| **Model Evaluation** (`model-evaluation.yml`) | Threshold gate or bias check failure | Step fails |
+| **Model Evaluation** (`model-evaluation.yml`) | All evaluation gates passed | All steps succeed |
+| **Model Comparison** (`model-comparison.yml`) | Selection results (winner + promoted status) | Always (after eval + selection) |
+| **Deploy** (`deploy.yml`) | Deploy success or failure (includes smoke test) | Always (after deploy + smoke + state) |
+| **Rollback** (`rollback.yml`) | Rollback result | Always |
+| **Airflow: compare_models** | Comparison complete or failed | `trigger_rule: all_success` / `one_failed` |
+| **Airflow: evaluate_performance** | Evaluation complete or failed | `trigger_rule: all_success` / `one_failed` |
+| **Airflow: research_lineage_pipeline** | Anomaly detection alerts (T9) | Anomalies detected |
+
+### How It Works
+
+All CI/CD notifications call the same script:
+
+```bash
+python scripts/notify.py \
+  --channel email \
+  --event "Training Complete" \
+  --status success \
+  --details "Model version: v20260324 | All steps passed"
+```
+
+The script reads SMTP credentials from environment variables and sends a formatted email via `EmailService`. If SMTP is not configured, the notification is silently skipped — the pipeline continues normally.
+
+Airflow DAGs use `BashOperator` tasks with `trigger_rule`:
+- `notify_success` — runs only when all upstream tasks succeed (`all_success`)
+- `notify_failure` — runs when any upstream task fails (`one_failed`)
+
+### Required Secrets (GitHub Actions)
+
+| Secret | Description |
+|---|---|
+| `SMTP_HOST` | SMTP server (default: `smtp.gmail.com`) |
+| `SMTP_PORT` | SMTP port (default: `587`) |
+| `SMTP_USER` | SMTP login (e.g. Gmail address) |
+| `SMTP_PASSWORD` | SMTP password (Gmail App Password) |
+| `ALERT_EMAIL_FROM` | Sender email address |
+| `ALERT_EMAIL_TO` | Recipient email address |
+
+For Airflow, set these as environment variables in `.env` or `docker-compose.yml`.
+
+### Gmail Setup
+
+1. Enable **2-Step Verification** on your Google account
+2. Go to `myaccount.google.com/apppasswords`
+3. Generate a 16-character App Password
+4. Use it as `SMTP_PASSWORD`
+
+### Testing Notifications via PR
+
+Push to the `feature/cicd-pipeline` branch (or any branch with an open PR to `main`). The workflows run in **validation mode** — no GPU costs, no live inference — but the notification steps still execute. If SMTP secrets are configured in the repo, you will receive emails for:
+
+- CI pass/fail
+- Model comparison selection results
+- Evaluation threshold/bias gate results
+- Training workflow completion
+
+If SMTP secrets are **not** configured, the notification steps log "Email not configured, skipping" and the workflow still passes.
+
+### Key Files
+
+| File | Purpose |
+|---|---|
+| `scripts/notify.py` | CLI entry point — supports `--channel email/slack/both` |
+| `src/utils/email_service.py` | `EmailService` class with SMTP send logic |
+| `src/utils/email_templates.py` | HTML email templates with alert levels (INFO, WARNING, ERROR, SUCCESS) |
+
+---
+
 ## Error Handling
 
 Each task raises typed exceptions from `src/utils/errors.py`:
@@ -620,16 +699,18 @@ dvc pull data/raw.dvc
 ├── .github/
 │   └── workflows/
 │       ├── ci.yml                     # Lint, typecheck, test, DAG validation
-│       ├── model-training.yml         # Modal training → MLflow → registry
-│       ├── model-evaluation.yml       # Inference + judge scoring + bias gates
-│       ├── deploy.yml                 # Modal deploy + smoke test + state update
-│       └── rollback.yml               # Rollback to previous model version
+│       ├── model-training.yml         # Modal training → MLflow → registry → notify
+│       ├── model-comparison.yml       # Multi-model eval → selection → notify
+│       ├── model-evaluation.yml       # Inference + judge scoring + bias gates → notify
+│       ├── deploy.yml                 # Modal deploy + smoke test + state update → notify
+│       └── rollback.yml               # Rollback to previous model version → notify
 │
 ├── dags/
 │   ├── research_lineage_pipeline.py   # Main 11-task citation pipeline DAG
 │   ├── fine_tuning_data_pipeline.py   # Fine-tuning data generation DAG (8 BashOperator tasks)
 │   ├── training_dag.py               # Model training DAG (Modal + MLflow logging)
-│   ├── evaluate_performance.py        # Evaluation DAG (inference + judge + bias)
+│   ├── evaluate_performance.py        # Evaluation DAG (inference + judge + bias + notify)
+│   ├── compare_models.py             # Multi-model comparison DAG (parallel eval + select + notify)
 │   └── retry_failed_pdfs_dag.py       # Standalone PDF retry DAG
 │
 ├── src/
@@ -647,6 +728,8 @@ dvc pull data/raw.dvc
 │   │   ├── config.py                  # Evaluation config
 │   │   ├── types.py                   # Evaluation types
 │   │   ├── model_client.py            # Model inference client
+│   │   ├── model_selection.py        # Composite scoring + model ranking
+│   │   ├── visualization.py          # Comparison charts (matplotlib) + HTML report
 │   │   └── gcs_utils.py              # GCS helpers for eval artifacts
 │   ├── registry/
 │   │   ├── artifact_registry.py       # GCS-based model registry (push, list, promote)
@@ -664,6 +747,7 @@ dvc pull data/raw.dvc
 │   │   ├── database_write.py          # T10 — PostgreSQL upsert
 │   │   ├── report_generation.py       # T11 — JSON statistics report
 │   │   ├── evaluation_task.py         # Evaluation step runner (inference, evaluate, bias_check)
+│   │   ├── model_selection_task.py   # Model selection CLI (select → viz → MLflow → promote)
 │   │   ├── pdf_upload_task.py         # Parallel branch — fetch + GCS upload
 │   │   ├── retry_failed_pdfs_task.py  # DAG 3 — retry failed PDF fetches
 │   │   └── lineage_pipeline.py        # Fine-tuning pipeline step runner (DAG 2)
@@ -673,7 +757,8 @@ dvc pull data/raw.dvc
 │       ├── errors.py                  # ValidationError, DataQualityError, APIError
 │       ├── id_mapper.py               # S2 ↔ ArXiv ID mapping
 │       ├── logging.py                 # Centralised logging — single get_logger entry point
-│       └── email_service.py           # SMTP email alert service
+│       ├── email_service.py           # SMTP email alert service
+│       └── email_templates.py        # HTML email templates with alert levels
 │
 ├── scripts/
 │   ├── modal_train.py                 # Modal training script (Qwen2.5-7B + LoRA on A100)

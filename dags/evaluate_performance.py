@@ -151,5 +151,37 @@ with DAG(
         execution_timeout=timedelta(minutes=5),
     )
 
+    # ── Email notifications ──────────────────────────────────────────────────
+    _NOTIFY_BASE = f"cd {PROJECT_ROOT} && PYTHONPATH={PROJECT_ROOT} python scripts/notify.py"
+
+    notify_success = BashOperator(
+        task_id="notify_success",
+        bash_command=(
+            _NOTIFY_BASE +
+            " --channel email"
+            " --event 'Evaluation Complete (Airflow)'"
+            " --status success"
+            " --details 'Inference, evaluation, upload, and bias check all passed.'"
+            " "
+        ),
+        trigger_rule="all_success",
+        execution_timeout=timedelta(minutes=5),
+    )
+
+    notify_failure = BashOperator(
+        task_id="notify_failure",
+        bash_command=(
+            _NOTIFY_BASE +
+            " --channel email"
+            " --event 'Evaluation Failed (Airflow)'"
+            " --status failure"
+            " --details 'One or more evaluation steps failed. Check bias check and threshold logs.'"
+            " "
+        ),
+        trigger_rule="one_failed",
+        execution_timeout=timedelta(minutes=5),
+    )
+
     # ── Flow ──────────────────────────────────────────────────────────────────
     run_inference >> evaluate >> [upload_to_gcs, bias_check]
+    [upload_to_gcs, bias_check] >> [notify_success, notify_failure]

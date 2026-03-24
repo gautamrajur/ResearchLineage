@@ -197,6 +197,39 @@ with DAG(
         execution_timeout=timedelta(minutes=15),
     )
 
+    # ── Email notification on completion ──────────────────────────────────────
+
+    _NOTIFY_BASE = f"cd {PROJECT_ROOT} && PYTHONPATH={PROJECT_ROOT} python scripts/notify.py"
+
+    notify_success = BashOperator(
+        task_id="notify_success",
+        bash_command=(
+            _NOTIFY_BASE +
+            " --channel email"
+            " --event 'Model Comparison Complete (Airflow)'"
+            " --status success"
+            " --details 'All models evaluated and comparison uploaded to GCS.'"
+            " "
+        ),
+        trigger_rule="all_success",
+        execution_timeout=timedelta(minutes=5),
+    )
+
+    notify_failure = BashOperator(
+        task_id="notify_failure",
+        bash_command=(
+            _NOTIFY_BASE +
+            " --channel email"
+            " --event 'Model Comparison Failed (Airflow)'"
+            " --status failure"
+            " --details 'One or more evaluation or selection steps failed. Check Airflow logs.'"
+            " "
+        ),
+        trigger_rule="one_failed",
+        execution_timeout=timedelta(minutes=5),
+    )
+
     # ── Flow ─────────────────────────────────────────────────────────────────
 
     [eval_model_a, eval_model_b, eval_model_c] >> model_selection >> upload_comparison
+    upload_comparison >> [notify_success, notify_failure]
