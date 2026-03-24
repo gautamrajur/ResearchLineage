@@ -116,3 +116,35 @@ jobs:
             --gcs-input "${{ secrets.EVAL_GCS_TEST_PATH }}" \
             --bucket "${{ secrets.GCS_BUCKET_NAME }}" \
             --project "${{ secrets.GCP_PROJECT_ID }}"
+
+      - name: Send threshold/bias failure notification
+        if: failure()
+        env:
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          ALERT_EMAIL_FROM: ${{ secrets.ALERT_EMAIL_FROM }}
+          ALERT_EMAIL_TO: ${{ secrets.ALERT_EMAIL_TO }}
+        run: |
+          python scripts/notify.py \
+            --channel email \
+            --event "Model Evaluation Failed (threshold or bias check)" \
+            --status failure \
+            --details "The model failed validation gates. Check thresholds and bias report. | Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+      - name: Send evaluation success notification
+        if: success()
+        env:
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          ALERT_EMAIL_FROM: ${{ secrets.ALERT_EMAIL_FROM }}
+          ALERT_EMAIL_TO: ${{ secrets.ALERT_EMAIL_TO }}
+        run: |
+          python scripts/notify.py \
+            --channel email \
+            --event "Model Evaluation Passed" \
+            --status success \
+            --details "All thresholds and bias checks passed. | Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
