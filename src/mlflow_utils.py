@@ -116,6 +116,58 @@ def register_model(run_id: str, model_uri: str, model_name: str | None = None) -
     return result
 
 
+def log_model_comparison(
+    selection_result: dict[str, Any],
+    artifact_dir: str | None = None,
+) -> str:
+    """Log model comparison run with per-model scores and visualization artifacts.
+
+    Returns the MLflow run ID.
+    """
+    _ensure_tracking_uri()
+    experiment_id = get_or_create_experiment()
+
+    winner = selection_result["winner"]
+    scores = selection_result["scores"]
+
+    with mlflow.start_run(experiment_id=experiment_id) as run:
+        mlflow.set_tag("pipeline_stage", "model_selection")
+        mlflow.set_tag("selected_model", winner)
+        mlflow.set_tag("selection_formula", selection_result.get("selection_formula", ""))
+        mlflow.set_tag("num_models_compared", str(len(scores)))
+
+        # Log per-model metrics
+        for model_name_key, model_scores in scores.items():
+            safe_name = model_name_key.replace("-", "_").replace(".", "_")
+            for metric_key, value in model_scores.items():
+                if isinstance(value, (int, float)) and value is not None:
+                    mlflow.log_metric(f"{safe_name}_{metric_key}", value)
+
+        # Log winner's composite as top-level metric
+        mlflow.log_metric("winner_composite", scores[winner]["composite"])
+
+        # Log rankings
+        for rank, (name, score) in enumerate(selection_result.get("rankings", []), 1):
+            mlflow.set_tag(f"rank_{rank}", f"{name} ({score:.4f})")
+
+        # Log visualization artifacts
+        if artifact_dir:
+            import os
+            artifact_path = artifact_dir
+            for fname in os.listdir(artifact_path):
+                fpath = os.path.join(artifact_path, fname)
+                if os.path.isfile(fpath) and (
+                    fname.endswith(".png") or fname.endswith(".html") or fname.endswith(".json")
+                ):
+                    mlflow.log_artifact(fpath, artifact_path="model_comparison")
+
+        logger.info(
+            "Logged model comparison to MLflow",
+            extra={"run_id": run.info.run_id, "winner": winner},
+        )
+        return run.info.run_id
+
+
 def get_latest_production_model(model_name: str | None = None) -> Any | None:
     """Get the latest model version with 'Production' alias."""
     _ensure_tracking_uri()

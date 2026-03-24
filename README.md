@@ -16,17 +16,18 @@ Given a seed paper ID, this pipeline crawls the Semantic Scholar citation graph,
 6. [Anomaly Detection & Alerting](#anomaly-detection--alerting)
 7. [Bias Detection & Mitigation (DAG 2)](#bias-detection--mitigation-dag-2)
 8. [CI/CD Pipeline](#cicd-pipeline)
-9. [Experiment Tracking (MLflow)](#experiment-tracking-mlflow)
-10. [Model Registry & Rollback](#model-registry--rollback)
-11. [Error Handling](#error-handling)
-12. [Tracking & Logging](#tracking--logging)
-13. [Running Tests](#running-tests)
-14. [Data Versioning (DVC)](#data-versioning-dvc)
-15. [Project Structure](#project-structure)
-16. [Prerequisites](#prerequisites)
-17. [Setup & Reproducibility](#setup--reproducibility)
-18. [Running the Pipeline](#running-the-pipeline)
-19. [Configuration Reference](#configuration-reference)
+9. [Model Comparison & Selection](#model-comparison--selection)
+10. [Experiment Tracking (MLflow)](#experiment-tracking-mlflow)
+11. [Model Registry & Rollback](#model-registry--rollback)
+12. [Error Handling](#error-handling)
+13. [Tracking & Logging](#tracking--logging)
+14. [Running Tests](#running-tests)
+15. [Data Versioning (DVC)](#data-versioning-dvc)
+16. [Project Structure](#project-structure)
+17. [Prerequisites](#prerequisites)
+18. [Setup & Reproducibility](#setup--reproducibility)
+19. [Running the Pipeline](#running-the-pipeline)
+20. [Configuration Reference](#configuration-reference)
 
 ---
 
@@ -236,15 +237,16 @@ CS being over-represented at ~50% is considered an **acceptable structural compr
 
 ## CI/CD Pipeline
 
-Five GitHub Actions workflows automate testing, training, evaluation, deployment, and rollback.
+Six GitHub Actions workflows automate testing, training, evaluation, model comparison, deployment, and rollback.
 
 ### Workflows
 
 | Workflow | File | Trigger | Purpose |
 |---|---|---|---|
 | **CI** | `ci.yml` | Push to any branch, PR to main | Lint (ruff), typecheck (mypy), unit tests (pytest), DAG validation |
-| **Model Training** | `model-training.yml` | Manual dispatch | Train on Modal (A100), log to MLflow, register model, trigger evaluation |
-| **Model Evaluation** | `model-evaluation.yml` | Manual dispatch, eval code changes to main | Run inference + LLM judge scoring, threshold gates, bias check |
+| **Model Training** | `model-training.yml` | Manual dispatch | Train on Modal (A100), log to MLflow, register model, trigger comparison |
+| **Model Comparison** | `model-comparison.yml` | Called by training, manual dispatch | Evaluate multiple models in parallel, select best, generate visualizations |
+| **Model Evaluation** | `model-evaluation.yml` | Manual dispatch, eval code changes to main | Single-model inference + LLM judge scoring, threshold gates, bias check |
 | **Deploy** | `deploy.yml` | Manual dispatch | Deploy to Modal (vLLM serving), smoke test, update pipeline state on GCS |
 | **Rollback** | `rollback.yml` | Manual dispatch | Roll back to a previous model version, redeploy, notify via email |
 
@@ -263,17 +265,18 @@ dag-validation    ──┘
 - DAG validation uses AST parsing to verify syntax without importing Airflow
 - Failure notifications sent via email using `scripts/notify.py`
 
-### Model Training → Evaluation → Deploy Flow
+### Model Training → Comparison → Deploy Flow
 
 ```
-model-training.yml                      deploy.yml
-┌─────────────────────────┐            ┌──────────────────────┐
-│ train (Modal A100)      │            │ deploy (Modal vLLM)  │
-│        ↓                │            │        ↓             │
-│ log-mlflow    evaluate ─┼──calls──→  │ smoke-test           │
-│        ↓                │  model-    │        ↓             │
-│ register (GCS registry) │  eval.yml  │ update-state (GCS)   │
-└─────────────────────────┘            └──────────────────────┘
+model-training.yml                          deploy.yml
+┌──────────────────────────────┐           ┌──────────────────────┐
+│ train (Modal A100)           │           │ deploy (Modal vLLM)  │
+│        ↓                     │           │        ↓             │
+│ log-mlflow    model-compare ─┼─calls──→  │ smoke-test           │
+│        ↓      (parallel eval │ model-    │        ↓             │
+│ register       → select      │ comp.yml  │ update-state (GCS)   │
+│ (GCS registry) → visualize)  │           └──────────────────────┘
+└──────────────────────────────┘
 ```
 
 ### Evaluation Gates
@@ -297,6 +300,97 @@ On pull requests, the training, evaluation, and deploy workflows run in **valida
 - **Deploy**: Skips Modal deployment; verifies required scripts exist and workflow structure is correct
 
 This allows full pipeline verification without incurring GPU costs or long training runs.
+
+---
+
+## Model Comparison & Selection
+
+Multi-model evaluation pipeline that compares candidate models, selects the best one using a composite scoring formula, and generates visualization reports.
+
+### Models Compared
+
+| Model | Endpoint Type | Client |
+|---|---|---|
+| **Qwen 2.5-7B Fine-tuned** | Modal simple POST | `ModalClient` |
+| **Gemini 2.5 Pro** | Vertex AI managed API | `GeminiClient` |
+
+Additional models can be added by passing different `--model-endpoint` values. The client is auto-selected based on the endpoint format:
+- `gemini-*` → `GeminiClient` (Vertex AI)
+- `http*` ending in `/v1` → `OpenAICompatibleClient` (vLLM / OpenAI-compatible)
+- `http*` → `ModalClient` (Modal web endpoint)
+- Anything else → `VertexAIClient` (Vertex AI endpoint ID)
+
+### Selection Formula
+
+```
+Composite Score = 0.75 * predecessor_soft + (judge_overall / 5) * 0.25
+```
+
+- **predecessor_soft** (75% weight): Whether the model correctly identifies the methodological predecessor of a paper (with soft matching against secondary influences)
+- **judge_overall** (25% weight): Mean LLM judge score (1-5 scale) across 5 reasoning dimensions, normalized to 0-1
+
+### How It Works
+
+```
+┌──→ eval_model_a (inference → judge scoring) ──┐
+│                                                ├──→ model_selection → visualization → upload (GCS)
+└──→ eval_model_b (inference → judge scoring) ──┘
+```
+
+1. **Parallel evaluation** — Each model runs inference on the same test set, then an LLM judge (Gemini Flash) scores outputs
+2. **Selection** — `model_selection.py` computes composite scores and picks the winner
+3. **Visualization** — Generates bar charts, radar plots, per-domain/tier comparisons, and a self-contained HTML report
+4. **Logging** — Per-model metrics, rankings, and chart artifacts logged to MLflow
+5. **Promotion** — Winner is compared against current production model; promoted if it scores higher
+
+### Output Artifacts
+
+| Artifact | Location | Description |
+|---|---|---|
+| `model_selection_report.json` | GCS + MLflow | Winner, scores, rankings, formula |
+| `comparison_bar.png` | GCS + MLflow | Side-by-side bar chart of all metrics |
+| `comparison_radar.png` | GCS + MLflow | Spider chart across key metrics |
+| `comparison_by_domain.png` | GCS + MLflow | Per-domain grouped bar chart |
+| `comparison_by_tier.png` | GCS + MLflow | Per-citation-tier grouped bar chart |
+| `model_comparison.html` | GCS + MLflow | Self-contained HTML report with embedded charts |
+
+All artifacts are stored at `gs://researchlineage-gcs/fine-tuning-artifacts/model_comparison/`.
+
+### Airflow DAG
+
+The `compare_models` DAG (`dags/compare_models.py`) orchestrates parallel evaluation with TaskGroups:
+
+```
+eval_model_a ──┐
+eval_model_b ──┼──→ model_selection ──→ upload_comparison
+eval_model_c ──┘
+```
+
+Each eval group runs: `run_inference` → `evaluate`. Model endpoints and names are configurable via DAG params.
+
+### CLI Usage
+
+```bash
+# Run comparison against existing evaluation reports
+python src/tasks/model_selection_task.py \
+  --report-dirs /tmp/eval_qwen7b /tmp/eval_gemini \
+  --model-names qwen-7b-finetuned gemini-2.5-pro \
+  --output-dir /tmp/model_comparison \
+  --generate-viz \
+  --promote \
+  --upload
+```
+
+### Key Files
+
+| File | Purpose |
+|---|---|
+| `src/evaluation/model_selection.py` | Composite scoring, model ranking, legacy format adapter |
+| `src/evaluation/visualization.py` | Chart generation (matplotlib) + HTML report |
+| `src/evaluation/model_client.py` | Client factory for Gemini, Modal, OpenAI-compatible, VertexAI |
+| `src/tasks/model_selection_task.py` | CLI wrapper: select → visualize → MLflow → promote → upload |
+| `dags/compare_models.py` | Airflow DAG for parallel multi-model evaluation |
+| `.github/workflows/model-comparison.yml` | CI/CD workflow (PR: cached artifacts, main: real inference) |
 
 ### Required GitHub Secrets
 
@@ -338,10 +432,11 @@ Access the UI at http://localhost:5001 after `docker compose up`.
 | **Training run** | LoRA params (r=16, alpha=16), base model, epochs, learning rate, max_seq_length, model GCS URI |
 | **Evaluation run** | Classification accuracy, judge scores, semantic similarity, per-slice metrics |
 | **Bias report** | Domain/popularity slice metrics, max disparity, pass/fail status |
+| **Model comparison** | Per-model composite scores, winner selection, rankings, visualization charts (PNG + HTML) |
 
 ### Integration points
 
-- `src/mlflow_utils.py` — helper functions (`log_training_run`, `log_evaluation_run`, `log_bias_report`, `register_model`)
+- `src/mlflow_utils.py` — helper functions (`log_training_run`, `log_evaluation_run`, `log_bias_report`, `log_model_comparison`, `register_model`)
 - `dags/training_dag.py` — `log_to_mlflow` task runs after training
 - `src/evaluation/pipeline.py` — logs metrics in `save_results()` (graceful skip if MLflow unavailable)
 - GitHub Actions — model-training workflow logs to MLflow after each run

@@ -111,7 +111,7 @@ jobs:
   evaluate:
     needs: train
     if: ${{ github.event_name == 'pull_request' || !inputs.skip_eval }}
-    uses: ./.github/workflows/model-evaluation.yml
+    uses: ./.github/workflows/model-comparison.yml
     secrets: inherit
 
   register:

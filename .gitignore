@@ -86,3 +86,6 @@ htmlcov/
 outputs/
 cloud-sql-proxy
 cloud-sql-proxy.exe
+
+#Qwen
+Qwen_70B.py

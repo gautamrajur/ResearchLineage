@@ -244,6 +244,108 @@ class GeminiClient(ModelClient):
             return False
 
 
+# ======================================================= OpenAI-compatible client
+
+
+class OpenAICompatibleClient(ModelClient):
+    """
+    Client for vLLM endpoints that expose an OpenAI-compatible chat API (/v1).
+    Used for the Qwen2.5-72B-Instruct-AWQ deployed on Modal via vLLM.
+    """
+
+    _SYSTEM_PROMPT = (
+        "You are an expert scientific research analyst. "
+        "Your task is to analyze academic papers and their citation relationships.\n\n"
+        "## OUTPUT RULES\n"
+        "- Respond ONLY with a single valid JSON object. No markdown, no explanation, no text outside the JSON.\n"
+        "- Do NOT wrap your response in ```json``` fences.\n"
+        "- Every field in the schema is REQUIRED. Never omit a field.\n"
+        "- Use null (not the string 'null') for missing values where the type is nullable.\n"
+        "- Use empty string \"\" for missing string fields, [] for missing list fields.\n\n"
+        "## FIELD RULES\n"
+        "- selected_predecessor_id: must be one of the candidate paper IDs provided, or null if none match.\n"
+        "- selection_reasoning: must explain WHY this predecessor was chosen based on methodology, not just topic.\n"
+        "- secondary_influences: list of objects with paper_id and contribution fields. Use [] if none.\n"
+        "- breakthrough_level: must be exactly one of: 'minor', 'moderate', 'major'.\n"
+        "- All comparison fields must be non-empty strings.\n\n"
+        "## GUARDRAILS\n"
+        "- Do NOT hallucinate paper IDs. Only use IDs explicitly provided in the input.\n"
+        "- Do NOT copy text verbatim from the input. Summarize and analyse in your own words.\n"
+        "- All JSON keys and string values must use properly escaped double quotes.\n"
+    )
+
+    def __init__(
+        self,
+        base_url: str,
+        model_name: str = "Qwen/Qwen2.5-72B-Instruct-AWQ",
+        max_output_tokens: int = 8192,
+        temperature: float = 0.0,
+        timeout: float = 600.0,
+    ) -> None:
+        from openai import OpenAI
+
+        self.model_name = model_name
+        self.max_output_tokens = max_output_tokens
+        self.temperature = temperature
+        self._client = OpenAI(base_url=base_url.rstrip("/"), api_key="EMPTY", timeout=timeout)
+        logger.info(
+            "OpenAICompatibleClient initialised",
+            extra={"base_url": base_url, "model_name": model_name},
+        )
+
+    def predict(self, prompt: str) -> str:
+        max_retries = 3
+        retry_delays = [10, 30, 60]
+        start = time.monotonic()
+
+        for attempt in range(max_retries + 1):
+            try:
+                response = self._client.chat.completions.create(
+                    model=self.model_name,
+                    messages=[
+                        {"role": "system", "content": self._SYSTEM_PROMPT},
+                        {"role": "user", "content": prompt},
+                    ],
+                    temperature=self.temperature,
+                    max_tokens=self.max_output_tokens,
+                )
+                text = response.choices[0].message.content or ""
+                latency_ms = (time.monotonic() - start) * 1000
+                logger.debug(
+                    "OpenAI-compatible predict succeeded",
+                    extra={"latency_ms": round(latency_ms, 1), "model": self.model_name},
+                )
+                return text
+            except Exception as exc:
+                is_retryable = "429" in str(exc) or "timeout" in str(exc).lower()
+                is_last = attempt == max_retries
+
+                if is_last or not is_retryable:
+                    latency_ms = (time.monotonic() - start) * 1000
+                    logger.error(
+                        "OpenAI-compatible predict failed: %s", exc,
+                        extra={"latency_ms": round(latency_ms, 1)},
+                    )
+                    raise
+
+                delay = retry_delays[attempt]
+                logger.warning(
+                    "OpenAI-compatible endpoint error on attempt %d/%d — retrying in %ds: %s",
+                    attempt + 1, max_retries, delay, exc,
+                )
+                time.sleep(delay)
+
+        raise RuntimeError("predict: exhausted retries")
+
+    def health_check(self) -> bool:
+        try:
+            self.predict("ping")
+            return True
+        except Exception as exc:
+            logger.warning("OpenAI-compatible health check failed", extra={"error": str(exc)})
+            return False
+
+
 # =============================================================== Modal client
 
 
@@ -338,6 +440,13 @@ def build_inference_client(
             temperature=0.0,
         )
     if model_endpoint.startswith("http"):
+        if model_endpoint.rstrip("/").endswith("/v1"):
+            logger.info("Using OpenAICompatibleClient for inference", extra={"url": model_endpoint})
+            return OpenAICompatibleClient(
+                base_url=model_endpoint,
+                max_output_tokens=8192,
+                temperature=0.0,
+            )
         logger.info("Using ModalClient for inference", extra={"url": model_endpoint})
         return ModalClient(
             endpoint_url=model_endpoint,
