@@ -179,6 +179,7 @@ def main() -> None:
     logger.info("=" * 60)
     logger.info(f"Run ID              : {report.run_id}")
     logger.info(f"Samples evaluated   : {agg.n_samples}")
+    logger.info(f"Foundation papers   : {agg.n_foundation_papers}")
     logger.info(f"Parse errors        : {agg.n_parse_errors}")
     logger.info(f"Schema errors       : {agg.n_schema_errors}")
     logger.info("")

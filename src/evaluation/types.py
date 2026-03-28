@@ -26,7 +26,7 @@ class GroundTruth(BaseModel):
     explanation_intuitive: str
     explanation_technical: str
 
-    # comparison
+    # comparison — empty for foundation papers (no predecessor)
     what_was_improved: str
     how_it_was_improved: str
     why_it_matters: str
@@ -71,6 +71,10 @@ class ClassificationScores(BaseModel):
     secondary_influences_f1: float = Field(ge=0.0, le=1.0)
     schema_valid: bool
     schema_errors: list[str] = Field(default_factory=list)
+    is_foundation_paper: bool = Field(
+        default=False,
+        description="True when ground truth has no predecessor (selected_predecessor_id=null).",
+    )
 
 
 class JudgeScore(BaseModel):
@@ -87,13 +91,18 @@ class JudgeScore(BaseModel):
 
 
 class LLMJudgeScores(BaseModel):
-    """All LLM-as-judge scores for one sample."""
+    """
+    All LLM-as-judge scores for one sample.
+    Comparison fields are None for foundation papers (no predecessor)
+    since ground truth is empty — including them would unfairly skew scores.
+    """
 
     selection_reasoning: JudgeScore
-    what_was_improved: JudgeScore
-    how_it_was_improved: JudgeScore
-    why_it_matters: JudgeScore
-    problem_solved_from_predecessor: JudgeScore
+    # comparison fields — None when skip_comparison=True (foundation papers)
+    what_was_improved: JudgeScore | None = None
+    how_it_was_improved: JudgeScore | None = None
+    why_it_matters: JudgeScore | None = None
+    problem_solved_from_predecessor: JudgeScore | None = None
     judge_model_id: str
 
 
@@ -146,6 +155,10 @@ class AggregateMetrics(BaseModel):
     n_samples: int
     n_parse_errors: int
     n_schema_errors: int
+    n_foundation_papers: int = Field(
+        default=0,
+        description="Number of samples where ground truth has no predecessor.",
+    )
 
     # classification
     predecessor_accuracy: float
@@ -153,7 +166,7 @@ class AggregateMetrics(BaseModel):
     breakthrough_level_accuracy: float
     secondary_influences_f1_mean: float
 
-    # llm judge (means across all judged samples)
+    # llm judge (means across judged samples — comparison fields exclude foundation papers)
     judge_selection_reasoning_mean: float
     judge_what_was_improved_mean: float
     judge_how_it_was_improved_mean: float

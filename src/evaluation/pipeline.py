@@ -18,6 +18,7 @@ import re
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -133,7 +134,7 @@ def run_inference(
     )
 
     results: list[InferenceResult] = []
-    MAX_INPUT_CHARS = 350_000
+    MAX_INPUT_CHARS = 400_000  # ~100K tokens — fits within L40S VRAM for AWQ models
 
     def _infer_one(sample: EvalSample) -> InferenceResult:
         start = time.monotonic()
@@ -252,6 +253,7 @@ def evaluate_all(
                 sample_id=sample.sample_id,
                 sample_index=sample_index,
                 total_samples=total_samples,
+                skip_comparison=sample.ground_truth.selected_predecessor_id is None,
             )
             logger.debug(
                 "LLM judge complete",
@@ -372,6 +374,22 @@ def save_results(
     aggregate_uri = f"{run_path}/aggregate_report.json"
 
     per_sample_records = [json.loads(r.model_dump_json()) for r in eval_results]
+
+    # always save locally first as a safety net
+    local_dir = Path(f"logs/run_{run_id}_{model_tag}")
+    local_dir.mkdir(parents=True, exist_ok=True)
+    local_per_sample = local_dir / "per_sample_results.jsonl"
+    local_aggregate = local_dir / "aggregate_report.json"
+
+    with open(local_per_sample, "w", encoding="utf-8") as f:
+        for record in per_sample_records:
+            f.write(json.dumps(record) + "\n")
+    logger.info(
+        "Results saved locally",
+        extra={"path": str(local_per_sample)},
+    )
+
+    # then save to GCS
     save_jsonl_to_gcs(
         records=per_sample_records,
         gcs_uri=per_sample_uri,
@@ -386,6 +404,10 @@ def save_results(
         aggregate=aggregate,
         per_sample_gcs_path=per_sample_uri,
     )
+
+    # save aggregate locally
+    with open(local_aggregate, "w", encoding="utf-8") as f:
+        f.write(report.model_dump_json(indent=2))
 
     save_json_to_gcs(
         data=json.loads(report.model_dump_json()),
@@ -432,9 +454,7 @@ def _flatten_ground_truth(gt: dict[str, Any]) -> dict[str, Any]:
         "what_was_improved": comp.get("what_was_improved", ""),
         "how_it_was_improved": comp.get("how_it_was_improved", ""),
         "why_it_matters": comp.get("why_it_matters", ""),
-        "problem_solved_from_predecessor": comp.get(
-            "problem_solved_from_predecessor", ""
-        ),
+        "problem_solved_from_predecessor": comp.get("problem_solved_from_predecessor", ""),
         "remaining_limitations": comp.get("remaining_limitations", []),
     }
 
@@ -462,7 +482,7 @@ def _parse_model_output(raw: str) -> tuple[dict[str, Any] | None, str | None]:
     # fix missing commas between fields — only before JSON keys (key: pattern)
     cleaned = re.sub(
         r'(["\d\]}\w])\s*\n(\s*"(?:[^"\\]|\\.)*"\s*:)',
-        r"\1,\n\2",
+        r'\1,\n\2',
         cleaned,
     )
 
@@ -473,7 +493,7 @@ def _parse_model_output(raw: str) -> tuple[dict[str, Any] | None, str | None]:
         # second attempt: more aggressive comma insertion
         cleaned2 = re.sub(
             r'(["\d\]}])\s*\n(\s*")',
-            r"\1,\n\2",
+            r'\1,\n\2',
             cleaned,
         )
         try:
@@ -489,9 +509,12 @@ def _normalize_prediction(pred: dict[str, Any]) -> dict[str, Any]:
     """
     Fill in missing top-level fields with safe defaults so downstream
     evaluators never receive a KeyError on expected structure.
-    Handles partial responses that only return target_analysis or comparison.
+    Also sanitizes string "null" → None for selected_predecessor_id.
     """
+    # Fix: string "null" → Python None so foundation papers score correctly
     pred.setdefault("selected_predecessor_id", None)
+    if pred.get("selected_predecessor_id") == "null":
+        pred["selected_predecessor_id"] = None
     pred.setdefault("selection_reasoning", "")
     pred.setdefault("secondary_influences", [])
 
@@ -523,14 +546,18 @@ def _compute_aggregate(results: list[SampleEvalResult]) -> AggregateMetrics:
     n = len(results)
     n_parse_errors = sum(1 for r in results if r.parse_error)
     n_schema_errors = sum(
-        1 for r in results if r.classification and not r.classification.schema_valid
+        1 for r in results
+        if r.classification and not r.classification.schema_valid
+    )
+    n_foundation_papers = sum(
+        1 for r in results
+        if r.classification and r.classification.is_foundation_paper
     )
 
     def _cls(attr: str) -> list[float]:
         return [
             float(getattr(r.classification, attr))
-            for r in results
-            if r.classification is not None
+            for r in results if r.classification is not None
         ]
 
     def _judge(field: str) -> list[float]:
@@ -539,13 +566,15 @@ def _compute_aggregate(results: list[SampleEvalResult]) -> AggregateMetrics:
             if r.llm_judge is None:
                 continue
             score_obj = getattr(r.llm_judge, field, None)
+            # None means field was skipped (foundation paper) — exclude from mean
             if score_obj is not None:
                 out.append(score_obj.score)
         return out
 
     def _sem(attr: str) -> list[float]:
         return [
-            float(getattr(r.semantic, attr)) for r in results if r.semantic is not None
+            float(getattr(r.semantic, attr))
+            for r in results if r.semantic is not None
         ]
 
     judge_fields = [
@@ -561,6 +590,7 @@ def _compute_aggregate(results: list[SampleEvalResult]) -> AggregateMetrics:
         n_samples=n,
         n_parse_errors=n_parse_errors,
         n_schema_errors=n_schema_errors,
+        n_foundation_papers=n_foundation_papers,
         predecessor_accuracy=_safe_mean(_cls("predecessor_id_correct")),
         predecessor_mrr=_safe_mean(_cls("predecessor_id_mrr")),
         breakthrough_level_accuracy=_safe_mean(_cls("breakthrough_level_correct")),

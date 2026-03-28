@@ -95,7 +95,7 @@ class QwenModel:
             download_dir=MODEL_DIR,
             quantization="awq",
             dtype="float16",
-            max_model_len=32768,
+            max_model_len=98304,  # 96K tokens — safe max for L40S 48GB with AWQ
         )
 
     @modal.web_endpoint(method="POST")
@@ -146,7 +146,7 @@ class LlamaModel:
             download_dir=MODEL_DIR,
             quantization="awq",
             dtype="float16",
-            max_model_len=32768,
+            max_model_len=98304,  # 96K tokens — safe max for L40S 48GB with AWQ
         )
 
     @modal.web_endpoint(method="POST")
@@ -203,17 +203,8 @@ class MistralModel:
             download_dir=MODEL_DIR,
             quantization="awq",
             dtype="float16",
-            max_model_len=32768,
+            max_model_len=32768,  # Mistral hard limit is 32K
         )
-
-    @modal.web_endpoint(method="POST")
-    def infer(self, request: dict) -> dict:
-        from vllm import SamplingParams
-        prompt = request.get("prompt", "")
-        max_tokens = request.get("max_tokens", _SAMPLING_DEFAULTS["max_tokens"])
-        temperature = request.get("temperature", _SAMPLING_DEFAULTS["temperature"])
-
-        # Mistral instruct template
         formatted = (
             f"<s>[INST] {_SYSTEM_PROMPT}\n\n{prompt} [/INST]\n"
             "{\n"

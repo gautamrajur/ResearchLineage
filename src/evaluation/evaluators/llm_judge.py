@@ -51,8 +51,13 @@ PREDICTED:
 {predicted_value}
 """
 
-_JUDGE_FIELDS: dict[str, tuple[list[str], list[str]]] = {
+# Fields always evaluated
+_JUDGE_FIELDS_ALWAYS: dict[str, tuple[list[str], list[str]]] = {
     "selection_reasoning": (["selection_reasoning"], ["selection_reasoning"]),
+}
+
+# Fields only evaluated when a predecessor exists (not foundation papers)
+_JUDGE_FIELDS_COMPARISON: dict[str, tuple[list[str], list[str]]] = {
     "what_was_improved": (
         ["comparison", "what_was_improved"],
         ["comparison", "what_was_improved"],
@@ -71,6 +76,12 @@ _JUDGE_FIELDS: dict[str, tuple[list[str], list[str]]] = {
     ),
 }
 
+# Combined for non-foundation papers
+_JUDGE_FIELDS: dict[str, tuple[list[str], list[str]]] = {
+    **_JUDGE_FIELDS_ALWAYS,
+    **_JUDGE_FIELDS_COMPARISON,
+}
+
 
 def evaluate_llm_judge(
     prediction: dict[str, Any] | None,
@@ -80,13 +91,20 @@ def evaluate_llm_judge(
     sample_id: str = "",
     sample_index: int = 0,
     total_samples: int = 0,
+    skip_comparison: bool = False,
 ) -> LLMJudgeScores:
     """
     Run LLM-as-judge evaluation for all reasoning/analysis fields.
-    Each field gets its own judge call so scores are independently auditable.
+    For foundation papers (skip_comparison=True), comparison fields are
+    skipped since ground truth is empty — only selection_reasoning is judged.
     """
     gt_dict = ground_truth.model_dump()
     pred_dict = prediction or {}
+
+    # select which fields to judge
+    fields_to_judge = (
+        _JUDGE_FIELDS_ALWAYS if skip_comparison else _JUDGE_FIELDS
+    )
 
     judge_scores: dict[str, JudgeScore] = {}
     total_judge_start = time.monotonic()
@@ -97,11 +115,12 @@ def evaluate_llm_judge(
             "sample_id": sample_id,
             "sample_index": sample_index,
             "total_samples": total_samples,
-            "n_fields": len(_JUDGE_FIELDS),
+            "n_fields": len(fields_to_judge),
+            "skip_comparison": skip_comparison,
         },
     )
 
-    for field_name, (gt_path, pred_path) in _JUDGE_FIELDS.items():
+    for field_name, (gt_path, pred_path) in fields_to_judge.items():
         gt_value = _extract_nested(gt_dict, gt_path)
         pred_value = _extract_nested(pred_dict, pred_path)
 
@@ -114,7 +133,13 @@ def evaluate_llm_judge(
         )
         judge_scores[field_name] = score
 
+    # fill None for skipped comparison fields so LLMJudgeScores stays complete
+    for field_name in _JUDGE_FIELDS_COMPARISON:
+        if field_name not in judge_scores:
+            judge_scores[field_name] = None  # type: ignore[assignment]
+
     total_latency_ms = (time.monotonic() - total_judge_start) * 1000
+    scored_values = [s.score for s in judge_scores.values() if s is not None]
     logger.info(
         "Judge evaluation complete",
         extra={
@@ -122,9 +147,7 @@ def evaluate_llm_judge(
             "sample_index": sample_index,
             "total_samples": total_samples,
             "total_latency_ms": round(total_latency_ms, 1),
-            "overall_mean": round(
-                sum(s.score for s in judge_scores.values()) / len(judge_scores), 2
-            ),
+            "overall_mean": round(sum(scored_values) / len(scored_values), 2) if scored_values else 0.0,
         },
     )
 

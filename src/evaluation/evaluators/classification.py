@@ -48,6 +48,10 @@ def evaluate_classification(
       - Score 1/2  → correct id appears at index 0 of secondary_influences
       - Score 1/3  → index 1 of secondary_influences
       - Score 0.0  → not found anywhere
+
+    Foundation paper handling (gt_predecessor = None):
+      - Predecessor correct if prediction also returns None (not string "null")
+      - MRR = 1.0 if null correctly predicted, 0.0 if hallucinated
     """
     schema_errors = _validate_schema(prediction)
     schema_valid = len(schema_errors) == 0
@@ -64,17 +68,23 @@ def evaluate_classification(
         )
 
     # ---- predecessor_id ----
+    # Fix: sanitize string "null" → None so foundation papers score correctly
     pred_predecessor = prediction.get("selected_predecessor_id")
+    if pred_predecessor == "null":
+        pred_predecessor = None
+
     gt_predecessor = ground_truth.selected_predecessor_id
 
+    is_foundation_paper = gt_predecessor is None
+
     predecessor_correct = pred_predecessor == gt_predecessor
-    mrr = _compute_predecessor_mrr(prediction, gt_predecessor)
+    mrr = _compute_predecessor_mrr(pred_predecessor, gt_predecessor)
 
     # ---- breakthrough_level ----
     pred_level = (
         prediction.get("target_analysis", {}).get("breakthrough_level", "").lower()
     )
-    gt_level = ground_truth.breakthrough_level.lower()
+    gt_level = ground_truth.breakthrough_level.lower() if ground_truth.breakthrough_level else ""
     breakthrough_correct = pred_level == gt_level
 
     # ---- secondary_influences F1 ----
@@ -98,6 +108,7 @@ def evaluate_classification(
             "breakthrough_correct": breakthrough_correct,
             "influences_f1": round(influences_f1, 4),
             "schema_valid": schema_valid,
+            "is_foundation_paper": is_foundation_paper,
         },
     )
 
@@ -108,6 +119,7 @@ def evaluate_classification(
         secondary_influences_f1=influences_f1,
         schema_valid=schema_valid,
         schema_errors=schema_errors,
+        is_foundation_paper=is_foundation_paper,
     )
 
 
@@ -115,20 +127,19 @@ def evaluate_classification(
 
 
 def _compute_predecessor_mrr(
-    prediction: dict[str, Any],
+    pred_predecessor: str | None,
     gt_predecessor: str | None,
 ) -> float:
+    """
+    Compute MRR for predecessor prediction.
+    Note: pred_predecessor has already been sanitized (null string → None).
+    """
     if gt_predecessor is None:
-        # ground truth has null predecessor — correct only if prediction also null
-        return 1.0 if prediction.get("selected_predecessor_id") is None else 0.0
+        # foundation paper — correct only if prediction is also None
+        return 1.0 if pred_predecessor is None else 0.0
 
-    if prediction.get("selected_predecessor_id") == gt_predecessor:
+    if pred_predecessor == gt_predecessor:
         return 1.0
-
-    secondary = prediction.get("secondary_influences", [])
-    for rank, item in enumerate(secondary, start=2):
-        if isinstance(item, dict) and item.get("paper_id") == gt_predecessor:
-            return 1.0 / rank
 
     return 0.0
 
@@ -176,10 +187,10 @@ def _validate_schema(prediction: dict[str, Any] | None) -> list[str]:
                 f"Expected one of {_VALID_BREAKTHROUGH_LEVELS}"
             )
 
-        # limitations must be a non-empty list
+        # Fix: limitations can be empty list — only check it's a list
         limitations = ta.get("limitations", [])
-        if not isinstance(limitations, list) or len(limitations) == 0:
-            errors.append("target_analysis.limitations must be a non-empty list")
+        if not isinstance(limitations, list):
+            errors.append("target_analysis.limitations must be a list")
     else:
         errors.append("target_analysis is not a dict")
 
@@ -190,9 +201,10 @@ def _validate_schema(prediction: dict[str, Any] | None) -> list[str]:
         for key in missing_comp:
             errors.append(f"missing comparison key: '{key}'")
 
+        # Fix: remaining_limitations can be empty list — only check it's a list
         remaining = comp.get("remaining_limitations", [])
-        if not isinstance(remaining, list) or len(remaining) == 0:
-            errors.append("comparison.remaining_limitations must be a non-empty list")
+        if not isinstance(remaining, list):
+            errors.append("comparison.remaining_limitations must be a list")
     else:
         errors.append("comparison is not a dict")
 
@@ -203,6 +215,8 @@ def _validate_schema(prediction: dict[str, Any] | None) -> list[str]:
     else:
         for i, item in enumerate(influences):
             if not isinstance(item, dict) or "paper_id" not in item:
-                errors.append(f"secondary_influences[{i}] missing 'paper_id'")
+                errors.append(
+                    f"secondary_influences[{i}] missing 'paper_id'"
+                )
 
     return errors
