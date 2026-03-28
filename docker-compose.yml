@@ -102,13 +102,13 @@ services:
     depends_on:
       - postgres
       - redis
-      - cloud-sql-proxy
       - airflow-init
     volumes:
       - ./dags:/opt/airflow/dags
       - ./src:/opt/airflow/src
       - ./logs:/opt/airflow/logs
       - ./tests:/opt/airflow/tests
+      - ./eval_output:/tmp/eval_dag_output
       - ${GCLOUD_CONFIG_DIR}:/gcp/config:ro
     restart: unless-stopped
 
@@ -142,12 +142,12 @@ services:
     depends_on:
       - postgres
       - redis
-      - cloud-sql-proxy
       - airflow-init
     volumes:
       - ./dags:/opt/airflow/dags
       - ./src:/opt/airflow/src
       - ./logs:/opt/airflow/logs
       - ./tests:/opt/airflow/tests
+      - ./eval_output:/tmp/eval_dag_output
       - ${GCLOUD_CONFIG_DIR}:/gcp/config:ro
     restart: unless-stopped

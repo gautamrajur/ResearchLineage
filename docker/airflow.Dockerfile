@@ -1,28 +1,19 @@
 FROM apache/airflow:2.8.1-python3.11
 
 USER root
-
-# Install system dependencies
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
-    && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
 USER airflow
 
-# Install Python dependencies directly with pip
+# Install packages needed by the evaluation DAG
+# google-cloud-aiplatform includes vertexai + Gemini client support
 RUN pip install --no-cache-dir \
-    psycopg2-binary \
-    httpx \
-    networkx \
-    redis \
-    great-expectations \
-    alembic \
-    python-dotenv \
-    pydantic \
-    pydantic-settings
-
-# Copy source code
-COPY --chown=airflow:root src/ /opt/airflow/src/
-COPY --chown=airflow:root dags/ /opt/airflow/dags/
+    "google-cloud-aiplatform>=1.49.0" \
+    "google-cloud-storage>=2.14.0" \
+    "google-genai>=1.0.0" \
+    "pydantic-settings>=2.0.0" \
+    "numpy" \
+    "beautifulsoup4" \
+    "requests"

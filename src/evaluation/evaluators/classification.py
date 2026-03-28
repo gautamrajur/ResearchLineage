@@ -60,6 +60,7 @@ def evaluate_classification(
         logger.warning("Prediction is None — returning zero classification scores.")
         return ClassificationScores(
             predecessor_id_correct=False,
+            predecessor_id_soft_correct=False,
             predecessor_id_mrr=0.0,
             breakthrough_level_correct=False,
             secondary_influences_f1=0.0,
@@ -78,7 +79,18 @@ def evaluate_classification(
     is_foundation_paper = gt_predecessor is None
 
     predecessor_correct = pred_predecessor == gt_predecessor
-    mrr = _compute_predecessor_mrr(pred_predecessor, gt_predecessor)
+
+    # soft: also correct if pred pick appears in GT secondary_influences
+    gt_secondary_ids = {
+        item.get("paper_id", "")
+        for item in ground_truth.secondary_influences
+        if isinstance(item, dict)
+    }
+    predecessor_soft_correct = predecessor_correct or (
+        pred_predecessor is not None and pred_predecessor in gt_secondary_ids
+    )
+
+    mrr = _compute_predecessor_mrr(prediction, gt_predecessor)
 
     # ---- breakthrough_level ----
     pred_level = (
@@ -104,6 +116,7 @@ def evaluate_classification(
         "Classification evaluation complete",
         extra={
             "predecessor_correct": predecessor_correct,
+            "predecessor_soft_correct": predecessor_soft_correct,
             "mrr": mrr,
             "breakthrough_correct": breakthrough_correct,
             "influences_f1": round(influences_f1, 4),
@@ -114,6 +127,7 @@ def evaluate_classification(
 
     return ClassificationScores(
         predecessor_id_correct=predecessor_correct,
+        predecessor_id_soft_correct=predecessor_soft_correct,
         predecessor_id_mrr=mrr,
         breakthrough_level_correct=breakthrough_correct,
         secondary_influences_f1=influences_f1,

@@ -48,6 +48,16 @@ logger = logging.getLogger(__name__)
 # ================================================================== 1. Load
 
 
+def load_eval_data_auto(config: EvaluationConfig) -> list[EvalSample]:
+    """
+    Load evaluation samples from local filesystem or GCS based on
+    config.finetuning_data_source ('local' | 'gcs').
+    """
+    if config.finetuning_data_source == "local":
+        return load_eval_data_local(config)
+    return load_eval_data(config)
+
+
 def load_eval_data(config: EvaluationConfig) -> list[EvalSample]:
     """
     Load and validate evaluation samples from GCS.
@@ -63,11 +73,11 @@ def load_eval_data(config: EvaluationConfig) -> list[EvalSample]:
     """
     logger.info(
         "Loading evaluation data",
-        extra={"gcs_input_path": config.gcs_input_path},
+        extra={"finetuning_data_gcs_path": config.finetuning_data_gcs_path},
     )
 
     raw_records = load_jsonl_from_gcs(
-        gcs_uri=config.gcs_input_path,
+        gcs_uri=config.finetuning_data_gcs_path,
         project_id=config.gcs_project_id,
     )
 
@@ -104,6 +114,104 @@ def load_eval_data(config: EvaluationConfig) -> list[EvalSample]:
     return samples
 
 
+# ================================================================== 1b. Load (local)
+
+
+def load_eval_data_local(config: EvaluationConfig) -> list[EvalSample]:
+    """
+    Load evaluation samples from a local JSONL file instead of GCS.
+
+    Expects config.local_input_path to point to a split file, e.g.:
+        lineage_llama_format/test.jsonl
+
+    Format per line:
+        { "input_text": "...", "output_text": "{...json...}" }
+
+    sample_id is derived from the paired metadata file
+    (<split>_metadata_fixed.jsonl in the same directory).
+    Falls back to positional "sample_{i:05d}" if metadata is missing.
+    """
+    import os
+
+    input_path = config.local_input_path
+    if not input_path:
+        raise ValueError("config.local_input_path must be set to use local loading.")
+
+    input_path = os.path.abspath(input_path)
+    if not os.path.isfile(input_path):
+        raise FileNotFoundError(f"Local input file not found: {input_path}")
+
+    # Derive metadata path: replace filename with <split>_metadata_fixed.jsonl
+    base_dir = os.path.dirname(input_path)
+    split_name = os.path.splitext(os.path.basename(input_path))[0]  # e.g. "test"
+    meta_path = os.path.join(base_dir, f"{split_name}_metadata_fixed.jsonl")
+
+    # Load sample_ids from metadata (positionally aligned)
+    sample_ids: list[str] = []
+    if os.path.isfile(meta_path):
+        with open(meta_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    m = json.loads(line)
+                    sample_ids.append(f"sample_{m['sample_index']:05d}")
+        logger.info(
+            "Loaded sample IDs from metadata",
+            extra={"meta_path": meta_path, "n": len(sample_ids)},
+        )
+    else:
+        logger.warning(
+            "Metadata file not found — using positional sample IDs",
+            extra={"expected": meta_path},
+        )
+
+    samples: list[EvalSample] = []
+    parse_errors = 0
+
+    with open(input_path, "r", encoding="utf-8") as f:
+        for i, line in enumerate(f):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                record = json.loads(line)
+
+                # ground truth is stored as output_text (JSON string)
+                gt_raw = record.get("output_text") or record.get("ground_truth", {})
+                if isinstance(gt_raw, str):
+                    # strip trailing commas before } or ] (invalid JSON from some samples)
+                    gt_cleaned = re.sub(r",\s*([}\]])", r"\1", gt_raw)
+                    gt_raw = json.loads(gt_cleaned)
+
+                gt_flat = _flatten_ground_truth(gt_raw)
+                ground_truth = GroundTruth(**gt_flat)
+
+                sid = sample_ids[i] if i < len(sample_ids) else f"sample_{i:05d}"
+                samples.append(
+                    EvalSample(
+                        sample_id=sid,
+                        input_text=record["input_text"],
+                        ground_truth=ground_truth,
+                    )
+                )
+            except Exception as exc:
+                parse_errors += 1
+                logger.warning(
+                    "Failed to parse local eval sample",
+                    extra={"index": i, "error": str(exc)},
+                )
+
+    logger.info(
+        "Local eval data loaded",
+        extra={
+            "path": input_path,
+            "n_samples": len(samples),
+            "n_parse_errors": parse_errors,
+        },
+    )
+    return samples
+
+
 # ================================================================== 2. Infer
 
 
@@ -118,10 +226,9 @@ def run_inference(
     Concurrent via ThreadPoolExecutor — respects config.max_workers.
     """
     client = build_inference_client(
-        endpoint_id=config.vertex_endpoint_id,
+        model_endpoint=config.model_endpoint,
         project_id=config.vertex_project_id or config.gcs_project_id,
         location=config.vertex_location,
-        modal_endpoint_url=getattr(config, "modal_endpoint_url", None),
     )
 
     logger.info(
@@ -141,7 +248,6 @@ def run_inference(
         try:
             input_text = sample.input_text[:MAX_INPUT_CHARS]
             raw = client.predict(input_text)
-            print(f"DEBUG RAW OUTPUT (full len={len(raw)}):\n{raw}")
             latency_ms = (time.monotonic() - start) * 1000
             parsed, parse_error = _parse_model_output(raw)
             return InferenceResult(
@@ -223,13 +329,22 @@ def evaluate_all(
         judge_scores = None
         semantic_scores = None
 
-        # -- classification --
+        # Foundational papers have no predecessor — skip classification metrics for them
+        is_foundational = sample.ground_truth.selected_predecessor_id is None
+
+        # -- classification (non-foundational only) --
         t0 = time.monotonic()
-        try:
-            classification_scores = evaluate_classification(
-                prediction=infer.parsed_output,
-                ground_truth=sample.ground_truth,
+        if is_foundational:
+            logger.debug(
+                "Foundational paper — skipping classification eval",
+                extra={"sample_id": sample.sample_id},
             )
+        try:
+            if not is_foundational:
+                classification_scores = evaluate_classification(
+                    prediction=infer.parsed_output,
+                    ground_truth=sample.ground_truth,
+                )
             logger.debug(
                 "Classification complete",
                 extra={
@@ -500,8 +615,6 @@ def _parse_model_output(raw: str) -> tuple[dict[str, Any] | None, str | None]:
             parsed = json.loads(cleaned2)
             return _normalize_prediction(parsed), None
         except json.JSONDecodeError:
-            print(f"DEBUG PARSE ERROR: {exc}")
-            print(f"DEBUG CLEANED[:200]: {cleaned[:200]}")
             return None, f"JSON parse error: {exc} | raw[:200]: {raw[:200]}"
 
 
@@ -545,6 +658,9 @@ def _safe_mean(values: list[float]) -> float:
 def _compute_aggregate(results: list[SampleEvalResult]) -> AggregateMetrics:
     n = len(results)
     n_parse_errors = sum(1 for r in results if r.parse_error)
+    n_foundational = sum(
+        1 for r in results if r.ground_truth.selected_predecessor_id is None
+    )
     n_schema_errors = sum(
         1 for r in results
         if r.classification and not r.classification.schema_valid
@@ -555,6 +671,7 @@ def _compute_aggregate(results: list[SampleEvalResult]) -> AggregateMetrics:
     )
 
     def _cls(attr: str) -> list[float]:
+        # Only include non-foundational samples (those that have classification scores)
         return [
             float(getattr(r.classification, attr))
             for r in results if r.classification is not None
@@ -590,8 +707,9 @@ def _compute_aggregate(results: list[SampleEvalResult]) -> AggregateMetrics:
         n_samples=n,
         n_parse_errors=n_parse_errors,
         n_schema_errors=n_schema_errors,
-        n_foundation_papers=n_foundation_papers,
+        n_foundational=n_foundational,
         predecessor_accuracy=_safe_mean(_cls("predecessor_id_correct")),
+        predecessor_soft_accuracy=_safe_mean(_cls("predecessor_id_soft_correct")),
         predecessor_mrr=_safe_mean(_cls("predecessor_id_mrr")),
         breakthrough_level_accuracy=_safe_mean(_cls("breakthrough_level_correct")),
         secondary_influences_f1_mean=_safe_mean(_cls("secondary_influences_f1")),
