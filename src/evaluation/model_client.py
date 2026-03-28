@@ -249,9 +249,9 @@ class GeminiClient(ModelClient):
 
 class ModalClient(ModelClient):
     """
-    Client for Qwen2.5-7B-AWQ hosted on Modal via vLLM.
-    After deploying modal_app.py, set the printed endpoint URL
-    as MODAL_ENDPOINT_URL in your .env file.
+    Client for fine-tuned models served on Modal via vLLM (OpenAI-compatible /v1 API).
+    Pass the base URL (with or without /v1) as endpoint_url.
+    The served model name is auto-discovered from /v1/models on first call.
     """
 
     def __init__(
@@ -261,55 +261,56 @@ class ModalClient(ModelClient):
         temperature: float = 0.0,
         timeout: float = 600.0,
     ) -> None:
-        self.endpoint_url = endpoint_url.rstrip("/")
+        base = endpoint_url.rstrip("/")
+        if not base.endswith("/v1"):
+            base = base + "/v1"
+        self.base_url = base
         self.max_tokens = max_tokens
         self.temperature = temperature
         self.timeout = timeout
-        logger.info(
-            "ModalClient initialised",
-            extra={"endpoint_url": endpoint_url},
-        )
+        self._model_name: str | None = None
+        logger.info("ModalClient initialised", extra={"base_url": self.base_url})
+
+    def _get_model_name(self) -> str:
+        """Discover the first available model from /v1/models (cached after first call)."""
+        if self._model_name:
+            return self._model_name
+        import requests as req
+        resp = req.get(self.base_url + "/models", timeout=30)
+        resp.raise_for_status()
+        models = resp.json().get("data", [])
+        if not models:
+            raise RuntimeError("No models returned by /v1/models")
+        self._model_name = models[0]["id"]
+        logger.info("ModalClient: discovered model %s", self._model_name)
+        return self._model_name
 
     def predict(self, prompt: str) -> str:
-        import requests as req
+        from openai import OpenAI
 
         start = time.monotonic()
         try:
-            response = req.post(
-                self.endpoint_url,
-                json={
-                    "prompt": prompt,
-                    "max_tokens": self.max_tokens,
-                    "temperature": self.temperature,
-                },
+            client = OpenAI(base_url=self.base_url, api_key="dummy", max_retries=0)
+            response = client.chat.completions.create(
+                model=self._get_model_name(),
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=self.max_tokens,
+                temperature=self.temperature,
                 timeout=self.timeout,
             )
-            response.raise_for_status()
-            text = response.json().get("text", "")
+            text = response.choices[0].message.content or ""
             latency_ms = (time.monotonic() - start) * 1000
-            logger.debug(
-                "Modal predict succeeded",
-                extra={"latency_ms": round(latency_ms, 1)},
-            )
+            logger.debug("Modal predict succeeded", extra={"latency_ms": round(latency_ms, 1)})
             return text
         except Exception as exc:
             latency_ms = (time.monotonic() - start) * 1000
-            logger.error(
-                "Modal predict failed",
-                extra={"latency_ms": round(latency_ms, 1), "error": str(exc)},
-            )
+            logger.error("Modal predict failed: %s", exc, extra={"latency_ms": round(latency_ms, 1)})
             raise
 
     def health_check(self) -> bool:
-        import requests as req
-
         try:
-            response = req.post(
-                self.endpoint_url,
-                json={"prompt": "ping", "max_tokens": 1},
-                timeout=600.0,
-            )
-            return response.status_code == 200
+            self._get_model_name()
+            return True
         except Exception:
             return False
 

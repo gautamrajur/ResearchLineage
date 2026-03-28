@@ -100,12 +100,26 @@ def _load_input(local_path: str | None, gcs_uri: str | None, project_id: str) ->
     raise ValueError("Must provide --local-input or --gcs-input")
 
 
-def _load_metadata(local_input: str | None, gcs_input: str | None, project_id: str) -> dict[str, dict]:
+def _load_metadata(local_input: str | None, gcs_input: str | None, project_id: str, metadata_path: str | None = None) -> dict[str, dict]:
     """
-    Derive metadata path from input path.
+    Load metadata from an explicit path or derive it from the input path.
     e.g. .../test.jsonl → .../test_metadata_fixed.jsonl
     Works for both local and GCS paths.
     """
+    if metadata_path:
+        # Explicit path provided
+        is_gcs = metadata_path.startswith("gs://")
+        try:
+            records = _load_input(
+                local_path=None if is_gcs else metadata_path,
+                gcs_uri=metadata_path if is_gcs else None,
+                project_id=project_id,
+            )
+            return {f"sample_{r['sample_index']:05d}": r for r in records}
+        except Exception as e:
+            print(f"  WARNING: Could not load metadata from {metadata_path}: {e}")
+            return {}
+
     base = local_input or gcs_input
     meta_path = re.sub(r"([^/\\]+)\.jsonl$", lambda m: f"{m.group(1)}_metadata_fixed.jsonl", base)
     try:
@@ -148,7 +162,7 @@ def run_inference(args: argparse.Namespace) -> None:
     local_input = args.local_input if args.data_source == "local" else None
     gcs_input = args.gcs_input if args.data_source != "local" else None
     records = _load_input(local_input, gcs_input, args.project)
-    meta_map = _load_metadata(local_input, gcs_input, args.project)
+    meta_map = _load_metadata(local_input, gcs_input, args.project, metadata_path=args.metadata_path)
 
     # Build EvalSample-like dicts (lightweight, no Pydantic needed here)
     samples = []
@@ -164,14 +178,31 @@ def run_inference(args: argparse.Namespace) -> None:
             "meta": meta_map.get(sid, {}),
         })
 
+    # Build candidate ID lookup from source samples (needed for hallucination check)
+    candidate_id_map: dict[str, set[str]] = {
+        s["sample_id"]: set(re.findall(r'[a-f0-9]{39,41}', s["input_text"]))
+        for s in samples
+    }
+
     # Load already-completed results
+    # A result is "done" only if: no error, no parse_error, AND predicted ID is in the candidate list
     done: dict[str, dict] = {}
     if raw_path.exists():
         for line in raw_path.read_text(encoding="utf-8").splitlines():
             if line.strip():
                 r = json.loads(line)
-                if not r.get("error") and not r.get("parse_error"):
-                    done[r["sample_id"]] = r
+                if r.get("error") or r.get("parse_error"):
+                    continue
+                pred = r.get("parsed_prediction") or {}
+                pred_id = pred.get("selected_predecessor_id")
+                cids = candidate_id_map.get(r["sample_id"], set())
+                if pred_id and cids and pred_id not in cids:
+                    print(f"  RE-QUEUE (hallucinated)  {r['sample_id']}  pred={pred_id[:16]}...")
+                    continue
+                done[r["sample_id"]] = r
+
+    if args.limit > 0:
+        samples = samples[:args.limit]
 
     todo = [s for s in samples if s["sample_id"] not in done]
     print(f"[run_inference] total={len(samples)}  done={len(done)}  to_run={len(todo)}")
@@ -187,14 +218,42 @@ def run_inference(args: argparse.Namespace) -> None:
     )
     run_id = datetime.now(tz=timezone.utc).strftime("%Y%m%d_%H%M%S")
 
+    def _extract_candidate_ids(input_text: str) -> set[str]:
+        """Extract all paper IDs present in the prompt candidate list."""
+        return set(re.findall(r'[a-f0-9]{39,41}', input_text))
+
     def _infer_one(sample: dict) -> dict:
+        candidate_ids = _extract_candidate_ids(sample["input_text"])
         last_exc = None
+        HALLUCINATION_RETRIES = 5
+
         for attempt in range(MAX_RETRIES + 1):
             start = time.monotonic()
             try:
                 raw = client.predict(sample["input_text"][:MAX_INPUT_CHARS])
                 latency_ms = (time.monotonic() - start) * 1000
                 parsed, parse_error = _parse_model_output(raw)
+
+                # Check if predicted ID is in the candidate list
+                if parsed and not parse_error:
+                    pred_id = parsed.get("selected_predecessor_id")
+                    if pred_id and candidate_ids and pred_id not in candidate_ids:
+                        hallucination_attempt = 0
+                        while pred_id not in candidate_ids and hallucination_attempt < HALLUCINATION_RETRIES:
+                            hallucination_attempt += 1
+                            print(
+                                f"  HALLUCINATION  {sample['sample_id']}  "
+                                f"pred_id={pred_id[:16]}... not in candidates  "
+                                f"retry {hallucination_attempt}/{HALLUCINATION_RETRIES}"
+                            )
+                            raw = client.predict(sample["input_text"][:MAX_INPUT_CHARS])
+                            parsed, parse_error = _parse_model_output(raw)
+                            pred_id = (parsed or {}).get("selected_predecessor_id")
+
+                        if pred_id not in candidate_ids:
+                            parse_error = f"Model keeps hallucinating: predicted ID {pred_id!r} not in candidate list after {HALLUCINATION_RETRIES} retries"
+                            print(f"  HALLUCINATION_FAIL  {sample['sample_id']}  {parse_error}")
+
                 print(f"  OK  {sample['sample_id']}  attempt={attempt+1}  latency={latency_ms:.0f}ms")
                 return {
                     "sample_id":        sample["sample_id"],
@@ -271,17 +330,25 @@ def evaluate(args: argparse.Namespace) -> None:
     if not raw_path.exists():
         raise FileNotFoundError(f"Run inference first — {raw_path} not found.")
 
-    raw_records = _load_jsonl_local(str(raw_path))
-    print(f"[evaluate] Loaded {len(raw_records)} inference results")
+    # Deduplicate — keep latest record per sample_id (file is append-only)
+    _all = _load_jsonl_local(str(raw_path))
+    _seen: dict[str, dict] = {}
+    for r in _all:
+        _seen[r["sample_id"]] = r
+    raw_records = list(_seen.values())
+    print(f"[evaluate] Loaded {len(_all)} rows -> {len(raw_records)} unique samples after dedup")
 
     # Build judge client once — used for ALL samples including foundational
-    judge_client = build_judge_client(
-        project_id=args.vertex_project,
-        location=args.vertex_location,
-        model_name=args.judge_model,
-        max_output_tokens=args.judge_max_tokens,
-    )
+    skip_judge = getattr(args, "skip_judge", False)
+    judge_client = None
     judge_model_id = args.judge_model
+    if not skip_judge:
+        judge_client = build_judge_client(
+            project_id=args.vertex_project,
+            location=args.vertex_location,
+            model_name=args.judge_model,
+            max_output_tokens=args.judge_max_tokens,
+        )
 
     rows = []
     n_foundational = 0
@@ -298,43 +365,50 @@ def evaluate(args: argparse.Namespace) -> None:
         meta = r.get("meta", {})
 
         # ── LLM Judge (ALL samples, including foundational) ───────────────────
-        judge_scores_dict: dict = {}
-        try:
-            gt_flat = _flatten_ground_truth(flash_pred)
-            ground_truth_judge = GroundTruth(**gt_flat)
-            judge_scores = evaluate_llm_judge(
-                prediction=pro_pred if not has_error else None,
-                ground_truth=ground_truth_judge,
-                judge_client=judge_client,
-                judge_model_id=judge_model_id,
-                sample_id=r["sample_id"],
-                sample_index=idx,
-                total_samples=len(raw_records),
-            )
-            judge_scores_dict = {
-                "judge_selection_reasoning": judge_scores.selection_reasoning.score,
-                "judge_what_was_improved":   judge_scores.what_was_improved.score,
-                "judge_how_it_was_improved": judge_scores.how_it_was_improved.score,
-                "judge_why_it_matters":      judge_scores.why_it_matters.score,
-                "judge_problem_solved":      judge_scores.problem_solved_from_predecessor.score,
-                "judge_overall": round(sum([
-                    judge_scores.selection_reasoning.score,
-                    judge_scores.what_was_improved.score,
-                    judge_scores.how_it_was_improved.score,
-                    judge_scores.why_it_matters.score,
-                    judge_scores.problem_solved_from_predecessor.score,
-                ]) / 5, 4),
-            }
-        except Exception as e:
-            print(f"  WARNING: Judge failed for {r['sample_id']}: {e}")
-            judge_scores_dict = {
-                "judge_selection_reasoning": -1.0,
-                "judge_what_was_improved":   -1.0,
-                "judge_how_it_was_improved": -1.0,
-                "judge_why_it_matters":      -1.0,
-                "judge_problem_solved":      -1.0,
-                "judge_overall":             -1.0,
-            }
+        if skip_judge:
+            judge_scores_dict = {k: None for k in [
+                "judge_selection_reasoning", "judge_what_was_improved",
+                "judge_how_it_was_improved", "judge_why_it_matters",
+                "judge_problem_solved", "judge_overall",
+            ]}
+        else:
+            judge_scores_dict = {}
+            try:
+                gt_flat = _flatten_ground_truth(flash_pred)
+                ground_truth_judge = GroundTruth(**gt_flat)
+                judge_scores = evaluate_llm_judge(
+                    prediction=pro_pred if not has_error else None,
+                    ground_truth=ground_truth_judge,
+                    judge_client=judge_client,
+                    judge_model_id=judge_model_id,
+                    sample_id=r["sample_id"],
+                    sample_index=idx,
+                    total_samples=len(raw_records),
+                )
+                judge_scores_dict = {
+                    "judge_selection_reasoning": judge_scores.selection_reasoning.score,
+                    "judge_what_was_improved":   judge_scores.what_was_improved.score,
+                    "judge_how_it_was_improved": judge_scores.how_it_was_improved.score,
+                    "judge_why_it_matters":      judge_scores.why_it_matters.score,
+                    "judge_problem_solved":      judge_scores.problem_solved_from_predecessor.score,
+                    "judge_overall": round(sum([
+                        judge_scores.selection_reasoning.score,
+                        judge_scores.what_was_improved.score,
+                        judge_scores.how_it_was_improved.score,
+                        judge_scores.why_it_matters.score,
+                        judge_scores.problem_solved_from_predecessor.score,
+                    ]) / 5, 4),
+                }
+            except Exception as e:
+                print(f"  WARNING: Judge failed for {r['sample_id']}: {e}")
+                judge_scores_dict = {
+                    "judge_selection_reasoning": -1.0,
+                    "judge_what_was_improved":   -1.0,
+                    "judge_how_it_was_improved": -1.0,
+                    "judge_why_it_matters":      -1.0,
+                    "judge_problem_solved":      -1.0,
+                    "judge_overall":             -1.0,
+                }
 
         # ── Classification (non-foundational without errors only) ─────────────
         cls_scores_dict: dict = {
@@ -667,6 +741,12 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--judge-max-tokens", type=int, default=4096,
                    dest="judge_max_tokens",
                    help="Max output tokens for judge responses (increase if reasoning truncates)")
+    p.add_argument("--limit", type=int, default=0,
+                   help="Cap number of samples to process (0 = no limit, for testing)")
+    p.add_argument("--metadata-path", default="",
+                   help="Explicit path to metadata JSONL (local or gs://). Overrides auto-derived path.")
+    p.add_argument("--skip-judge", action="store_true", dest="skip_judge",
+                   help="Skip LLM-as-judge evaluation, run classification only")
 
     return p.parse_args()
 
