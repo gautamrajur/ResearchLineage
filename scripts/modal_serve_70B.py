@@ -28,7 +28,7 @@ hf_volume = modal.Volume.from_name("model-cache", create_if_missing=True)
     image=image,
     gpu="A100-80GB:2", 
     timeout=60 * 60,
-    scaledown_window=300,
+    scaledown_window=100,
     volumes={"/root/.cache/huggingface": hf_volume}, 
 )
 @modal.concurrent(max_inputs=32)
