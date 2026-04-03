@@ -340,6 +340,19 @@ def extract_paper_text(paper_data):
                 text = _format_full_text(title, year, paper_id, parsed["sections"])
                 return text, "FULL_TEXT"
 
+    # ── Tier 2.5: arXiv PDF (direct) ─────────────────────────────────────
+    if arxiv_id:
+        pdf_url = f"https://arxiv.org/pdf/{arxiv_id}"
+        if VERBOSE:
+            print(f"    📄 Trying arXiv PDF: {pdf_url}...")
+        pdf_bytes = fetch_pdf_bytes(pdf_url)
+        if pdf_bytes:
+            raw = extract_text_from_pdf_bytes(pdf_bytes)
+            if raw:
+                if VERBOSE:
+                    print(f"    ✅ arXiv PDF extracted ({len(raw):,} chars)")
+                return _format_pdf_text(title, year, paper_id, raw, "PDF_ARXIV"), "PDF_ARXIV"
+
     # ── Tier 3: S2 openAccessPdf ──────────────────────────────────────────
     if VERBOSE:
         print(f"    📄 Trying S2 openAccessPdf...")

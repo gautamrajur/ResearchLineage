@@ -4,7 +4,8 @@ lxml
 google-genai
 google-cloud-storage
 gcloud
-airflow
+apache-airflow
 pandas
 numpy
 pymupdf
+streamlit

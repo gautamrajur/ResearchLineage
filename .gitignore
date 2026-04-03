@@ -19,3 +19,9 @@ __pycache__/
 *.pyo
 *.pyd
 *.jsonl
+CLAUDE.md
+.env
+config.json
+config_patched.json
+researchlineage-sa-key.json
+venv/

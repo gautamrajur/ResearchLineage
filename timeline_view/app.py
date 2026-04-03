@@ -294,9 +294,10 @@ if st.session_state.running:
         logs = st.session_state.logs
         if logs:
             st.markdown(
-                "<div class='log-box'>" +
+                "<div class='log-box' id='log-box'>" +
                 "<br>".join(f"<span style='color:#4ade80'>▸</span> {l}" for l in logs[-30:]) +
-                "</div>",
+                "</div>"
+                "<script>var el=document.getElementById('log-box');if(el)el.scrollTop=el.scrollHeight;</script>",
                 unsafe_allow_html=True
             )
 

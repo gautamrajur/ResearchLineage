@@ -127,6 +127,7 @@ REFERENCE_FIELDS = (
     "citedPaper.paperId,citedPaper.title,"
     "citedPaper.year,citedPaper.citationCount,"
     "citedPaper.externalIds,"
+    "citedPaper.abstract,citedPaper.openAccessPdf,"
     "isInfluential,intents,contexts"
 )
 
@@ -213,13 +214,30 @@ def filter_methodology_references(references):
         elif is_influential:
             influential_refs.append(entry)
 
-    # Fallback: add influential if not enough methodology
-    # (same pattern as tree view)
+    # Fallback 1: add influential if not enough methodology
     if len(methodology_refs) < MAX_CANDIDATES:
         methodology_ids = {e["paper"]["paperId"] for e in methodology_refs}
         for entry in influential_refs:
             if entry["paper"]["paperId"] not in methodology_ids:
                 methodology_refs.append(entry)
+
+    # Fallback 2: if still empty (older papers with sparse S2 annotations),
+    # take top cited references regardless of intent
+    if not methodology_refs:
+        if VERBOSE:
+            print(f"  ⚠️  No methodology/influential refs found. "
+                  f"Falling back to top cited references.")
+        for ref in references:
+            cited = ref.get("citedPaper") or {}
+            if not cited.get("paperId") or not cited.get("title"):
+                continue
+            methodology_refs.append({
+                "paper": cited,
+                "is_influential": False,
+                "has_methodology": False,
+                "intents": ref.get("intents") or [],
+                "contexts": ref.get("contexts") or []
+            })
 
     candidates = methodology_refs
 
