@@ -13,7 +13,7 @@ import re
 from config import (
     S2_BASE_URL, S2_API_KEY, S2_REQUEST_TIMEOUT,
     S2_MAX_RETRIES, S2_RETRY_BASE_WAIT,
-    MAX_CANDIDATES, VERBOSE
+    MAX_CANDIDATES, VERBOSE, log_event
 )
 from config import logger
 print = logger.info
@@ -52,7 +52,9 @@ def api_call(endpoint, params=None):
                 return response.json()
 
             elif response.status_code == 429:
-                wait = S2_RETRY_BASE_WAIT * (attempt + 1)
+                wait = min(S2_RETRY_BASE_WAIT * (2 ** attempt), 60)
+                log_event("S2_RATE_LIMITED", endpoint=endpoint,
+                          attempt=attempt + 1, wait_sec=wait)
                 if VERBOSE:
                     print(f"  ⚠️  Rate limited! Waiting {wait}s... "
                           f"(Attempt {attempt + 1}/{S2_MAX_RETRIES})")
@@ -60,21 +62,30 @@ def api_call(endpoint, params=None):
                 continue
 
             elif response.status_code == 404:
+                log_event("S2_NOT_FOUND", endpoint=endpoint)
                 if VERBOSE:
                     print(f"  ❌ Paper not found: {endpoint}")
                 return None
 
             else:
+                log_event("S2_ERROR", endpoint=endpoint,
+                          status=response.status_code)
                 if VERBOSE:
                     print(f"  ❌ Error {response.status_code}: "
                           f"{response.text[:200]}")
                 return None
 
         except Exception as e:
+            wait = min(S2_RETRY_BASE_WAIT * (2 ** attempt), 60)
+            log_event("S2_TIMEOUT", endpoint=endpoint,
+                      attempt=attempt + 1, wait_sec=wait)
             if VERBOSE:
-                print(f"  ❌ Request failed: {str(e)}")
-            return None
+                print(f"  ⚠️  Request timed out, retrying in {wait}s... "
+                      f"(Attempt {attempt + 1}/{S2_MAX_RETRIES})")
+            time.sleep(wait)
+            continue
 
+    log_event("S2_FAILED", endpoint=endpoint, attempts=S2_MAX_RETRIES)
     if VERBOSE:
         print(f"  ❌ Failed after {S2_MAX_RETRIES} retries")
     return None

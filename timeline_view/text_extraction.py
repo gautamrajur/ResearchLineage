@@ -260,7 +260,62 @@ def try_unpaywall(paper_data):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# TIER 5 — Abstract + TLDR fallback (formatting helpers)
+# TIER 5 — OpenAlex (title search → OA PDF)
+# ══════════════════════════════════════════════════════════════════════════════
+
+def try_openalex(paper_data):
+    """
+    Tier 5: Search OpenAlex by title to find an OA PDF URL.
+    No API key required. Used when DOI is missing or Unpaywall found nothing.
+    Returns extracted text or None.
+    """
+    title = paper_data.get("title", "")
+    year  = paper_data.get("year")
+    if not title:
+        return None
+
+    if VERBOSE:
+        print(f"    🔍 Trying OpenAlex title search for: {title[:50]}...")
+
+    try:
+        resp = requests.get(
+            "https://api.openalex.org/works",
+            params={
+                "filter": f"title.search:{title}",
+                "select": "title,publication_year,open_access",
+                "per-page": 5,
+                "mailto": UNPAYWALL_EMAIL,
+            },
+            timeout=10,
+        )
+        if resp.status_code != 200:
+            return None
+
+        for result in resp.json().get("results", []):
+            result_year = result.get("publication_year")
+            if year and result_year and abs(int(result_year) - int(year)) > 1:
+                continue
+            oa_url = (result.get("open_access") or {}).get("oa_url")
+            if not oa_url:
+                continue
+            if VERBOSE:
+                print(f"    📎 OpenAlex OA URL: {oa_url[:80]}...")
+            pdf_bytes = fetch_pdf_bytes(oa_url)
+            if pdf_bytes:
+                text = extract_text_from_pdf_bytes(pdf_bytes)
+                if text:
+                    if VERBOSE:
+                        print(f"    ✅ OpenAlex PDF extracted ({len(text):,} chars)")
+                    return text
+    except Exception as e:
+        if VERBOSE:
+            print(f"    ❌ OpenAlex error: {e}")
+
+    return None
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TIER 6 — Abstract + TLDR fallback (formatting helpers)
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _format_full_text(title, year, paper_id, sections):
@@ -317,17 +372,6 @@ def extract_paper_text(paper_data):
     year     = paper_data.get("year", "Unknown")
     paper_id = paper_data.get("paperId", "Unknown")
 
-    # Ensure we have full paper details (abstract, externalIds, openAccessPdf)
-    if not paper_data.get("externalIds") or not paper_data.get("abstract"):
-        if VERBOSE:
-            print(f"    📡 Fetching full details for {title[:50]}...")
-        from semantic_scholar import get_paper
-        full = get_paper(paper_id)
-        if full:
-            paper_data = full
-            title    = paper_data.get("title", title)
-            year     = paper_data.get("year", year)
-
     # ── Tier 1 & 2: arXiv HTML ────────────────────────────────────────────
     arxiv_id = get_arxiv_id(paper_data)
     if arxiv_id:
@@ -368,7 +412,13 @@ def extract_paper_text(paper_data):
         if raw:
             return _format_pdf_text(title, year, paper_id, raw, "PDF_UNPAYWALL"), "PDF_UNPAYWALL"
 
-    # ── Tier 5: Abstract + TLDR ───────────────────────────────────────────
+    # ── Tier 5: OpenAlex ──────────────────────────────────────────────────
+    if UNPAYWALL_EMAIL:
+        raw = try_openalex(paper_data)
+        if raw:
+            return _format_pdf_text(title, year, paper_id, raw, "PDF_OPENALEX"), "PDF_OPENALEX"
+
+    # ── Tier 6: Abstract + TLDR ───────────────────────────────────────────
     if VERBOSE:
         print(f"    📋 Falling back to abstract only for: {title[:50]}")
     return _format_abstract_only(title, year, paper_id, paper_data), "ABSTRACT_ONLY"

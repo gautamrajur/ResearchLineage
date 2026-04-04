@@ -44,7 +44,7 @@ def main():
     print(f"   Training examples so far: {count_training_examples()}")
     print()
 
-    timeline = build_timeline(paper_id, max_depth=depth)
+    timeline, _ = build_timeline(paper_id, max_depth=depth)
 
     if not timeline:
         print("\n❌ Pipeline produced no results.")

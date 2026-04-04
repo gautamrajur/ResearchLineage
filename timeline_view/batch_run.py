@@ -91,7 +91,7 @@ def run_one_seed(seed: Dict[str, Any], depth: int) -> Optional[str]:
     if not seed_id:
         return None
 
-    timeline = build_timeline(seed_id, max_depth=depth)
+    timeline, _ = build_timeline(seed_id, max_depth=depth)
     if not timeline:
         return None
 

@@ -21,7 +21,7 @@ Stops when:
 
 import time
 
-from config import MAX_DEPTH, VERBOSE
+from config import MAX_DEPTH, VERBOSE, log_event
 from semantic_scholar import (
     get_paper, get_references,
     filter_methodology_references, get_arxiv_id
@@ -32,6 +32,7 @@ from gemini_analysis import (
     MAIN_PROMPT, FOUNDATIONAL_PROMPT
 )
 from data_export import save_training_example, save_timeline_json
+import cache as _cache
 from config import logger
 print = logger.info
 
@@ -67,25 +68,39 @@ def build_timeline(paper_id, max_depth=MAX_DEPTH):
     lineage_chain = []  # Track full chain of paper IDs
 
     _print_header("BUILDING RESEARCH LINEAGE TIMELINE")
+    log_event("PIPELINE_START", paper_id=paper_id, max_depth=max_depth)
+
+    # ── Full chain cache check ────────────────────────────────────────────────
+    cached_steps, from_cache = _cache.get_cached_timeline(paper_id, max_depth)
+    if from_cache:
+        if VERBOSE:
+            print(f"  ⚡ Full timeline served from cache ({len(cached_steps)} papers)")
+        log_event("PIPELINE_CACHE_HIT", paper_id=paper_id, papers=len(cached_steps))
+        return cached_steps, True
 
     for depth in range(max_depth):
         _print_step_header(depth, max_depth)
 
-        # --- Cycle detection ---
+        # --- 1. Fetch target paper ---
+        if VERBOSE:
+            print(f"\n  1️⃣  Fetching paper details...")
+        target_paper = _cache.get_paper(current_paper_id) or get_paper(current_paper_id)
+        if not target_paper:
+            if VERBOSE:
+                print(f"  ❌ Could not fetch paper. Stopping.")
+            break
+        # Normalise current_paper_id to S2 paperId so cache lookups and
+        # cycle detection always use the canonical ID, not an arXiv string.
+        current_paper_id = target_paper["paperId"]
+
+        # --- Cycle detection (after ID normalisation) ---
         if current_paper_id in visited:
             if VERBOSE:
                 print(f"  ⚠️  Already visited {current_paper_id}. Stopping.")
             break
         visited.add(current_paper_id)
 
-        # --- 1. Fetch target paper ---
-        if VERBOSE:
-            print(f"\n  1️⃣  Fetching paper details...")
-        target_paper = get_paper(current_paper_id)
-        if not target_paper:
-            if VERBOSE:
-                print(f"  ❌ Could not fetch paper. Stopping.")
-            break
+        _cache.save_paper(target_paper)
 
         # Track original target paper info for domain consistency
         if original_target_info is None:
@@ -98,6 +113,37 @@ def build_timeline(paper_id, max_depth=MAX_DEPTH):
                 "domain": domain_hint
             }
 
+        # --- Per-step analysis cache check ---
+        # If Gemini has already analysed this paper, skip text extraction,
+        # references fetch, and the Gemini call entirely.
+        # Use target_paper["paperId"] (resolved S2 ID) not current_paper_id
+        # which may still be an arXiv ID on the first iteration.
+        cached_analysis = _cache.get_cached_analysis(target_paper["paperId"])
+        if cached_analysis:
+            if VERBOSE:
+                print(f"  ⚡ Analysis cached for this paper — skipping API + Gemini")
+            log_event("STEP_CACHE_HIT", depth=depth, paper_id=target_paper["paperId"],
+                      title=repr(target_paper.get("title","")[:60]))
+            pred_id   = cached_analysis.get("selected_predecessor_id")
+            pred_paper = _cache.get_paper(pred_id) if pred_id else None
+            is_found  = pred_paper is None
+            lineage_chain.append(target_paper.get("paperId"))
+            step = {
+                "depth":              depth,
+                "target_paper":       target_paper,
+                "target_text":        "",
+                "target_source_type": target_paper.get("_source_type") or "FULL_TEXT",
+                "predecessor_paper":  pred_paper,
+                "candidates_considered": 0,
+                "analysis":           cached_analysis,
+                "is_foundational":    is_found,
+            }
+            timeline_steps.append(step)
+            if is_found or not pred_id:
+                break
+            current_paper_id = pred_id
+            continue
+
         # --- 2. Extract target paper text ---
         if VERBOSE:
             print(f"\n  2️⃣  Extracting target paper text...")
@@ -105,11 +151,16 @@ def build_timeline(paper_id, max_depth=MAX_DEPTH):
         if VERBOSE:
             print(f"    Source: {target_source} "
                   f"(~{len(target_text) // 4:,} tokens)")
+        log_event("TEXT_EXTRACTED", paper_id=target_paper["paperId"],
+                  source=target_source, chars=len(target_text))
+        _cache.save_paper(target_paper, source_type=target_source)
 
         # --- 3. Fetch references ---
         if VERBOSE:
             print(f"\n  3️⃣  Fetching references...")
         references = get_references(current_paper_id)
+
+        _cache.save_references(current_paper_id, references or [])
 
         # --- 4. Filter methodology references ---
         if VERBOSE:
@@ -161,6 +212,12 @@ def build_timeline(paper_id, max_depth=MAX_DEPTH):
                 step["analysis"]["target_analysis"] = analysis.get("target_analysis", step["analysis"].get("target_analysis", {}))
                 timeline_steps.append(step)
             break
+
+        # Save Gemini analysis to cache (only when a valid predecessor was found)
+        log_event("STEP_COMPLETE", depth=depth, paper_id=target_paper["paperId"],
+                  predecessor_id=selected_id,
+                  title=repr(target_paper.get("title","")[:60]))
+        _cache.save_analysis(target_paper["paperId"], selected_id, False, analysis)
 
         predecessor_paper = _find_predecessor(selected_id, candidates)
 
@@ -243,8 +300,10 @@ def build_timeline(paper_id, max_depth=MAX_DEPTH):
                 timeline_steps.append(last_step)
 
     _print_summary(timeline_steps)
+    log_event("PIPELINE_COMPLETE", paper_id=paper_id,
+              total_papers=len(timeline_steps), from_cache=False)
 
-    return timeline_steps
+    return timeline_steps, False
 
 
 # ========================================
@@ -267,6 +326,9 @@ def _handle_foundational_paper(depth, paper, paper_text, source_type, lineage_ch
     if VERBOSE:
         bt = analysis.get("target_analysis", {}).get("breakthrough_level", "?")
         print(f"  ✅ Foundational paper analyzed (breakthrough: {bt})")
+
+    _cache.save_paper(paper, source_type=source_type)
+    _cache.save_analysis(paper["paperId"], None, True, analysis)
 
     # Add this paper to the chain
     if lineage_chain is not None:
@@ -481,7 +543,7 @@ if __name__ == "__main__":
     print("=" * 60)
 
     # Run the pipeline
-    timeline = build_timeline("1706.03762", max_depth=6)
+    timeline, _ = build_timeline("1706.03762", max_depth=6)
 
     # Display results
     display_timeline(timeline)

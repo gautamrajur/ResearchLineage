@@ -14,7 +14,7 @@ import time
 from config import (
     GEMINI_API_KEY, GEMINI_MODEL,
     GEMINI_TEMPERATURE, GEMINI_MAX_OUTPUT_TOKENS,
-    VERBOSE
+    VERBOSE, log_event
 )
 from prompts.prompts import MAIN_PROMPT, FOUNDATIONAL_PROMPT
 from config import logger
@@ -147,8 +147,30 @@ def call_gemini(prompt_text, max_retries=3):
             )
 
             if response and response.text:
-                if VERBOSE:
-                    print(f"  ✅ Gemini responded ({len(response.text)} chars)")
+                usage = response.usage_metadata
+                if usage:
+                    prompt_tokens   = getattr(usage, "prompt_token_count", 0) or 0
+                    output_tokens   = getattr(usage, "candidates_token_count", 0) or 0
+                    thinking_tokens = getattr(usage, "thoughts_token_count", 0) or 0
+                    total_tokens    = getattr(usage, "total_token_count", 0) or 0
+                    input_cost  = (min(prompt_tokens, 200_000) / 1_000_000) * 1.25 + \
+                                  (max(0, prompt_tokens - 200_000) / 1_000_000) * 2.50
+                    output_cost = (output_tokens / 1_000_000) * 10.00
+                    total_cost  = input_cost + output_cost
+                    log_event("GEMINI_CALL",
+                              model=GEMINI_MODEL,
+                              prompt_tokens=prompt_tokens,
+                              thinking_tokens=thinking_tokens,
+                              output_tokens=output_tokens,
+                              total_tokens=total_tokens,
+                              cost_usd=f"{total_cost:.4f}")
+                    if VERBOSE:
+                        print(f"  ✅ Gemini responded | "
+                              f"in: {prompt_tokens:,} | thinking: {thinking_tokens:,} | "
+                              f"out: {output_tokens:,} | cost: ${total_cost:.4f}")
+                else:
+                    if VERBOSE:
+                        print(f"  ✅ Gemini responded ({len(response.text)} chars)")
                 return response.text
             else:
                 if VERBOSE:

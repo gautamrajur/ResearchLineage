@@ -13,6 +13,9 @@ run_state.jsonl
 seeds.json
 lineage_training_data.jsonl
 
+# SQLite cache DB
+*.db
+
 # Python cache
 __pycache__/
 *.pyc
@@ -25,3 +28,5 @@ config.json
 config_patched.json
 researchlineage-sa-key.json
 venv/
+*.md
+*.db

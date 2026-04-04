@@ -58,7 +58,7 @@ st.markdown("""
 # ── Pipeline imports ──────────────────────────────────────────────────────────
 try:
     from pipeline import build_timeline
-    from data_export import save_timeline_json, count_training_examples
+    from data_export import save_timeline_json, count_training_examples, build_timeline_response
     from config import MAX_DEPTH, GEMINI_API_KEY, TIMELINE_OUTPUT_DIR
     PIPELINE_AVAILABLE = True
 except ImportError as e:
@@ -66,55 +66,6 @@ except ImportError as e:
     IMPORT_ERROR = str(e)
 
 BREAKTHROUGH_ICONS = {"revolutionary": "🔥", "major": "⚡", "moderate": "💡", "minor": "○"}
-
-
-# ── Secondary influence title enrichment ──────────────────────────────────────
-def enrich_secondary_influences(timeline_steps):
-    """
-    After pipeline finishes, batch-fetch titles for all secondary influence
-    paper IDs using S2. Updates steps in-place.
-    """
-    from semantic_scholar import api_call
-
-    # Collect all unique paper IDs from secondary influences
-    id_set = set()
-    for step in timeline_steps:
-        for inf in step["analysis"].get("secondary_influences", []):
-            if isinstance(inf, dict) and inf.get("paper_id") and not inf.get("title"):
-                id_set.add(inf["paper_id"])
-
-    if not id_set:
-        return
-
-    # Batch fetch from S2 (up to 500 per call)
-    id_list = list(id_set)
-    title_map = {}
-
-    for i in range(0, len(id_list), 500):
-        batch = id_list[i:i+500]
-        try:
-            resp = __import__("requests").post(
-                "https://api.semanticscholar.org/graph/v1/paper/batch",
-                json={"ids": batch},
-                params={"fields": "paperId,title,year"},
-                timeout=20
-            )
-            if resp.status_code == 200:
-                for paper in resp.json():
-                    if paper and paper.get("paperId"):
-                        title_map[paper["paperId"]] = {
-                            "title": paper.get("title", ""),
-                            "year":  paper.get("year", ""),
-                        }
-        except Exception:
-            pass
-
-    # Write titles back into steps in-place
-    for step in timeline_steps:
-        for inf in step["analysis"].get("secondary_influences", []):
-            if isinstance(inf, dict) and inf.get("paper_id") in title_map:
-                inf["title"] = title_map[inf["paper_id"]].get("title", "")
-                inf["year"]  = title_map[inf["paper_id"]].get("year", "")
 
 
 # ── Text file saving ──────────────────────────────────────────────────────────
@@ -182,6 +133,7 @@ for k, v in {
     "timeline": None, "running": False, "logs": [],
     "error": None, "paper_input": "",
     "save_folder": None, "save_manifest": None,
+    "from_cache": False,
 }.items():
     if k not in st.session_state:
         st.session_state[k] = v
@@ -208,10 +160,10 @@ def run_pipeline_thread(paper_id, depth, result_q, log_list):
         mod.print = cfg.logger.info
 
     try:
-        timeline = build_timeline(paper_id, max_depth=depth)
-        result_q.put(("success", timeline))
+        timeline, from_cache = build_timeline(paper_id, max_depth=depth)
+        result_q.put(("success", timeline, from_cache))
     except Exception as e:
-        result_q.put(("error", str(e)))
+        result_q.put(("error", str(e), False))
     finally:
         cfg.logger = orig
 
@@ -265,6 +217,9 @@ if run_btn and paper_input.strip() and not st.session_state.running:
         "error": None,
         "save_folder": None,
         "save_manifest": None,
+        "from_cache": False,
+        "start_time": time.time(),
+        "elapsed_time": None,
     })
     q = queue.Queue()
     t = threading.Thread(
@@ -306,18 +261,23 @@ if st.session_state.running:
         st.session_state.running = False
         prog_ph.empty(); log_ph.empty()
         if q and not q.empty():
-            status, result = q.get()
+            status, result, from_cache = q.get()
             if status == "success" and result:
-                st.session_state.timeline = result
-                # Enrich secondary influence titles
-                with st.spinner("Enriching secondary influences..."):
-                    enrich_secondary_influences(result)
-                # Save timeline JSON
-                save_timeline_json(result)
-                # Save paper text files
-                folder, manifest = save_paper_texts(result)
-                st.session_state.save_folder = str(folder) if folder else None
-                st.session_state.save_manifest = manifest
+                start = st.session_state.get("start_time")
+                elapsed = (time.time() - start) if start else None
+                st.session_state.elapsed_time = elapsed
+                try:
+                    # Build canonical API response dict (enriches secondary influences internally)
+                    response = build_timeline_response(result, from_cache, elapsed)
+                    st.session_state.timeline = response
+                    st.session_state.from_cache = from_cache
+                    # Save timeline JSON + paper text files
+                    save_timeline_json(result)
+                    folder, manifest = save_paper_texts(result)
+                    st.session_state.save_folder = str(folder) if folder else None
+                    st.session_state.save_manifest = manifest
+                except Exception as _post_err:
+                    st.session_state.error = f"Post-processing error: {_post_err}"
             else:
                 st.session_state.error = result if status == "error" else "Pipeline returned no results."
         st.rerun()
@@ -327,49 +287,36 @@ if st.session_state.running:
 
 
 # ── Error ─────────────────────────────────────────────────────────────────────
-if st.session_state.error:
+if st.session_state.error and not st.session_state.running:
     st.error(f"❌ {st.session_state.error}")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
 # TIMELINE VIEW
 # ══════════════════════════════════════════════════════════════════════════════
-if st.session_state.timeline:
-    steps = st.session_state.timeline
+if st.session_state.timeline and not st.session_state.running:
+    resp  = st.session_state.timeline   # API response dict
+    chain = resp["chain"]               # oldest → newest
 
-    # oldest → newest
-    chain = []
-    for step in reversed(steps):
-        paper = step["target_paper"]
-        analysis = step["analysis"]
-        ta = analysis.get("target_analysis", {})
-        chain.append({
-            "paper":               paper,
-            "analysis":            ta,
-            "comparison":          analysis.get("comparison"),
-            "secondary_influences": analysis.get("secondary_influences", []),
-            "source_type":         step["target_source_type"],
-            "is_foundational":     step["is_foundational"],
-        })
-
-    seed = steps[0]["target_paper"]
-    first_year = chain[0]["paper"].get("year", "?")
-    last_year  = chain[-1]["paper"].get("year", "?")
-    span = (last_year - first_year) if isinstance(first_year, int) and isinstance(last_year, int) else "?"
+    # ── Cache badge ──
+    if resp.get("from_cache"):
+        st.info("⚡ Results served from cache")
 
     # ── Summary metrics ──
+    yr    = resp.get("year_range", {})
+    span  = yr.get("span")
     m1, m2, m3, m4, m5 = st.columns(5)
-    m1.metric("Seed Paper",      (seed.get("title","?")[:28] + "..."))
-    m2.metric("Papers in Chain", len(chain))
+    m1.metric("Seed Paper",      (resp["seed_paper"].get("title","?")[:28] + "..."))
+    m2.metric("Papers in Chain", resp["total_papers"])
     m3.metric("Time Span",       f"{span} yrs" if isinstance(span, int) else "—")
-    m4.metric("Year Range",      f"{first_year} → {last_year}")
-    elapsed = st.session_state.get("elapsed_time")
+    m4.metric("Year Range",      f"{yr.get('start','?')} → {yr.get('end','?')}")
+    elapsed = resp.get("elapsed_time")
     m5.metric("⏱ Total Time",   f"{elapsed:.1f}s" if elapsed else "—")
 
     # ── Saved files info ──
     if st.session_state.save_folder and st.session_state.save_manifest:
         manifest = st.session_state.save_manifest
-        full_count = sum(1 for p in manifest if p["source_type"] == "FULL_TEXT")
+        full_count = sum(1 for p in manifest if p["source_type"] != "ABSTRACT_ONLY")
         abs_count  = sum(1 for p in manifest if p["source_type"] == "ABSTRACT_ONLY")
         st.success(
             f"💾 Paper texts saved → `{st.session_state.save_folder}`  "
@@ -377,7 +324,7 @@ if st.session_state.timeline:
         )
         with st.expander("📂 Saved files", expanded=False):
             for p in manifest:
-                src_icon = "📄" if p["source_type"] == "FULL_TEXT" else "📋"
+                src_icon = "📋" if p["source_type"] == "ABSTRACT_ONLY" else "📄"
                 found_tag = " 🏛" if p["is_foundational"] else ""
                 st.markdown(
                     f"`{p['file']}`  {src_icon} **{p['source_type']}**"
@@ -400,18 +347,18 @@ if st.session_state.timeline:
             paper   = entry["paper"]
             ta      = entry["analysis"]
             comp    = entry["comparison"]
-            bt      = ta.get("breakthrough_level", "minor").lower()
+            bt      = (ta.get("breakthrough_level") or "minor").lower()
             icon    = BREAKTHROUGH_ICONS.get(bt, "○")
             source  = entry["source_type"]
             is_f    = entry["is_foundational"]
 
             pill = (
                 "<span class='pill-foundation'>🏛 Foundation</span>" if is_f
-                else "<span class='pill-full'>● Full Text</span>" if source == "FULL_TEXT"
-                else "<span class='pill-abstract'>◐ Abstract Only</span>"
+                else "<span class='pill-abstract'>◐ Abstract Only</span>" if source == "ABSTRACT_ONLY"
+                else "<span class='pill-full'>● Full Text</span>"
             )
             badge = f"<span class='badge-{bt}'>{icon} {bt.upper()}</span>"
-            cites = f"{paper.get('citationCount',0):,} citations" if paper.get("citationCount") else ""
+            cites = f"{paper.get('citation_count',0):,} citations" if paper.get("citation_count") else ""
 
             # Card HTML
             st.markdown(f"""
@@ -494,28 +441,13 @@ if st.session_state.timeline:
     # Raw JSON tab
     # ════════════════════════
     with tab_raw:
-        raw = {
-            "target_paper": {"paperId": seed.get("paperId"), "title": seed.get("title"), "year": seed.get("year")},
-            "total_papers": len(chain),
-            "chain": [
-                {
-                    "position": i + 1,
-                    "paper": {"paperId": e["paper"].get("paperId"), "title": e["paper"].get("title"), "year": e["paper"].get("year")},
-                    "analysis": e["analysis"],
-                    "comparison_with_next": e["comparison"],
-                    "source_type": e["source_type"],
-                    "is_foundational": e["is_foundational"],
-                }
-                for i, e in enumerate(chain)
-            ]
-        }
         st.download_button(
             "⬇️ Download JSON",
-            data=json.dumps(raw, indent=2),
-            file_name=f"lineage_{seed.get('paperId','output')}.json",
+            data=json.dumps(resp, indent=2),
+            file_name=f"lineage_{resp['seed_paper'].get('paper_id','output')}.json",
             mime="application/json",
         )
-        st.json(raw, expanded=False)
+        st.json(resp, expanded=False)
 
 
 # ── Empty state ───────────────────────────────────────────────────────────────
