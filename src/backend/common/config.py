@@ -8,6 +8,11 @@ and evolution_view.
 import os
 import logging
 from datetime import datetime
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).parents[4] / ".env")
 
 # ---------------------------------------------------------------------------
 # Database (PostgreSQL via Cloud SQL Proxy)
@@ -27,7 +32,7 @@ DATABASE_URL = os.environ.get(
 # ---------------------------------------------------------------------------
 
 S2_BASE_URL       = "https://api.semanticscholar.org/graph/v1"
-S2_API_KEY        = os.environ.get("S2_API_KEY", None)
+S2_API_KEY        = os.environ.get("S2_API_KEY") or None
 S2_REQUEST_TIMEOUT = 30
 S2_MAX_RETRIES    = 30      # constant 2 s wait on 429 → 60 s total budget
 S2_RETRY_WAIT     = 2       # seconds (constant, not exponential)
@@ -68,7 +73,7 @@ S2_CITATION_FIELDS = (
 # Gemini (evolution_view only)
 # ---------------------------------------------------------------------------
 
-GEMINI_API_KEY          = os.environ.get("GEMINI_API_KEY", "AIzaSyCHT-8JRVclX7V32cAWI7cjaH6d826-QOM")
+GEMINI_API_KEY          = os.environ.get("GEMINI_API_KEY")
 GEMINI_MODEL            = "gemini-2.5-pro"
 GEMINI_TEMPERATURE      = 0.2
 GEMINI_MAX_OUTPUT_TOKENS = 16000
