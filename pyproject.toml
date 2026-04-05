@@ -73,6 +73,7 @@ exclude = [
     "scripts/",
     "dags/",
     "tests/",
+    "src/backend/",  # backend uses dynamic dicts; not typed yet
 ]
 
 [[tool.mypy.overrides]]

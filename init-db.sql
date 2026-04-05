@@ -1,2 +1,0 @@
--- DROP DATABASE IF EXISTS airflow;
-CREATE DATABASE airflow;
