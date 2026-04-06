@@ -168,8 +168,6 @@ def build_timeline(paper_id: str, max_depth: int = MAX_DEPTH,
                 timeline_steps.append(step)
             break
 
-        cache.save_analysis(target_paper["paperId"], selected_id, False, analysis)
-
         predecessor_paper = next(
             (c["paper"] for c in candidates if c["paper"].get("paperId") == selected_id),
             candidates[0]["paper"] if candidates else None,
@@ -177,8 +175,12 @@ def build_timeline(paper_id: str, max_depth: int = MAX_DEPTH,
         if not predecessor_paper:
             break
 
+        # Use the actual resolved paper ID (fallback may differ from Gemini's selected_id)
+        actual_pred_id = predecessor_paper["paperId"]
+        cache.save_analysis(target_paper["paperId"], actual_pred_id, False, analysis)
+
         log_event("STEP_COMPLETE", depth=depth, paper_id=target_paper["paperId"],
-                  predecessor_id=selected_id)
+                  predecessor_id=actual_pred_id)
 
         lineage_chain.append(target_paper["paperId"])
         step = {

@@ -89,3 +89,5 @@ cloud-sql-proxy.exe
 
 #Qwen
 Qwen_70B.py
+*.zip
+/timeline_view

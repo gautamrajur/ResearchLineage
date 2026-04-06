@@ -25,8 +25,10 @@ import json
 import psycopg2
 import psycopg2.extras
 import os
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
+from psycopg2.pool import ThreadedConnectionPool
 
 from .config import DATABASE_URL
 
@@ -157,33 +159,73 @@ def _now() -> str:
 
 _schema_applied: set = set()  # tracks DSNs that have already run DDL this process
 
+# ---------------------------------------------------------------------------
+# Module-level connection pool (one pool per DSN, shared across all Cache
+# instances in this process)
+# ---------------------------------------------------------------------------
+
+_pools: Dict[str, ThreadedConnectionPool] = {}
+
+
+def _get_pool(dsn: str) -> ThreadedConnectionPool:
+    """Return the existing pool for this DSN, or create one."""
+    if dsn not in _pools:
+        _pools[dsn] = ThreadedConnectionPool(
+            minconn=2,
+            maxconn=20,
+            dsn=dsn,
+        )
+    return _pools[dsn]
+
 
 class Cache:
     """
     PostgreSQL-backed cache shared by both views.
 
-    Instantiate once per process/worker:
+    Uses a module-level ThreadedConnectionPool so connections are reused
+    across requests instead of being opened and held per-request.
+
+    Instantiate once per request:
         cache = Cache()          # uses DATABASE_URL from config
         cache = Cache(dsn="...") # override connection string
     """
 
     def __init__(self, dsn: str = DATABASE_URL):
-        self._conn = psycopg2.connect(dsn)
-        self._conn.autocommit = False
+        self._pool = _get_pool(dsn)
+        self._dsn  = dsn
         if dsn not in _schema_applied:
-            self._apply_schema()
+            with self._get_conn() as conn:
+                self._apply_schema(conn)
             _schema_applied.add(dsn)
 
-    def _cur(self):
-        return self._conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    @contextmanager
+    def _get_conn(self):
+        """
+        Borrow a connection from the pool, yield it, then return it.
 
-    def _apply_schema(self) -> None:
-        with self._cur() as cur:
+        On exception: rolls back before returning so the connection is clean.
+        On normal exit: caller is responsible for commit() inside the block.
+        After exit (both paths): rollback() clears any open idle transaction
+        left by read-only queries, then the connection is returned to the pool.
+        """
+        conn = self._pool.getconn()
+        try:
+            yield conn
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            # Safe after commit (no-op), and cleans up open read transactions.
+            conn.rollback()
+            self._pool.putconn(conn)
+
+    def _apply_schema(self, conn) -> None:
+        with conn.cursor() as cur:
             for stmt in SCHEMA.split(";"):
                 stmt = stmt.strip()
                 if stmt:
                     cur.execute(stmt)
-        self._conn.commit()
+        conn.commit()
 
     # ------------------------------------------------------------------
     # Papers
@@ -194,38 +236,39 @@ class Cache:
         Look up by S2 paper_id or ARXIV: prefix.
         Returns dict shaped like S2 API response, plus fetch-status fields.
         """
-        with self._cur() as cur:
-            cur.execute(
-                "SELECT paper_id, arxiv_id, title, year, abstract, "
-                "       citation_count, influential_citation_count, "
-                "       field_of_study, source_type "
-                "FROM papers WHERE paper_id = %s",
-                (paper_id,),
-            )
-            row = cur.fetchone()
-
-            if row is None and paper_id.upper().startswith("ARXIV:"):
-                arxiv_bare = paper_id.split(":", 1)[1]
+        with self._get_conn() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
                 cur.execute(
                     "SELECT paper_id, arxiv_id, title, year, abstract, "
                     "       citation_count, influential_citation_count, "
                     "       field_of_study, source_type "
-                    "FROM papers WHERE arxiv_id = %s",
-                    (arxiv_bare,),
+                    "FROM papers WHERE paper_id = %s",
+                    (paper_id,),
                 )
                 row = cur.fetchone()
 
-            if row is None:
-                return None
+                if row is None and paper_id.upper().startswith("ARXIV:"):
+                    arxiv_bare = paper_id.split(":", 1)[1]
+                    cur.execute(
+                        "SELECT paper_id, arxiv_id, title, year, abstract, "
+                        "       citation_count, influential_citation_count, "
+                        "       field_of_study, source_type "
+                        "FROM papers WHERE arxiv_id = %s",
+                        (arxiv_bare,),
+                    )
+                    row = cur.fetchone()
 
-            s2_id = row["paper_id"]
+                if row is None:
+                    return None
 
-            cur.execute(
-                "SELECT result_count, fetched_at FROM fetch_log "
-                "WHERE paper_id = %s AND fetch_type = 'references'",
-                (s2_id,),
-            )
-            ref_log = cur.fetchone()
+                s2_id = row["paper_id"]
+
+                cur.execute(
+                    "SELECT result_count, fetched_at FROM fetch_log "
+                    "WHERE paper_id = %s AND fetch_type = 'references'",
+                    (s2_id,),
+                )
+                ref_log = cur.fetchone()
 
         fields = row["field_of_study"]
         return {
@@ -260,76 +303,79 @@ class Cache:
         field  = fields[0] if fields else None
         now    = _now()
 
-        with self._cur() as cur:
-            cur.execute(
-                "INSERT INTO papers "
-                "(paper_id, arxiv_id, title, year, abstract, citation_count, "
-                " influential_citation_count, field_of_study, fetched_at) "
-                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) "
-                "ON CONFLICT DO NOTHING",
-                (
-                    s2_id, arxiv_id, paper.get("title"), paper.get("year"),
-                    paper.get("abstract"),
-                    paper.get("citationCount"), paper.get("influentialCitationCount"),
-                    field, now,
-                ),
-            )
-            if arxiv_id:
+        with self._get_conn() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
                 cur.execute(
-                    "UPDATE papers SET arxiv_id = %s "
-                    "WHERE paper_id = %s AND arxiv_id IS NULL",
-                    (arxiv_id, s2_id),
+                    "INSERT INTO papers "
+                    "(paper_id, arxiv_id, title, year, abstract, citation_count, "
+                    " influential_citation_count, field_of_study, fetched_at) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) "
+                    "ON CONFLICT DO NOTHING",
+                    (
+                        s2_id, arxiv_id, paper.get("title"), paper.get("year"),
+                        paper.get("abstract"),
+                        paper.get("citationCount"), paper.get("influentialCitationCount"),
+                        field, now,
+                    ),
                 )
-            if source_type:
-                cur.execute(
-                    "UPDATE papers SET source_type = %s WHERE paper_id = %s",
-                    (source_type, s2_id),
-                )
-        self._conn.commit()
+                if arxiv_id:
+                    cur.execute(
+                        "UPDATE papers SET arxiv_id = %s "
+                        "WHERE paper_id = %s AND arxiv_id IS NULL",
+                        (arxiv_id, s2_id),
+                    )
+                if source_type:
+                    cur.execute(
+                        "UPDATE papers SET source_type = %s WHERE paper_id = %s",
+                        (source_type, s2_id),
+                    )
+            conn.commit()
 
     # ------------------------------------------------------------------
     # References (ancestors)
     # ------------------------------------------------------------------
 
     def has_references(self, paper_id: str) -> bool:
-        with self._cur() as cur:
-            cur.execute(
-                "SELECT COUNT(*) AS cnt FROM fetch_log "
-                "WHERE paper_id = %s AND fetch_type = 'references'",
-                (paper_id,),
-            )
-            return cur.fetchone()["cnt"] > 0
+        with self._get_conn() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute(
+                    "SELECT COUNT(*) AS cnt FROM fetch_log "
+                    "WHERE paper_id = %s AND fetch_type = 'references'",
+                    (paper_id,),
+                )
+                return cur.fetchone()["cnt"] > 0
 
     def get_references(self, paper_id: str, max_children: int) -> List[Dict]:
         """
         Return filtered + sorted references replicating cold-run selection.
         Two-step fallback: methodology first, then influential.
         """
-        with self._cur() as cur:
-            cur.execute(
-                'SELECT r.cited_paper_id, r.is_influential, r.intents, '
-                '       r.cited_citation_count, p.title, p.year '
-                'FROM   "references" r '
-                'JOIN   papers p ON p.paper_id = r.cited_paper_id '
-                "WHERE  r.paper_id = %s AND r.intents LIKE '%%methodology%%'",
-                (paper_id,),
-            )
-            methodology = cur.fetchall()
-
-            if len(methodology) < max_children:
-                seen = {r["cited_paper_id"] for r in methodology}
+        with self._get_conn() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
                 cur.execute(
                     'SELECT r.cited_paper_id, r.is_influential, r.intents, '
                     '       r.cited_citation_count, p.title, p.year '
                     'FROM   "references" r '
                     'JOIN   papers p ON p.paper_id = r.cited_paper_id '
-                    'WHERE  r.paper_id = %s AND r.is_influential = 1',
+                    "WHERE  r.paper_id = %s AND r.intents LIKE '%%methodology%%'",
                     (paper_id,),
                 )
-                for row in cur.fetchall():
-                    if row["cited_paper_id"] not in seen:
-                        methodology.append(row)
-                        seen.add(row["cited_paper_id"])
+                methodology = cur.fetchall()
+
+                if len(methodology) < max_children:
+                    seen = {r["cited_paper_id"] for r in methodology}
+                    cur.execute(
+                        'SELECT r.cited_paper_id, r.is_influential, r.intents, '
+                        '       r.cited_citation_count, p.title, p.year '
+                        'FROM   "references" r '
+                        'JOIN   papers p ON p.paper_id = r.cited_paper_id '
+                        'WHERE  r.paper_id = %s AND r.is_influential = 1',
+                        (paper_id,),
+                    )
+                    for row in cur.fetchall():
+                        if row["cited_paper_id"] not in seen:
+                            methodology.append(row)
+                            seen.add(row["cited_paper_id"])
 
         top = sorted(
             methodology,
@@ -374,69 +420,58 @@ class Cache:
             ))
 
         saved = len(ref_rows)
-        with self._cur() as cur:
-            if paper_rows:
-                execute_values(
-                    cur,
-                    "INSERT INTO papers "
-                    "(paper_id, title, year, citation_count, fetched_at) "
-                    "VALUES %s ON CONFLICT DO NOTHING",
-                    paper_rows,
-                    page_size=500,
+        with self._get_conn() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                if paper_rows:
+                    execute_values(
+                        cur,
+                        "INSERT INTO papers "
+                        "(paper_id, title, year, citation_count, fetched_at) "
+                        "VALUES %s ON CONFLICT DO NOTHING",
+                        paper_rows,
+                        page_size=500,
+                    )
+                if ref_rows:
+                    execute_values(
+                        cur,
+                        'INSERT INTO "references" '
+                        "(paper_id, cited_paper_id, is_influential, intents, "
+                        " cited_citation_count, fetched_at) "
+                        "VALUES %s ON CONFLICT DO NOTHING",
+                        ref_rows,
+                        page_size=500,
+                    )
+                cur.execute(
+                    "INSERT INTO fetch_log "
+                    "(paper_id, fetch_type, year_start, year_end, result_count, fetched_at) "
+                    "VALUES (%s, 'references', 0, 0, %s, %s) "
+                    "ON CONFLICT (paper_id, fetch_type, year_start, year_end) "
+                    "DO UPDATE SET result_count = EXCLUDED.result_count, "
+                    "              fetched_at   = EXCLUDED.fetched_at",
+                    (paper_id, saved, now),
                 )
-            if ref_rows:
-                execute_values(
-                    cur,
-                    'INSERT INTO "references" '
-                    "(paper_id, cited_paper_id, is_influential, intents, "
-                    " cited_citation_count, fetched_at) "
-                    "VALUES %s ON CONFLICT DO NOTHING",
-                    ref_rows,
-                    page_size=500,
-                )
-            cur.execute(
-                "INSERT INTO fetch_log "
-                "(paper_id, fetch_type, year_start, year_end, result_count, fetched_at) "
-                "VALUES (%s, 'references', 0, 0, %s, %s) "
-                "ON CONFLICT (paper_id, fetch_type, year_start, year_end) "
-                "DO UPDATE SET result_count = EXCLUDED.result_count, "
-                "              fetched_at   = EXCLUDED.fetched_at",
-                (paper_id, saved, now),
-            )
-        self._conn.commit()
+            conn.commit()
 
     # ------------------------------------------------------------------
     # Citations (descendants)
     # ------------------------------------------------------------------
 
     def has_citations(self, paper_id: str, year_start: int, year_end: int) -> bool:
-        with self._cur() as cur:
-            cur.execute(
-                "SELECT COUNT(*) AS cnt FROM fetch_log "
-                "WHERE paper_id = %s AND fetch_type = 'citations' "
-                "  AND year_start = %s AND year_end = %s",
-                (paper_id, year_start, year_end),
-            )
-            return cur.fetchone()["cnt"] > 0
+        with self._get_conn() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute(
+                    "SELECT COUNT(*) AS cnt FROM fetch_log "
+                    "WHERE paper_id = %s AND fetch_type = 'citations' "
+                    "  AND year_start = %s AND year_end = %s",
+                    (paper_id, year_start, year_end),
+                )
+                return cur.fetchone()["cnt"] > 0
 
     def get_citations(self, paper_id: str, year_start: int, year_end: int,
                       max_children: int) -> List[Dict]:
         """Two-step fallback: methodology first, then influential."""
-        with self._cur() as cur:
-            cur.execute(
-                "SELECT c.citing_paper_id, c.is_influential, c.intents, "
-                "       c.citing_citation_count, p.title, p.year "
-                "FROM   citations c "
-                "JOIN   papers    p ON p.paper_id = c.citing_paper_id "
-                "WHERE  c.paper_id = %s "
-                "  AND  p.year BETWEEN %s AND %s "
-                "  AND  c.intents LIKE '%%methodology%%'",
-                (paper_id, year_start, year_end),
-            )
-            methodology = cur.fetchall()
-
-            if len(methodology) < max_children:
-                seen = {r["citing_paper_id"] for r in methodology}
+        with self._get_conn() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
                 cur.execute(
                     "SELECT c.citing_paper_id, c.is_influential, c.intents, "
                     "       c.citing_citation_count, p.title, p.year "
@@ -444,13 +479,27 @@ class Cache:
                     "JOIN   papers    p ON p.paper_id = c.citing_paper_id "
                     "WHERE  c.paper_id = %s "
                     "  AND  p.year BETWEEN %s AND %s "
-                    "  AND  c.is_influential = 1",
+                    "  AND  c.intents LIKE '%%methodology%%'",
                     (paper_id, year_start, year_end),
                 )
-                for row in cur.fetchall():
-                    if row["citing_paper_id"] not in seen:
-                        methodology.append(row)
-                        seen.add(row["citing_paper_id"])
+                methodology = cur.fetchall()
+
+                if len(methodology) < max_children:
+                    seen = {r["citing_paper_id"] for r in methodology}
+                    cur.execute(
+                        "SELECT c.citing_paper_id, c.is_influential, c.intents, "
+                        "       c.citing_citation_count, p.title, p.year "
+                        "FROM   citations c "
+                        "JOIN   papers    p ON p.paper_id = c.citing_paper_id "
+                        "WHERE  c.paper_id = %s "
+                        "  AND  p.year BETWEEN %s AND %s "
+                        "  AND  c.is_influential = 1",
+                        (paper_id, year_start, year_end),
+                    )
+                    for row in cur.fetchall():
+                        if row["citing_paper_id"] not in seen:
+                            methodology.append(row)
+                            seen.add(row["citing_paper_id"])
 
         top = sorted(
             methodology,
@@ -497,36 +546,37 @@ class Cache:
             ))
 
         saved = len(cite_rows)
-        with self._cur() as cur:
-            if paper_rows:
-                execute_values(
-                    cur,
-                    "INSERT INTO papers "
-                    "(paper_id, title, year, citation_count, fetched_at) "
-                    "VALUES %s ON CONFLICT DO NOTHING",
-                    paper_rows,
-                    page_size=500,
+        with self._get_conn() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                if paper_rows:
+                    execute_values(
+                        cur,
+                        "INSERT INTO papers "
+                        "(paper_id, title, year, citation_count, fetched_at) "
+                        "VALUES %s ON CONFLICT DO NOTHING",
+                        paper_rows,
+                        page_size=500,
+                    )
+                if cite_rows:
+                    execute_values(
+                        cur,
+                        "INSERT INTO citations "
+                        "(paper_id, citing_paper_id, is_influential, intents, "
+                        " citing_citation_count, year_window_start, year_window_end, fetched_at) "
+                        "VALUES %s ON CONFLICT DO NOTHING",
+                        cite_rows,
+                        page_size=500,
+                    )
+                cur.execute(
+                    "INSERT INTO fetch_log "
+                    "(paper_id, fetch_type, year_start, year_end, result_count, fetched_at) "
+                    "VALUES (%s, 'citations', %s, %s, %s, %s) "
+                    "ON CONFLICT (paper_id, fetch_type, year_start, year_end) "
+                    "DO UPDATE SET result_count = EXCLUDED.result_count, "
+                    "              fetched_at   = EXCLUDED.fetched_at",
+                    (paper_id, year_start, year_end, saved, now),
                 )
-            if cite_rows:
-                execute_values(
-                    cur,
-                    "INSERT INTO citations "
-                    "(paper_id, citing_paper_id, is_influential, intents, "
-                    " citing_citation_count, year_window_start, year_window_end, fetched_at) "
-                    "VALUES %s ON CONFLICT DO NOTHING",
-                    cite_rows,
-                    page_size=500,
-                )
-            cur.execute(
-                "INSERT INTO fetch_log "
-                "(paper_id, fetch_type, year_start, year_end, result_count, fetched_at) "
-                "VALUES (%s, 'citations', %s, %s, %s, %s) "
-                "ON CONFLICT (paper_id, fetch_type, year_start, year_end) "
-                "DO UPDATE SET result_count = EXCLUDED.result_count, "
-                "              fetched_at   = EXCLUDED.fetched_at",
-                (paper_id, year_start, year_end, saved, now),
-            )
-        self._conn.commit()
+            conn.commit()
 
     # ------------------------------------------------------------------
     # Gemini analysis (evolution_view)
@@ -534,26 +584,27 @@ class Cache:
 
     def get_cached_analysis(self, paper_id: str) -> Optional[Dict]:
         """Return the full Gemini output dict for this paper, or None if not cached."""
-        with self._cur() as cur:
-            cur.execute(
-                "SELECT * FROM lineage WHERE paper_id = %s", (paper_id,)
-            )
-            lin = cur.fetchone()
-            if lin is None:
-                return None
+        with self._get_conn() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute(
+                    "SELECT * FROM lineage WHERE paper_id = %s", (paper_id,)
+                )
+                lin = cur.fetchone()
+                if lin is None:
+                    return None
 
-            cur.execute("SELECT * FROM analysis WHERE paper_id = %s", (paper_id,))
-            an = cur.fetchone()
+                cur.execute("SELECT * FROM analysis WHERE paper_id = %s", (paper_id,))
+                an = cur.fetchone()
 
-            cur.execute("SELECT * FROM comparison WHERE paper_id = %s", (paper_id,))
-            cmp = cur.fetchone()
+                cur.execute("SELECT * FROM comparison WHERE paper_id = %s", (paper_id,))
+                cmp = cur.fetchone()
 
-            cur.execute(
-                "SELECT influenced_by_id, contribution, title, year "
-                "FROM secondary_influences WHERE paper_id = %s",
-                (paper_id,),
-            )
-            sec_rows = cur.fetchall()
+                cur.execute(
+                    "SELECT influenced_by_id, contribution, title, year "
+                    "FROM secondary_influences WHERE paper_id = %s",
+                    (paper_id,),
+                )
+                sec_rows = cur.fetchall()
 
         ta = {}
         if an:
@@ -599,80 +650,81 @@ class Cache:
         cmp = analysis_dict.get("comparison") or {}
         sec = analysis_dict.get("secondary_influences") or []
 
-        with self._cur() as cur:
-            cur.execute(
-                "INSERT INTO lineage "
-                "(paper_id, predecessor_id, is_foundational, selection_reasoning) "
-                "VALUES (%s, %s, %s, %s) "
-                "ON CONFLICT (paper_id) DO UPDATE SET "
-                "  predecessor_id      = EXCLUDED.predecessor_id, "
-                "  is_foundational     = EXCLUDED.is_foundational, "
-                "  selection_reasoning = EXCLUDED.selection_reasoning",
-                (paper_id, predecessor_id, 1 if is_foundational else 0,
-                 analysis_dict.get("selection_reasoning")),
-            )
-            cur.execute(
-                "INSERT INTO analysis "
-                "(paper_id, problem_addressed, core_method, key_innovation, "
-                " limitations, breakthrough_level, explanation_eli5, "
-                " explanation_intuitive, explanation_technical, analyzed_at) "
-                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
-                "ON CONFLICT (paper_id) DO UPDATE SET "
-                "  problem_addressed     = EXCLUDED.problem_addressed, "
-                "  core_method           = EXCLUDED.core_method, "
-                "  key_innovation        = EXCLUDED.key_innovation, "
-                "  limitations           = EXCLUDED.limitations, "
-                "  breakthrough_level    = EXCLUDED.breakthrough_level, "
-                "  explanation_eli5      = EXCLUDED.explanation_eli5, "
-                "  explanation_intuitive = EXCLUDED.explanation_intuitive, "
-                "  explanation_technical = EXCLUDED.explanation_technical, "
-                "  analyzed_at           = EXCLUDED.analyzed_at",
-                (
-                    paper_id,
-                    ta.get("problem_addressed"), ta.get("core_method"),
-                    ta.get("key_innovation"),
-                    json.dumps(ta.get("limitations") or []),
-                    ta.get("breakthrough_level"), ta.get("explanation_eli5"),
-                    ta.get("explanation_intuitive"), ta.get("explanation_technical"),
-                    now,
-                ),
-            )
-            if cmp and not is_foundational:
+        with self._get_conn() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
                 cur.execute(
-                    "INSERT INTO comparison "
-                    "(paper_id, predecessor_id, what_was_improved, how_it_was_improved, "
-                    " why_it_matters, problem_solved_from_predecessor, remaining_limitations) "
-                    "VALUES (%s, %s, %s, %s, %s, %s, %s) "
+                    "INSERT INTO lineage "
+                    "(paper_id, predecessor_id, is_foundational, selection_reasoning) "
+                    "VALUES (%s, %s, %s, %s) "
                     "ON CONFLICT (paper_id) DO UPDATE SET "
-                    "  what_was_improved               = EXCLUDED.what_was_improved, "
-                    "  how_it_was_improved             = EXCLUDED.how_it_was_improved, "
-                    "  why_it_matters                  = EXCLUDED.why_it_matters, "
-                    "  problem_solved_from_predecessor = EXCLUDED.problem_solved_from_predecessor, "
-                    "  remaining_limitations           = EXCLUDED.remaining_limitations",
+                    "  predecessor_id      = EXCLUDED.predecessor_id, "
+                    "  is_foundational     = EXCLUDED.is_foundational, "
+                    "  selection_reasoning = EXCLUDED.selection_reasoning",
+                    (paper_id, predecessor_id, 1 if is_foundational else 0,
+                     analysis_dict.get("selection_reasoning")),
+                )
+                cur.execute(
+                    "INSERT INTO analysis "
+                    "(paper_id, problem_addressed, core_method, key_innovation, "
+                    " limitations, breakthrough_level, explanation_eli5, "
+                    " explanation_intuitive, explanation_technical, analyzed_at) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
+                    "ON CONFLICT (paper_id) DO UPDATE SET "
+                    "  problem_addressed     = EXCLUDED.problem_addressed, "
+                    "  core_method           = EXCLUDED.core_method, "
+                    "  key_innovation        = EXCLUDED.key_innovation, "
+                    "  limitations           = EXCLUDED.limitations, "
+                    "  breakthrough_level    = EXCLUDED.breakthrough_level, "
+                    "  explanation_eli5      = EXCLUDED.explanation_eli5, "
+                    "  explanation_intuitive = EXCLUDED.explanation_intuitive, "
+                    "  explanation_technical = EXCLUDED.explanation_technical, "
+                    "  analyzed_at           = EXCLUDED.analyzed_at",
                     (
-                        paper_id, predecessor_id,
-                        cmp.get("what_was_improved"), cmp.get("how_it_was_improved"),
-                        cmp.get("why_it_matters"),
-                        cmp.get("problem_solved_from_predecessor"),
-                        json.dumps(cmp.get("remaining_limitations") or []),
+                        paper_id,
+                        ta.get("problem_addressed"), ta.get("core_method"),
+                        ta.get("key_innovation"),
+                        json.dumps(ta.get("limitations") or []),
+                        ta.get("breakthrough_level"), ta.get("explanation_eli5"),
+                        ta.get("explanation_intuitive"), ta.get("explanation_technical"),
+                        now,
                     ),
                 )
-            for inf in sec:
-                if isinstance(inf, dict) and inf.get("paper_id"):
+                if cmp and not is_foundational:
                     cur.execute(
-                        "SELECT title, year FROM papers WHERE paper_id = %s",
-                        (inf["paper_id"],),
+                        "INSERT INTO comparison "
+                        "(paper_id, predecessor_id, what_was_improved, how_it_was_improved, "
+                        " why_it_matters, problem_solved_from_predecessor, remaining_limitations) "
+                        "VALUES (%s, %s, %s, %s, %s, %s, %s) "
+                        "ON CONFLICT (paper_id) DO UPDATE SET "
+                        "  what_was_improved               = EXCLUDED.what_was_improved, "
+                        "  how_it_was_improved             = EXCLUDED.how_it_was_improved, "
+                        "  why_it_matters                  = EXCLUDED.why_it_matters, "
+                        "  problem_solved_from_predecessor = EXCLUDED.problem_solved_from_predecessor, "
+                        "  remaining_limitations           = EXCLUDED.remaining_limitations",
+                        (
+                            paper_id, predecessor_id,
+                            cmp.get("what_was_improved"), cmp.get("how_it_was_improved"),
+                            cmp.get("why_it_matters"),
+                            cmp.get("problem_solved_from_predecessor"),
+                            json.dumps(cmp.get("remaining_limitations") or []),
+                        ),
                     )
-                    p = cur.fetchone()
-                    cur.execute(
-                        "INSERT INTO secondary_influences "
-                        "(paper_id, influenced_by_id, contribution, title, year) "
-                        "VALUES (%s, %s, %s, %s, %s) ON CONFLICT (paper_id, influenced_by_id) "
-                        "DO UPDATE SET title = EXCLUDED.title, year = EXCLUDED.year",
-                        (paper_id, inf["paper_id"], inf.get("contribution"),
-                         p["title"] if p else None, p["year"] if p else None),
-                    )
-        self._conn.commit()
+                for inf in sec:
+                    if isinstance(inf, dict) and inf.get("paper_id"):
+                        cur.execute(
+                            "SELECT title, year FROM papers WHERE paper_id = %s",
+                            (inf["paper_id"],),
+                        )
+                        p = cur.fetchone()
+                        cur.execute(
+                            "INSERT INTO secondary_influences "
+                            "(paper_id, influenced_by_id, contribution, title, year) "
+                            "VALUES (%s, %s, %s, %s, %s) ON CONFLICT (paper_id, influenced_by_id) "
+                            "DO UPDATE SET title = EXCLUDED.title, year = EXCLUDED.year",
+                            (paper_id, inf["paper_id"], inf.get("contribution"),
+                             p["title"] if p else None, p["year"] if p else None),
+                        )
+            conn.commit()
 
     def get_cached_timeline(self, paper_id: str,
                             max_depth: Optional[int] = None):
@@ -685,20 +737,22 @@ class Cache:
         norm_id = SemanticScholarClient.normalize_paper_id(paper_id)
         arxiv_bare = norm_id.replace("ARXIV:", "").replace("arxiv:", "")
 
-        with self._cur() as cur:
-            cur.execute(
-                "SELECT paper_id FROM papers WHERE arxiv_id = %s", (arxiv_bare,)
-            )
-            row = cur.fetchone()
+        with self._get_conn() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute(
+                    "SELECT paper_id FROM papers WHERE arxiv_id = %s", (arxiv_bare,)
+                )
+                row = cur.fetchone()
         current = row["paper_id"] if row else paper_id
 
         chain_ids = []
         while True:
-            with self._cur() as cur:
-                cur.execute(
-                    "SELECT * FROM lineage WHERE paper_id = %s", (current,)
-                )
-                lin = cur.fetchone()
+            with self._get_conn() as conn:
+                with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                    cur.execute(
+                        "SELECT * FROM lineage WHERE paper_id = %s", (current,)
+                    )
+                    lin = cur.fetchone()
 
             if lin is None:
                 return None, False
@@ -740,31 +794,35 @@ class Cache:
 
     def save_tree(self, tree_id: str, root_paper_id: str,
                   max_depth: int, max_children: int, window_years: int) -> None:
-        with self._cur() as cur:
-            cur.execute(
-                "INSERT INTO trees "
-                "(tree_id, root_paper_id, generated_at, max_depth, max_children, window_years) "
-                "VALUES (%s, %s, %s, %s, %s, %s) ON CONFLICT DO NOTHING",
-                (tree_id, root_paper_id, _now(), max_depth, max_children, window_years),
-            )
-        self._conn.commit()
+        with self._get_conn() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute(
+                    "INSERT INTO trees "
+                    "(tree_id, root_paper_id, generated_at, max_depth, max_children, window_years) "
+                    "VALUES (%s, %s, %s, %s, %s, %s) ON CONFLICT DO NOTHING",
+                    (tree_id, root_paper_id, _now(), max_depth, max_children, window_years),
+                )
+            conn.commit()
 
     def save_tree_nodes(self, tree_id: str, nodes: List[Dict]) -> None:
         rows = [
             (tree_id, n["paper_id"], n["node_type"], n["depth"], n.get("parent_paper_id"))
             for n in nodes
         ]
-        with self._cur() as cur:
-            psycopg2.extras.execute_values(
-                cur,
-                "INSERT INTO tree_nodes "
-                "(tree_id, paper_id, node_type, depth, parent_paper_id) "
-                "VALUES %s ON CONFLICT DO NOTHING",
-                rows,
-            )
-        self._conn.commit()
+        with self._get_conn() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                psycopg2.extras.execute_values(
+                    cur,
+                    "INSERT INTO tree_nodes "
+                    "(tree_id, paper_id, node_type, depth, parent_paper_id) "
+                    "VALUES %s ON CONFLICT DO NOTHING",
+                    rows,
+                )
+            conn.commit()
 
     # ------------------------------------------------------------------
 
     def close(self) -> None:
-        self._conn.close()
+        # Connections are managed by the pool — nothing to close per-instance.
+        # The pool itself lives for the process lifetime.
+        pass
