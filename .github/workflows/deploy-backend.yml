@@ -1,0 +1,86 @@
+name: Deploy Backend API
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/backend/**'
+      - 'docker/backend.Dockerfile'
+  workflow_dispatch:
+
+env:
+  PROJECT_ID: researchlineage
+  REGION: us-central1
+  SERVICE_NAME: researchlineage-api
+  AR_REPO: researchlineage
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
+
+      - name: Build and push container
+        run: |
+          IMAGE="${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.AR_REPO }}/${{ env.SERVICE_NAME }}:${{ github.sha }}"
+          docker build -f docker/backend.Dockerfile -t "$IMAGE" .
+          docker push "$IMAGE"
+          echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy ${{ env.SERVICE_NAME }} \
+            --image "$IMAGE" \
+            --region ${{ env.REGION }} \
+            --platform managed \
+            --allow-unauthenticated \
+            --port 8000 \
+            --memory 1Gi \
+            --cpu 1 \
+            --timeout 600 \
+            --min-instances 0 \
+            --max-instances 3 \
+            --add-cloudsql-instances ${{ env.PROJECT_ID }}:${{ env.REGION }}:researchlineage-db \
+            --set-env-vars "\
+              DATABASE_URL=postgresql://${{ secrets.CLOUD_SQL_USER }}:${{ secrets.CLOUD_SQL_PASSWORD }}@/researchlineage?host=/cloudsql/${{ env.PROJECT_ID }}:${{ env.REGION }}:researchlineage-db&options=-csearch_path%3Ddeployment_schema,\
+              GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }},\
+              S2_API_KEY=${{ secrets.S2_API_KEY }},\
+              CORS_ALLOWED_ORIGINS=${{ secrets.CORS_ALLOWED_ORIGINS }},\
+              GOOGLE_CLOUD_PROJECT=${{ env.PROJECT_ID }}"
+
+      - name: Smoke test
+        run: |
+          URL=$(gcloud run services describe ${{ env.SERVICE_NAME }} \
+            --region ${{ env.REGION }} \
+            --format 'value(status.url)')
+          echo "Service URL: $URL"
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$URL/health")
+          if [ "$STATUS" != "200" ]; then
+            echo "Health check failed with status $STATUS"
+            exit 1
+          fi
+          echo "Health check passed"
+
+      - name: Print service URL
+        run: |
+          URL=$(gcloud run services describe ${{ env.SERVICE_NAME }} \
+            --region ${{ env.REGION }} \
+            --format 'value(status.url)')
+          echo "Backend deployed at: $URL"
+          echo "Set CORS_ALLOWED_ORIGINS in secrets to your Vercel URL"
+          echo "Set this URL as NEXT_PUBLIC_API_URL in your Vercel project"
