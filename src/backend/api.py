@@ -239,20 +239,29 @@ def _stream_gemini(system_prompt: str, messages: list[ChatMessage]):
         for m in messages
     ]
     try:
-        response = client.models.generate_content_stream(
+        # Use non-streaming generate_content — same as the analysis pipeline.
+        # Streaming with Gemini 2.5 Pro produces empty chunks until thinking
+        # tokens are exhausted; single-call is simpler and reliable.
+        result = client.models.generate_content(
             model=GEMINI_MODEL,
             contents=contents,
             config=types.GenerateContentConfig(
                 system_instruction=system_prompt,
                 temperature=0.7,
                 max_output_tokens=2048,
-                thinking_config=types.ThinkingConfig(thinking_budget=0),
+                thinking_config=types.ThinkingConfig(thinking_budget=1024),
             ),
         )
-        for chunk in response:
-            text = getattr(chunk, "text", None)
-            if text:
-                yield f"data: {json.dumps({'text': text})}\n\n"
+        text = result.text if result else ""
+        if text:
+            # Yield in small word-group chunks so the frontend still animates
+            words = text.split(" ")
+            chunk_size = 6
+            for i in range(0, len(words), chunk_size):
+                piece = " ".join(words[i:i + chunk_size])
+                if i + chunk_size < len(words):
+                    piece += " "
+                yield f"data: {json.dumps({'text': piece})}\n\n"
     except Exception as e:
         yield f"data: {json.dumps({'error': str(e)})}\n\n"
     yield "data: [DONE]\n\n"

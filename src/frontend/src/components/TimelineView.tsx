@@ -19,33 +19,44 @@ export function TimelineView({ timeline, theme }: TimelineViewProps) {
   const chain = timeline.chain;
   const seedTitle = timeline.seed_paper?.title ?? '';
   const seedPaperId = timeline.seed_paper?.paper_id ?? '';
+  const [chatOpen, setChatOpen] = useState(false);
 
   return (
-    <div className="relative max-w-[920px] mx-auto">
-      {/* Animated vertical rail */}
-      <div
-        aria-hidden
-        className="absolute left-[27px] top-2 bottom-2 w-px"
-        style={{
-          background: `linear-gradient(to bottom, transparent 0%, ${theme.accent}44 8%, ${theme.seed}55 50%, ${theme.accent}44 92%, transparent 100%)`,
-        }}
+    <div className="flex gap-6 items-start">
+      {/* Timeline column */}
+      <div className="relative flex-1 min-w-0">
+        {/* Animated vertical rail */}
+        <div
+          aria-hidden
+          className="absolute left-[27px] top-2 bottom-2 w-px"
+          style={{
+            background: `linear-gradient(to bottom, transparent 0%, ${theme.accent}44 8%, ${theme.seed}55 50%, ${theme.accent}44 92%, transparent 100%)`,
+          }}
+        />
+
+        <ol className="space-y-8">
+          {chain.map((entry, i) => (
+            <TimelineCard key={`${entry.paper.paper_id}-${i}`} entry={entry} index={i} total={chain.length} theme={theme} isDark={isDark} />
+          ))}
+        </ol>
+
+        <motion.div
+          initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.6 }}
+          className="text-center mt-10 text-[11px] uppercase tracking-[0.14em]"
+          style={{ color: theme.textMuted }}
+        >
+          ◇ Seed paper · {chain.length} total
+        </motion.div>
+      </div>
+
+      {/* Chat column — sticky sidebar */}
+      <ChatPanel
+        paperId={seedPaperId}
+        seedTitle={seedTitle}
+        theme={theme}
+        open={chatOpen}
+        onOpenChange={setChatOpen}
       />
-
-      <ol className="space-y-8">
-        {chain.map((entry, i) => (
-          <TimelineCard key={`${entry.paper.paper_id}-${i}`} entry={entry} index={i} total={chain.length} theme={theme} isDark={isDark} />
-        ))}
-      </ol>
-
-      <motion.div
-        initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.6 }}
-        className="text-center mt-10 text-[11px] uppercase tracking-[0.14em]"
-        style={{ color: theme.textMuted }}
-      >
-        ◇ Seed paper · {chain.length} total
-      </motion.div>
-
-      <ChatPanel paperId={seedPaperId} seedTitle={seedTitle} theme={theme} />
     </div>
   );
 }

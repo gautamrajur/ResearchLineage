@@ -12,6 +12,8 @@ interface ChatPanelProps {
   paperId: string;
   seedTitle: string;
   theme: Theme;
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
 }
 
 const SUGGESTED = [
@@ -21,8 +23,7 @@ const SUGGESTED = [
   'What limitations were never fully resolved?',
 ];
 
-export function ChatPanel({ paperId, seedTitle, theme }: ChatPanelProps) {
-  const [open, setOpen] = useState(false);
+export function ChatPanel({ paperId, seedTitle, theme, open, onOpenChange }: ChatPanelProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [streaming, setStreaming] = useState(false);
@@ -47,8 +48,6 @@ export function ChatPanel({ paperId, seedTitle, theme }: ChatPanelProps) {
     const next: Message[] = [...messages, { role: 'user', content: q }];
     setMessages(next);
     setStreaming(true);
-
-    // Append empty assistant bubble immediately
     setMessages((m) => [...m, { role: 'model', content: '', streaming: true }]);
 
     abortRef.current?.abort();
@@ -65,7 +64,10 @@ export function ChatPanel({ paperId, seedTitle, theme }: ChatPanelProps) {
         }),
       });
 
-      if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok || !res.body) {
+        const detail = await res.text().catch(() => `HTTP ${res.status}`);
+        throw new Error(detail);
+      }
 
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
@@ -85,32 +87,32 @@ export function ChatPanel({ paperId, seedTitle, theme }: ChatPanelProps) {
           if (payload === '[DONE]') break;
           try {
             const parsed = JSON.parse(payload);
+            if (parsed.error) throw new Error(parsed.error);
             if (parsed.text) {
               setMessages((prev) => {
                 const updated = [...prev];
                 const last = updated[updated.length - 1];
-                if (last.role === 'model') {
+                if (last?.role === 'model') {
                   updated[updated.length - 1] = { ...last, content: last.content + parsed.text };
                 }
                 return updated;
               });
             }
-            if (parsed.error) throw new Error(parsed.error);
-          } catch {
-            // ignore parse errors on partial chunks
+          } catch (parseErr) {
+            if ((parseErr as Error).message !== 'Unexpected token') throw parseErr;
           }
         }
       }
     } catch (e) {
       if ((e as Error).name === 'AbortError') return;
-      const msg = (e as Error).message ?? 'Unknown error';
+      const errMsg = (e as Error).message ?? 'Unknown error';
       setMessages((prev) => {
         const updated = [...prev];
         const last = updated[updated.length - 1];
-        if (last.role === 'model') {
+        if (last?.role === 'model') {
           updated[updated.length - 1] = {
             ...last,
-            content: last.content || `Error: ${msg}. Make sure the backend is running and the timeline is cached.`,
+            content: last.content || `Error: ${errMsg}`,
             streaming: false,
           };
         }
@@ -121,7 +123,7 @@ export function ChatPanel({ paperId, seedTitle, theme }: ChatPanelProps) {
       setMessages((prev) => {
         const updated = [...prev];
         const last = updated[updated.length - 1];
-        if (last.role === 'model') {
+        if (last?.role === 'model') {
           updated[updated.length - 1] = { ...last, streaming: false };
         }
         return updated;
@@ -129,61 +131,59 @@ export function ChatPanel({ paperId, seedTitle, theme }: ChatPanelProps) {
     }
   }
 
-  // ── Colours that work on both dark and light themes ──────────────────────
   const panelBg = isDark ? '#0E1018' : '#FFFFFF';
-  const headerBg = isDark ? 'rgba(18,20,26,0.95)' : 'rgba(255,255,255,0.95)';
+  const headerBg = isDark ? 'rgba(18,20,26,0.98)' : 'rgba(255,255,255,0.98)';
   const userBubbleBg = `linear-gradient(135deg, ${theme.seed}, ${theme.accent})`;
   const aiBubbleBg = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)';
-  const aiBubbleColor = theme.textPrimary;
   const inputBg = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)';
   const borderColor = isDark ? 'rgba(255,255,255,0.08)' : theme.border;
-  const chipBg = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)';
+  const chipBg = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)';
 
   return (
     <>
-      {/* Floating trigger button — sits above the ThemePicker (bottom-6 right-6) */}
+      {/* Toggle button — fixed bottom-right, above ThemePicker */}
       <motion.button
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => onOpenChange(!open)}
         whileHover={{ scale: 1.05, y: -2 }}
         whileTap={{ scale: 0.97 }}
-        className="fixed bottom-[72px] right-6 z-50 flex items-center gap-2.5 px-4 py-2.5 rounded-2xl text-[13px] font-semibold shadow-xl"
+        className="fixed bottom-[72px] right-6 z-50 flex items-center gap-2 px-4 py-2.5 rounded-2xl text-[13px] font-semibold shadow-xl"
         style={{
           background: `linear-gradient(135deg, ${theme.seed}, ${theme.accent})`,
           color: '#fff',
           boxShadow: `0 8px 32px ${theme.accent}55`,
         }}
       >
-        <span className="text-[15px]">{open ? '✕' : '◎'}</span>
+        <span>{open ? '✕' : '◎'}</span>
         {open ? 'Close chat' : 'Ask about this lineage'}
       </motion.button>
 
-      {/* Panel */}
+      {/* Sticky sidebar panel */}
       <AnimatePresence>
         {open && (
           <motion.div
-            initial={{ opacity: 0, y: 32, scale: 0.97 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 24, scale: 0.97 }}
-            transition={{ type: 'spring', stiffness: 340, damping: 30 }}
-            className="fixed bottom-[136px] right-6 z-50 flex flex-col rounded-2xl overflow-hidden"
+            initial={{ opacity: 0, width: 0 }}
+            animate={{ opacity: 1, width: 380 }}
+            exit={{ opacity: 0, width: 0 }}
+            transition={{ type: 'spring', stiffness: 340, damping: 32 }}
+            className="sticky top-[84px] self-start shrink-0 flex flex-col rounded-2xl overflow-hidden"
             style={{
-              width: 'min(420px, calc(100vw - 32px))',
-              height: 'min(560px, calc(100vh - 160px))',
+              height: 'calc(100vh - 104px)',
+              maxHeight: 700,
               background: panelBg,
               border: `1px solid ${borderColor}`,
               boxShadow: isDark
-                ? '0 32px 80px rgba(0,0,0,0.7)'
-                : '0 24px 64px rgba(0,0,0,0.15)',
+                ? '0 24px 64px rgba(0,0,0,0.6)'
+                : '0 16px 48px rgba(0,0,0,0.12)',
             }}
           >
             {/* Header */}
             <div className="flex items-center gap-3 px-4 py-3 shrink-0"
-              style={{ background: headerBg, borderBottom: `1px solid ${borderColor}`, backdropFilter: 'blur(12px)' }}>
+              style={{ background: headerBg, borderBottom: `1px solid ${borderColor}` }}>
               <div className="w-7 h-7 rounded-full flex items-center justify-center shrink-0"
                 style={{ background: `linear-gradient(135deg, ${theme.seed}, ${theme.accent})` }}>
                 <span className="text-[11px] text-white font-bold">◎</span>
               </div>
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1">
                 <div className="text-[12px] font-semibold truncate" style={{ color: theme.textPrimary }}>
                   Lineage Assistant
                 </div>
@@ -191,7 +191,7 @@ export function ChatPanel({ paperId, seedTitle, theme }: ChatPanelProps) {
                   {seedTitle}
                 </div>
               </div>
-              <div className="ml-auto flex items-center gap-1.5">
+              <div className="flex items-center gap-1.5 shrink-0">
                 <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: '#4ADE80' }} />
                 <span className="text-[10px]" style={{ color: theme.textMuted }}>Gemini</span>
               </div>
@@ -202,14 +202,13 @@ export function ChatPanel({ paperId, seedTitle, theme }: ChatPanelProps) {
               {messages.length === 0 && (
                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.1 }}
                   className="space-y-3">
-                  <p className="text-[12px] text-center pb-1" style={{ color: theme.textMuted }}>
+                  <p className="text-[11.5px] text-center pb-1" style={{ color: theme.textMuted }}>
                     Ask anything about this paper lineage
                   </p>
                   <div className="flex flex-wrap gap-2">
                     {SUGGESTED.map((s) => (
-                      <button key={s}
-                        onClick={() => send(s)}
-                        className="px-3 py-1.5 rounded-xl text-[11px] text-left transition-all hover:scale-[1.02]"
+                      <button key={s} onClick={() => send(s)}
+                        className="px-3 py-1.5 rounded-xl text-[11px] text-left transition-all hover:scale-[1.02] active:scale-[0.98]"
                         style={{ background: chipBg, border: `1px solid ${borderColor}`, color: theme.textSecondary }}>
                         {s}
                       </button>
@@ -219,11 +218,9 @@ export function ChatPanel({ paperId, seedTitle, theme }: ChatPanelProps) {
               )}
 
               {messages.map((msg, i) => (
-                <motion.div
-                  key={i}
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.25 }}
+                <motion.div key={i}
+                  initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.22 }}
                   className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
                 >
                   {msg.role === 'user' ? (
@@ -232,11 +229,20 @@ export function ChatPanel({ paperId, seedTitle, theme }: ChatPanelProps) {
                       {msg.content}
                     </div>
                   ) : (
-                    <div className="max-w-[88%] px-3.5 py-2.5 rounded-2xl rounded-bl-md text-[12.5px] leading-relaxed"
-                      style={{ background: aiBubbleBg, color: aiBubbleColor }}>
-                      {msg.content}
-                      {msg.streaming && (
-                        <span className="inline-block w-1.5 h-3.5 ml-0.5 rounded-sm animate-pulse align-middle"
+                    <div className="max-w-[90%] px-3.5 py-2.5 rounded-2xl rounded-bl-md text-[12.5px] leading-relaxed"
+                      style={{ background: aiBubbleBg, color: theme.textPrimary }}>
+                      {msg.content || (msg.streaming && (
+                        <span className="flex gap-1 items-center py-0.5">
+                          {[0, 1, 2].map((d) => (
+                            <motion.span key={d} className="w-1.5 h-1.5 rounded-full"
+                              style={{ background: theme.accent }}
+                              animate={{ opacity: [0.3, 1, 0.3] }}
+                              transition={{ duration: 1.2, delay: d * 0.2, repeat: Infinity }} />
+                          ))}
+                        </span>
+                      ))}
+                      {msg.streaming && msg.content && (
+                        <span className="inline-block w-1.5 h-3 ml-0.5 rounded-sm animate-pulse align-middle"
                           style={{ background: theme.accent }} />
                       )}
                     </div>
@@ -248,7 +254,7 @@ export function ChatPanel({ paperId, seedTitle, theme }: ChatPanelProps) {
 
             {/* Input */}
             <div className="shrink-0 px-3 py-3"
-              style={{ borderTop: `1px solid ${borderColor}`, background: headerBg, backdropFilter: 'blur(12px)' }}>
+              style={{ borderTop: `1px solid ${borderColor}`, background: headerBg }}>
               <div className="flex items-center gap-2 px-3 py-2 rounded-xl"
                 style={{ background: inputBg, border: `1px solid ${borderColor}` }}>
                 <input
@@ -261,16 +267,13 @@ export function ChatPanel({ paperId, seedTitle, theme }: ChatPanelProps) {
                   style={{ color: theme.textPrimary }}
                   disabled={streaming}
                 />
-                <button
-                  onClick={() => send(input)}
-                  disabled={!input.trim() || streaming}
+                <button onClick={() => send(input)} disabled={!input.trim() || streaming}
                   className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 transition-all"
                   style={input.trim() && !streaming
                     ? { background: `linear-gradient(135deg, ${theme.seed}, ${theme.accent})`, color: '#fff' }
-                    : { background: isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.06)', color: theme.textMuted }}
-                >
+                    : { background: isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.06)', color: theme.textMuted }}>
                   {streaming
-                    ? <span className="w-2.5 h-2.5 rounded-full animate-pulse" style={{ background: theme.accent }} />
+                    ? <span className="w-2 h-2 rounded-full animate-pulse" style={{ background: theme.accent }} />
                     : <span className="text-[13px]">↑</span>}
                 </button>
               </div>
