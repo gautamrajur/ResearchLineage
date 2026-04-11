@@ -7,6 +7,7 @@ import type {
 } from '../lib/types';
 import { formatNumber } from '../lib/utils';
 import type { Theme } from '../lib/theme';
+import { ChatPanel } from './ChatPanel';
 
 interface TimelineViewProps {
   timeline: Timeline;
@@ -16,6 +17,8 @@ interface TimelineViewProps {
 export function TimelineView({ timeline, theme }: TimelineViewProps) {
   const isDark = theme.id === 'dark';
   const chain = timeline.chain;
+  const seedTitle = timeline.seed_paper?.title ?? '';
+  const seedPaperId = timeline.seed_paper?.paper_id ?? '';
 
   return (
     <div className="relative max-w-[920px] mx-auto">
@@ -41,6 +44,8 @@ export function TimelineView({ timeline, theme }: TimelineViewProps) {
       >
         ◇ Seed paper · {chain.length} total
       </motion.div>
+
+      <ChatPanel paperId={seedPaperId} seedTitle={seedTitle} theme={theme} />
     </div>
   );
 }
