@@ -103,13 +103,14 @@ export function ChatPanel({ paperId, seedTitle, theme }: ChatPanelProps) {
       }
     } catch (e) {
       if ((e as Error).name === 'AbortError') return;
+      const msg = (e as Error).message ?? 'Unknown error';
       setMessages((prev) => {
         const updated = [...prev];
         const last = updated[updated.length - 1];
-        if (last.role === 'model' && last.streaming) {
+        if (last.role === 'model') {
           updated[updated.length - 1] = {
             ...last,
-            content: last.content || 'Something went wrong. Please try again.',
+            content: last.content || `Error: ${msg}. Make sure the backend is running and the timeline is cached.`,
             streaming: false,
           };
         }
@@ -140,12 +141,12 @@ export function ChatPanel({ paperId, seedTitle, theme }: ChatPanelProps) {
 
   return (
     <>
-      {/* Floating trigger button */}
+      {/* Floating trigger button — sits above the ThemePicker (bottom-6 right-6) */}
       <motion.button
         onClick={() => setOpen((v) => !v)}
         whileHover={{ scale: 1.05, y: -2 }}
         whileTap={{ scale: 0.97 }}
-        className="fixed bottom-8 right-8 z-50 flex items-center gap-2.5 px-4 py-3 rounded-2xl text-[13px] font-semibold shadow-xl"
+        className="fixed bottom-[72px] right-6 z-50 flex items-center gap-2.5 px-4 py-2.5 rounded-2xl text-[13px] font-semibold shadow-xl"
         style={{
           background: `linear-gradient(135deg, ${theme.seed}, ${theme.accent})`,
           color: '#fff',
@@ -153,7 +154,7 @@ export function ChatPanel({ paperId, seedTitle, theme }: ChatPanelProps) {
         }}
       >
         <span className="text-[15px]">{open ? '✕' : '◎'}</span>
-        {open ? 'Close' : 'Ask about this lineage'}
+        {open ? 'Close chat' : 'Ask about this lineage'}
       </motion.button>
 
       {/* Panel */}
@@ -164,7 +165,7 @@ export function ChatPanel({ paperId, seedTitle, theme }: ChatPanelProps) {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 24, scale: 0.97 }}
             transition={{ type: 'spring', stiffness: 340, damping: 30 }}
-            className="fixed bottom-24 right-8 z-50 flex flex-col rounded-2xl overflow-hidden"
+            className="fixed bottom-[136px] right-6 z-50 flex flex-col rounded-2xl overflow-hidden"
             style={{
               width: 'min(420px, calc(100vw - 32px))',
               height: 'min(560px, calc(100vh - 160px))',

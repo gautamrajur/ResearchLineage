@@ -239,21 +239,23 @@ def _stream_gemini(system_prompt: str, messages: list[ChatMessage]):
         for m in messages
     ]
     try:
-        for chunk in client.models.generate_content_stream(
+        response = client.models.generate_content_stream(
             model=GEMINI_MODEL,
             contents=contents,
             config=types.GenerateContentConfig(
                 system_instruction=system_prompt,
                 temperature=0.7,
-                max_output_tokens=1024,
+                max_output_tokens=2048,
+                thinking_config=types.ThinkingConfig(thinking_budget=0),
             ),
-        ):
-            if chunk.text:
-                yield f"data: {json.dumps({'text': chunk.text})}\n\n"
+        )
+        for chunk in response:
+            text = getattr(chunk, "text", None)
+            if text:
+                yield f"data: {json.dumps({'text': text})}\n\n"
     except Exception as e:
         yield f"data: {json.dumps({'error': str(e)})}\n\n"
-    finally:
-        yield "data: [DONE]\n\n"
+    yield "data: [DONE]\n\n"
 
 
 def _run(paper_id, max_children, max_depth_tree, window_years, max_depth_evolution):

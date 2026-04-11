@@ -12,6 +12,14 @@ export default defineConfig({
         target: 'http://localhost:8000',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, ''),
+        // Allow SSE (server-sent events) to stream through without buffering
+        configure: (proxy) => {
+          proxy.on('proxyRes', (proxyRes) => {
+            if (proxyRes.headers['content-type']?.includes('text/event-stream')) {
+              proxyRes.socket?.setNoDelay(true);
+            }
+          });
+        },
       },
     },
   },
