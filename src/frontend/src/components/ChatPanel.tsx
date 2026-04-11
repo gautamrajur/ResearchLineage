@@ -165,10 +165,9 @@ export function ChatPanel({ paperId, seedTitle, theme, open, onOpenChange }: Cha
             animate={{ opacity: 1, width: 380 }}
             exit={{ opacity: 0, width: 0 }}
             transition={{ type: 'spring', stiffness: 340, damping: 32 }}
-            className="sticky top-[84px] self-start shrink-0 flex flex-col rounded-2xl overflow-hidden"
+            className="shrink-0 flex flex-col rounded-2xl overflow-hidden self-start"
             style={{
-              height: 'calc(100vh - 104px)',
-              maxHeight: 700,
+              minHeight: 480,
               background: panelBg,
               border: `1px solid ${borderColor}`,
               boxShadow: isDark
@@ -198,7 +197,7 @@ export function ChatPanel({ paperId, seedTitle, theme, open, onOpenChange }: Cha
             </div>
 
             {/* Messages */}
-            <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+            <div className="px-4 py-4 space-y-3" style={{ minHeight: 320 }}>
               {messages.length === 0 && (
                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.1 }}
                   className="space-y-3">
