@@ -1,0 +1,147 @@
+@import "tailwindcss";
+@import "@fontsource/inter/400.css";
+@import "@fontsource/inter/500.css";
+@import "@fontsource/inter/600.css";
+@import "@fontsource/inter/700.css";
+@import "@fontsource/jetbrains-mono/400.css";
+@import "@fontsource/jetbrains-mono/500.css";
+
+@theme {
+  /* ── Backgrounds — blue-tinted near-black, NOT pure black ── */
+  --color-bg-base: #0B0D11;
+  --color-bg-card: #12141A;
+  --color-bg-elevated: #1A1D25;
+  --color-bg-hover: #22262F;
+
+  /* ── Text — softer than pure white ── */
+  --color-text-primary: #EAEDF2;
+  --color-text-secondary: #8B95A5;
+  --color-text-muted: #5A6375;
+
+  /* ── Accent — warm teal ── */
+  --color-accent: #2DD4BF;
+  --color-accent-muted: #14B8A6;
+
+  /* ── Seed/Origin — coral ── */
+  --color-seed: #F97066;
+  --color-seed-muted: #DC5B50;
+
+  /* ── Borders ── */
+  --color-border: rgba(255, 255, 255, 0.06);
+  --color-border-hover: rgba(255, 255, 255, 0.12);
+
+  /* ── Edges ── */
+  --color-edge-direct: #4ADE80;
+  --color-edge-indirect: #38BDF8;
+
+  /* ── Breakthrough levels ── */
+  --color-revolutionary: #F87171;
+  --color-major: #FB923C;
+  --color-moderate: #FACC15;
+  --color-minor: #94A3B8;
+
+  /* ── Fonts ── */
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Geist Mono', ui-monospace, monospace;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  background: var(--color-bg-base);
+  color: var(--color-text-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root { min-height: 100vh; }
+
+h1, h2 { letter-spacing: -0.025em; }
+h3, h4 { letter-spacing: -0.015em; }
+
+[data-numeric], td, th, .tabular-nums {
+  font-variant-numeric: tabular-nums lining-nums slashed-zero;
+}
+
+/* ── Selection ── */
+::selection {
+  background: rgba(45, 212, 191, 0.35);
+  color: #EAEDF2;
+}
+
+/* ── React Flow overrides ── */
+.react-flow__background { background-color: var(--color-bg-base) !important; }
+.react-flow__controls {
+  background: var(--color-bg-card) !important;
+  border: 1px solid rgba(255, 255, 255, 0.06) !important;
+  border-radius: 8px !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5) !important;
+  overflow: hidden;
+}
+.react-flow__controls-button {
+  background: transparent !important;
+  border: none !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04) !important;
+  color: var(--color-text-secondary) !important;
+  fill: var(--color-text-secondary) !important;
+}
+.react-flow__controls-button:hover {
+  background: var(--color-bg-elevated) !important;
+  color: var(--color-text-primary) !important;
+  fill: var(--color-text-primary) !important;
+}
+.react-flow__controls-button svg { fill: inherit !important; }
+.react-flow__edge-path { stroke-linecap: round; }
+.react-flow__attribution { display: none !important; }
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.08); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.18); }
+
+/* ── Keyframe animations ── */
+@keyframes pulse-glow {
+  0%, 100% { opacity: 0.4; transform: scale(1); }
+  50% { opacity: 0.8; transform: scale(1.02); }
+}
+@keyframes drift-slow {
+  0% { transform: translate3d(0, 0, 0); }
+  50% { transform: translate3d(30px, -20px, 0); }
+  100% { transform: translate3d(0, 0, 0); }
+}
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+@keyframes aurora {
+  0%, 100% { transform: translate3d(0, 0, 0) rotate(0deg); }
+  33% { transform: translate3d(30px, -40px, 0) rotate(4deg); }
+  66% { transform: translate3d(-20px, 30px, 0) rotate(-3deg); }
+}
+
+.shimmer-text {
+  background: linear-gradient(
+    90deg,
+    var(--color-text-secondary) 0%,
+    var(--color-text-primary) 50%,
+    var(--color-text-secondary) 100%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: shimmer 3s linear infinite;
+}
+
+.glass {
+  background: rgba(18, 20, 26, 0.65);
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  border: 1px solid var(--color-border);
+}
