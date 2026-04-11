@@ -12,7 +12,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-load_dotenv(Path(__file__).parents[4] / ".env")
+load_dotenv(Path(__file__).parents[1] / ".env")
 
 # ---------------------------------------------------------------------------
 # Database (PostgreSQL via Cloud SQL Proxy)

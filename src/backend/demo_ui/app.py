@@ -29,7 +29,7 @@ st.set_page_config(
     page_title="ResearchLineage",
     page_icon="🔬",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed",
 )
 
 # ── Styling ───────────────────────────────────────────────────────────────────
@@ -50,7 +50,11 @@ st.markdown("""
 .pill-foundation { background:#1a1430; color:#a78bfa; border:1px solid #7c3aed; border-radius:20px; padding:2px 10px; font-size:11px; }
 .connector { text-align:center; color:#3b4268; font-size:22px; margin:0; line-height:1; }
 .year-chip { background:#22263a; color:#94a3b8; border-radius:6px; padding:2px 10px; font-size:13px; font-weight:600; display:inline-block; }
-#MainMenu, footer, header { visibility: hidden; }
+#MainMenu, footer { visibility: hidden; }
+[data-testid="stToolbar"] { display: none; }
+[data-testid="stDecoration"] { display: none; }
+[data-testid="stSidebar"] { display: none; }
+[data-testid="collapsedControl"] { display: none; }
 .block-container { padding-top: 1.5rem; }
 </style>
 """, unsafe_allow_html=True)
@@ -62,17 +66,20 @@ for k, v in {"result": None, "error": None}.items():
     if k not in st.session_state:
         st.session_state[k] = v
 
-# ── Sidebar ───────────────────────────────────────────────────────────────────
-with st.sidebar:
-    st.markdown("## 🔬 ResearchLineage")
-    st.markdown("<p style='color:#7c85a2;font-size:13px;margin-top:-8px;'>Trace the intellectual ancestry of any research paper</p>", unsafe_allow_html=True)
-    st.divider()
+# ── Header ────────────────────────────────────────────────────────────────────
+st.markdown("## 🔬 ResearchLineage")
+st.markdown("<p style='color:#7c85a2;margin-top:-12px;font-size:14px;'>Trace the intellectual ancestry of any research paper</p>", unsafe_allow_html=True)
+st.divider()
 
+# ── Center input + controls ───────────────────────────────────────────────────
+_, center_col, _ = st.columns([1, 2, 1])
+with center_col:
     api_url = st.text_input("API URL", value="http://localhost:8000", help="Backend API base URL")
 
     paper_id = st.text_input(
         "Paper ID",
         placeholder="e.g. 1706.03762 or ARXIV:1706.03762",
+        label_visibility="collapsed",
         help="arXiv ID, arXiv URL, or Semantic Scholar paper ID",
     )
 
@@ -84,17 +91,12 @@ with st.sidebar:
     max_children   = st.slider("Max children per node", 3, 10, 5)
     window_years   = st.slider("Citation window (years)", 1, 5, 3, help="Years after publication to look for descendants")
 
-    st.divider()
     analyze_btn = st.button(
         "🚀 Analyze",
         use_container_width=True,
         type="primary",
         disabled=not paper_id.strip(),
     )
-
-# ── Header ────────────────────────────────────────────────────────────────────
-st.markdown("## 🔬 ResearchLineage")
-st.markdown("<p style='color:#7c85a2;margin-top:-12px;font-size:14px;'>Enter a paper ID in the sidebar and click Analyze</p>", unsafe_allow_html=True)
 st.divider()
 
 # ── API call ──────────────────────────────────────────────────────────────────
@@ -289,7 +291,7 @@ elif not st.session_state.error:
     <div style='text-align:center;padding:60px 0;color:#3b4268;'>
         <div style='font-size:56px;margin-bottom:16px;'>🔬</div>
         <div style='font-size:18px;font-weight:600;color:#475569;'>
-            Enter a paper ID in the sidebar and click Analyze
+            Enter a paper ID above and click Analyze
         </div>
         <div style='font-size:13px;color:#3b4268;margin-top:8px;'>
             Supports arXiv IDs, arXiv URLs, or Semantic Scholar paper IDs
