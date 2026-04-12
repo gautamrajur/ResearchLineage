@@ -32,16 +32,16 @@ export function TimelineView({ timeline, theme }: TimelineViewProps) {
         <div className="relative inline-block mb-6 ml-16" ref={legendRef}>
           <button
             onClick={() => setLegendOpen((v) => !v)}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all"
             style={{
-              color: legendOpen ? theme.accent : theme.textMuted,
-              border: `1px solid ${legendOpen ? theme.accent + '55' : theme.border}`,
+              color: legendOpen ? theme.accent : theme.textSecondary,
+              border: `1px solid ${legendOpen ? theme.accent + '66' : (isDark ? 'rgba(255,255,255,0.14)' : 'rgba(0,0,0,0.18)')}`,
               background: legendOpen
-                ? (isDark ? `${theme.accent}12` : `${theme.accent}0E`)
-                : 'transparent',
+                ? (isDark ? `${theme.accent}15` : `${theme.accent}0F`)
+                : (isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)'),
             }}
           >
-            <span style={{ fontWeight: 600 }}>ⓘ</span> Badge guide
+            <span>ⓘ</span> Badge guide
           </button>
 
           <AnimatePresence>
@@ -82,7 +82,7 @@ export function TimelineView({ timeline, theme }: TimelineViewProps) {
                 <p className="text-[10px] font-semibold uppercase tracking-[0.14em] mb-2.5"
                   style={{ color: theme.textMuted }}>Source type</p>
                 <div className="space-y-2">
-                  {LEGEND_SOURCE.map(({ label, pill, desc }) => (
+                  {legendSourceItems(isDark).map(({ label, pill, desc }) => (
                     <div key={label} className="flex items-start gap-2.5">
                       <span className="shrink-0 mt-0.5">{pill}</span>
                       <span className="text-[11.5px] leading-snug" style={{ color: theme.textSecondary }}>{desc}</span>
@@ -218,7 +218,7 @@ function TimelineCard({
           <div className="flex flex-wrap items-center gap-2 mb-4">
             <YearChip year={paper.year} theme={theme} />
             <BreakthroughBadge level={bt} />
-            <SourcePill source={entry.source_type} foundational={entry.is_foundational} />
+            <SourcePill source={entry.source_type} foundational={entry.is_foundational} isDark={isDark} />
             {isSeed && (
               <span className="px-2.5 py-0.5 rounded-md text-[10px] font-semibold tracking-wider uppercase"
                 style={{ background: `${theme.seed}14`, color: theme.seed, border: `1px solid ${theme.seed}44` }}>
@@ -386,35 +386,41 @@ const LEGEND_BREAKTHROUGH: { level: BreakthroughLevel; desc: string }[] = [
   { level: 'minor',         desc: 'Marginal refinement — small contribution, optimization, or ablation.' },
 ];
 
-const LEGEND_SOURCE: { label: string; pill: React.ReactElement; desc: string }[] = [
-  {
-    label: 'Full text',
-    pill: (
-      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-[#22c55e]/10 text-[#4ade80] border border-[#22c55e]/30">
-        ● Full text
-      </span>
-    ),
-    desc: 'Full PDF was sent to Gemini — lowest hallucination risk.',
-  },
-  {
-    label: 'Abstract only',
-    pill: (
-      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-[#d97706]/10 text-[#fbbf24] border border-[#d97706]/30">
-        ◐ Abstract only
-      </span>
-    ),
-    desc: 'Only the abstract was available — higher hallucination risk.',
-  },
-  {
-    label: 'Foundation',
-    pill: (
-      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-[#7c3aed]/10 text-[#a78bfa] border border-[#7c3aed]/30">
-        🏛 Foundation
-      </span>
-    ),
-    desc: 'Identified as a foundational work in the lineage — the earliest anchor paper.',
-  },
-];
+function legendSourceItems(isDark: boolean): { label: string; pill: React.ReactElement; desc: string }[] {
+  const foundColor  = isDark ? '#c4b5fd' : '#6d28d9';
+  const foundBg     = isDark ? 'rgba(167,139,250,0.12)' : 'rgba(109,40,217,0.10)';
+  const foundBorder = isDark ? 'rgba(167,139,250,0.40)' : 'rgba(109,40,217,0.40)';
+  return [
+    {
+      label: 'Full text',
+      pill: (
+        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-[#22c55e]/10 text-[#4ade80] border border-[#22c55e]/30">
+          ● Full text
+        </span>
+      ),
+      desc: 'Full PDF was sent to Gemini — lowest hallucination risk.',
+    },
+    {
+      label: 'Abstract only',
+      pill: (
+        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-[#d97706]/10 text-[#fbbf24] border border-[#d97706]/30">
+          ◐ Abstract only
+        </span>
+      ),
+      desc: 'Only the abstract was available — higher hallucination risk.',
+    },
+    {
+      label: 'Foundation',
+      pill: (
+        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-medium"
+          style={{ color: foundColor, background: foundBg, border: `1px solid ${foundBorder}` }}>
+          🏛 Foundation
+        </span>
+      ),
+      desc: 'Identified as a foundational work in the lineage — the earliest anchor paper.',
+    },
+  ];
+}
 
 const BADGE_STYLES: Record<
   BreakthroughLevel,
@@ -462,13 +468,20 @@ function BreakthroughBadge({ level }: { level: BreakthroughLevel }) {
 function SourcePill({
   source,
   foundational,
+  isDark,
 }: {
   source: string;
   foundational: boolean;
+  isDark: boolean;
 }) {
   if (foundational) {
+    // Light mode: dark violet on near-white bg. Dark mode: bright violet-300 on dark bg.
+    const color  = isDark ? '#c4b5fd' : '#6d28d9';
+    const bg     = isDark ? 'rgba(167,139,250,0.12)' : 'rgba(109,40,217,0.10)';
+    const border = isDark ? 'rgba(167,139,250,0.40)' : 'rgba(109,40,217,0.40)';
     return (
-      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-[#7c3aed]/10 text-[#a78bfa] border border-[#7c3aed]/30">
+      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-medium"
+        style={{ color, background: bg, border: `1px solid ${border}` }}>
         🏛 Foundation
       </span>
     );
