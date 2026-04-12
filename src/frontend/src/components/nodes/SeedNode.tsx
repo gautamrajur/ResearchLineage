@@ -1,4 +1,5 @@
 import { Handle, Position, type NodeProps } from '@xyflow/react';
+import { useState } from 'react';
 import { motion } from 'framer-motion';
 import type { TreePaperMeta } from '../../lib/types';
 import { cn, formatNumber, truncate } from '../../lib/utils';
@@ -10,12 +11,19 @@ interface SeedNodeData {
 
 export function SeedNode({ data }: NodeProps) {
   const { paper, dim } = data as unknown as SeedNodeData;
+  const [hovered, setHovered] = useState(false);
+
+  const arxivId = paper.externalIds?.ArXiv;
+  const s2Url = `https://www.semanticscholar.org/paper/${paper.paperId}`;
+  const arxivUrl = arxivId ? `https://arxiv.org/abs/${arxivId}` : null;
 
   return (
     <motion.div
       initial={{ scale: 0.94, opacity: 0 }}
       animate={{ scale: 1, opacity: 1 }}
       transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       className={cn(
         'relative rounded-2xl px-5 py-4 min-w-[280px] max-w-[300px]',
         'bg-gradient-to-br from-[#F97066]/12 via-[#FB923C]/8 to-[#12141A]/70',
@@ -58,6 +66,36 @@ export function SeedNode({ data }: NodeProps) {
           {formatNumber(paper.citationCount ?? null)} citations
         </span>
       </div>
+
+      {/* Paper links — visible on hover */}
+      {hovered && (
+        <div className="absolute -top-8 left-0 flex items-center gap-1.5 px-2 py-1 rounded-lg"
+          style={{ background: 'rgba(18,20,26,0.95)', border: '1px solid rgba(249,112,102,0.25)' }}>
+          <a
+            href={s2Url}
+            target="_blank"
+            rel="noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="text-[10px] text-[#8B95A5] hover:text-[#F97066] transition-colors"
+          >
+            S2 ↗
+          </a>
+          {arxivUrl && (
+            <>
+              <span className="text-[#5A6375]">·</span>
+              <a
+                href={arxivUrl}
+                target="_blank"
+                rel="noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="text-[10px] text-[#8B95A5] hover:text-[#F97066] transition-colors"
+              >
+                arXiv ↗
+              </a>
+            </>
+          )}
+        </div>
+      )}
 
       <Handle
         type="source"

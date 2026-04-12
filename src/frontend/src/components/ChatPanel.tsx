@@ -65,7 +65,11 @@ export function ChatPanel({ paperId, seedTitle, theme, open, onOpenChange }: Cha
       });
 
       if (!res.ok || !res.body) {
-        const detail = await res.text().catch(() => `HTTP ${res.status}`);
+        let detail = `HTTP ${res.status}`;
+        try {
+          const body = await res.json();
+          detail = body?.detail ?? detail;
+        } catch { /* ignore */ }
         throw new Error(detail);
       }
 
@@ -105,14 +109,20 @@ export function ChatPanel({ paperId, seedTitle, theme, open, onOpenChange }: Cha
       }
     } catch (e) {
       if ((e as Error).name === 'AbortError') return;
-      const errMsg = (e as Error).message ?? 'Unknown error';
+      const raw = (e as Error).message ?? 'Unknown error';
+      // Surface quota errors in plain language
+      const errMsg = raw.includes('quota') || raw.includes('RESOURCE_EXHAUSTED')
+        ? 'Gemini quota exceeded. Please wait a minute and try again.'
+        : raw.includes('404') || raw.includes('No timeline')
+        ? 'No cached timeline for this paper. Run /analyze first.'
+        : `Error: ${raw.slice(0, 120)}`;
       setMessages((prev) => {
         const updated = [...prev];
         const last = updated[updated.length - 1];
         if (last?.role === 'model') {
           updated[updated.length - 1] = {
             ...last,
-            content: last.content || `Error: ${errMsg}`,
+            content: last.content || errMsg,
             streaming: false,
           };
         }
@@ -157,22 +167,21 @@ export function ChatPanel({ paperId, seedTitle, theme, open, onOpenChange }: Cha
         {open ? 'Close chat' : 'Ask about this lineage'}
       </motion.button>
 
-      {/* Sticky sidebar panel */}
       <AnimatePresence>
         {open && (
           <motion.div
-            initial={{ opacity: 0, width: 0 }}
-            animate={{ opacity: 1, width: 380 }}
-            exit={{ opacity: 0, width: 0 }}
+            initial={{ opacity: 0, width: 0, x: 20 }}
+            animate={{ opacity: 1, width: 380, x: 0 }}
+            exit={{ opacity: 0, width: 0, x: 20 }}
             transition={{ type: 'spring', stiffness: 340, damping: 32 }}
-            className="shrink-0 flex flex-col rounded-2xl overflow-hidden self-start"
+            className="shrink-0 flex flex-col rounded-2xl overflow-hidden sticky top-24"
             style={{
-              minHeight: 480,
+              width: 380,
               background: panelBg,
               border: `1px solid ${borderColor}`,
               boxShadow: isDark
-                ? '0 24px 64px rgba(0,0,0,0.6)'
-                : '0 16px 48px rgba(0,0,0,0.12)',
+                ? '0 16px 48px rgba(0,0,0,0.5)'
+                : '0 8px 32px rgba(0,0,0,0.10)',
             }}
           >
             {/* Header */}
@@ -196,8 +205,8 @@ export function ChatPanel({ paperId, seedTitle, theme, open, onOpenChange }: Cha
               </div>
             </div>
 
-            {/* Messages */}
-            <div className="px-4 py-4 space-y-3" style={{ minHeight: 320 }}>
+            {/* Messages — grows with conversation */}
+            <div className="px-4 py-4 space-y-3">
               {messages.length === 0 && (
                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.1 }}
                   className="space-y-3">

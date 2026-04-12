@@ -40,7 +40,7 @@ S2_INTER_CALL_SLEEP = 1.2   # polite delay between successful calls
 
 # Fields requested by pred_successor_view (minimal)
 S2_PAPER_FIELDS_MINIMAL = (
-    "paperId,title,year,citationCount,influentialCitationCount"
+    "paperId,externalIds,title,year,citationCount,influentialCitationCount"
 )
 
 # Fields requested by evolution_view (full)
@@ -52,7 +52,7 @@ S2_PAPER_FIELDS_FULL = (
 )
 
 S2_REFERENCE_FIELDS_MINIMAL = (
-    "citedPaper.paperId,citedPaper.title,citedPaper.year,"
+    "citedPaper.paperId,citedPaper.externalIds,citedPaper.title,citedPaper.year,"
     "citedPaper.citationCount,isInfluential,intents"
 )
 
@@ -65,7 +65,7 @@ S2_REFERENCE_FIELDS_FULL = (
 )
 
 S2_CITATION_FIELDS = (
-    "citingPaper.paperId,citingPaper.title,citingPaper.year,"
+    "citingPaper.paperId,citingPaper.externalIds,citingPaper.title,citingPaper.year,"
     "citingPaper.citationCount,intents,isInfluential"
 )
 

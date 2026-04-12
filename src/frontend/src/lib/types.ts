@@ -88,6 +88,16 @@ export interface TreePaperMeta {
   year?: number | null;
   citationCount?: number | null;
   influentialCitationCount?: number | null;
+  externalIds?: { ArXiv?: string } | null;
+}
+
+export interface FeedbackPayload {
+  paper_id: string;
+  related_paper_id?: string | null;
+  view_type?: string;
+  feedback_target?: string;
+  rating: 1 | -1;
+  comment?: string | null;
 }
 
 export interface AncestorNode {

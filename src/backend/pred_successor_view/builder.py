@@ -287,7 +287,7 @@ class PredSuccessorView:
             _logger.info("  [API]  title=%s  year=%s  elapsed=%s",
                          target.get("title", "")[:60], target.get("year"), _ms(t1))
 
-        _KEEP = {"paperId", "title", "year", "citationCount", "influentialCitationCount"}
+        _KEEP = {"paperId", "externalIds", "title", "year", "citationCount", "influentialCitationCount"}
         tree["target"] = {k: v for k, v in target.items() if k in _KEEP}
 
         tree_nodes = [{

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import type {
   BreakthroughLevel,
@@ -8,6 +8,7 @@ import type {
 import { formatNumber } from '../lib/utils';
 import type { Theme } from '../lib/theme';
 import { ChatPanel } from './ChatPanel';
+import { submitFeedback } from '../lib/api';
 
 interface TimelineViewProps {
   timeline: Timeline;
@@ -20,11 +21,79 @@ export function TimelineView({ timeline, theme }: TimelineViewProps) {
   const seedTitle = timeline.seed_paper?.title ?? '';
   const seedPaperId = timeline.seed_paper?.paper_id ?? '';
   const [chatOpen, setChatOpen] = useState(false);
+  const [legendOpen, setLegendOpen] = useState(false);
+  const legendRef = useRef<HTMLDivElement>(null);
 
   return (
     <div className="flex gap-6 items-start">
-      {/* Timeline column */}
+      {/* Timeline — flex-1 fills all remaining space */}
       <div className="relative flex-1 min-w-0">
+        {/* Legend info button */}
+        <div className="relative inline-block mb-6 ml-16" ref={legendRef}>
+          <button
+            onClick={() => setLegendOpen((v) => !v)}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] transition-colors"
+            style={{
+              color: legendOpen ? theme.accent : theme.textMuted,
+              border: `1px solid ${legendOpen ? theme.accent + '55' : theme.border}`,
+              background: legendOpen
+                ? (isDark ? `${theme.accent}12` : `${theme.accent}0E`)
+                : 'transparent',
+            }}
+          >
+            <span style={{ fontWeight: 600 }}>ⓘ</span> Badge guide
+          </button>
+
+          <AnimatePresence>
+            {legendOpen && (
+              <motion.div
+                initial={{ opacity: 0, y: -6, scale: 0.97 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -6, scale: 0.97 }}
+                transition={{ duration: 0.18 }}
+                className="absolute left-0 top-full mt-2 z-30 rounded-2xl p-4 w-[380px]"
+                style={{
+                  background: isDark ? '#0E1018' : '#FFFFFF',
+                  border: `1px solid ${theme.border}`,
+                  boxShadow: isDark
+                    ? '0 12px 40px rgba(0,0,0,0.55)'
+                    : '0 8px 32px rgba(0,0,0,0.12)',
+                }}
+              >
+                {/* Breakthrough levels */}
+                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] mb-2.5"
+                  style={{ color: theme.textMuted }}>Breakthrough level</p>
+                <div className="space-y-2 mb-4">
+                  {LEGEND_BREAKTHROUGH.map(({ level, desc }) => {
+                    const s = BADGE_STYLES[level];
+                    return (
+                      <div key={level} className="flex items-start gap-2.5">
+                        <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold uppercase tracking-wider border shrink-0 mt-0.5"
+                          style={{ color: s.color, background: s.bg, borderColor: s.border }}>
+                          <span className="mr-1">{s.icon}</span>{level}
+                        </span>
+                        <span className="text-[11.5px] leading-snug" style={{ color: theme.textSecondary }}>{desc}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Source types */}
+                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] mb-2.5"
+                  style={{ color: theme.textMuted }}>Source type</p>
+                <div className="space-y-2">
+                  {LEGEND_SOURCE.map(({ label, pill, desc }) => (
+                    <div key={label} className="flex items-start gap-2.5">
+                      <span className="shrink-0 mt-0.5">{pill}</span>
+                      <span className="text-[11.5px] leading-snug" style={{ color: theme.textSecondary }}>{desc}</span>
+                    </div>
+                  ))}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
         {/* Animated vertical rail */}
         <div
           aria-hidden
@@ -36,7 +105,15 @@ export function TimelineView({ timeline, theme }: TimelineViewProps) {
 
         <ol className="space-y-8">
           {chain.map((entry, i) => (
-            <TimelineCard key={`${entry.paper.paper_id}-${i}`} entry={entry} index={i} total={chain.length} theme={theme} isDark={isDark} />
+            <TimelineCard
+              key={`${entry.paper.paper_id}-${i}`}
+              entry={entry}
+              index={i}
+              total={chain.length}
+              theme={theme}
+              isDark={isDark}
+              seedPaperId={seedPaperId}
+            />
           ))}
         </ol>
 
@@ -49,7 +126,7 @@ export function TimelineView({ timeline, theme }: TimelineViewProps) {
         </motion.div>
       </div>
 
-      {/* Chat column — sticky sidebar */}
+      {/* Chat panel — fixed to viewport right edge */}
       <ChatPanel
         paperId={seedPaperId}
         seedTitle={seedTitle}
@@ -71,12 +148,14 @@ function TimelineCard({
   total,
   theme,
   isDark,
+  seedPaperId,
 }: {
   entry: TimelineEntry;
   index: number;
   total: number;
   theme: Theme;
   isDark: boolean;
+  seedPaperId: string;
 }) {
   const [expanded, setExpanded] = useState(false);
   const paper = entry.paper;
@@ -261,7 +340,13 @@ function TimelineCard({
 
       {/* Comparison card → leads to next paper */}
       {comparison && index < total - 1 && (
-        <ComparisonCard comparison={comparison} theme={theme} isDark={isDark} />
+        <ComparisonCard
+          comparison={comparison}
+          theme={theme}
+          isDark={isDark}
+          seedPaperId={seedPaperId}
+          relatedPaperId={paper.paper_id}
+        />
       )}
     </motion.li>
   );
@@ -289,6 +374,47 @@ function YearChip({ year, theme }: { year: number | null; theme: Theme }) {
     </span>
   );
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// Legend data
+// ─────────────────────────────────────────────────────────────────────────
+
+const LEGEND_BREAKTHROUGH: { level: BreakthroughLevel; desc: string }[] = [
+  { level: 'revolutionary', desc: 'Paradigm shift — redefines an entire field or introduces a fundamentally new approach.' },
+  { level: 'major',         desc: 'Significant leap — substantially advances state-of-the-art in a meaningful direction.' },
+  { level: 'moderate',      desc: 'Incremental advance — solid improvement on prior work within an established direction.' },
+  { level: 'minor',         desc: 'Marginal refinement — small contribution, optimization, or ablation.' },
+];
+
+const LEGEND_SOURCE: { label: string; pill: React.ReactElement; desc: string }[] = [
+  {
+    label: 'Full text',
+    pill: (
+      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-[#22c55e]/10 text-[#4ade80] border border-[#22c55e]/30">
+        ● Full text
+      </span>
+    ),
+    desc: 'Full PDF was sent to Gemini — lowest hallucination risk.',
+  },
+  {
+    label: 'Abstract only',
+    pill: (
+      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-[#d97706]/10 text-[#fbbf24] border border-[#d97706]/30">
+        ◐ Abstract only
+      </span>
+    ),
+    desc: 'Only the abstract was available — higher hallucination risk.',
+  },
+  {
+    label: 'Foundation',
+    pill: (
+      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-[#7c3aed]/10 text-[#a78bfa] border border-[#7c3aed]/30">
+        🏛 Foundation
+      </span>
+    ),
+    desc: 'Identified as a foundational work in the lineage — the earliest anchor paper.',
+  },
+];
 
 const BADGE_STYLES: Record<
   BreakthroughLevel,
@@ -361,11 +487,59 @@ function SourcePill({
   );
 }
 
-function ComparisonCard({ comparison, theme, isDark }: {
+function ComparisonCard({ comparison, theme, isDark, seedPaperId, relatedPaperId }: {
   comparison: NonNullable<TimelineEntry['comparison']>;
   theme: Theme;
   isDark: boolean;
+  seedPaperId: string;
+  relatedPaperId: string;
 }) {
+  const [thumb, setThumb] = useState<1 | -1 | null>(null);
+  const [comment, setComment] = useState('');
+  const [submitted, setSubmitted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+
+  async function handleThumb(rating: 1 | -1) {
+    if (submitted) return;
+    setThumb(rating);
+    // thumbs up submits immediately; thumbs down waits for optional comment
+    if (rating === 1) {
+      setSubmitting(true);
+      try {
+        await submitFeedback({
+          paper_id: seedPaperId,
+          related_paper_id: relatedPaperId,
+          view_type: 'timeline',
+          feedback_target: 'predecessor_selection',
+          rating: 1,
+        });
+        setSubmitted(true);
+      } finally {
+        setSubmitting(false);
+      }
+    }
+  }
+
+  async function handleSubmitComment() {
+    if (submitted || submitting) return;
+    setSubmitting(true);
+    try {
+      await submitFeedback({
+        paper_id: seedPaperId,
+        related_paper_id: relatedPaperId,
+        view_type: 'timeline',
+        feedback_target: 'predecessor_selection',
+        rating: -1,
+        comment: comment.trim() || null,
+      });
+      setSubmitted(true);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  const borderColor = `${theme.accent}${isDark ? '30' : '50'}`;
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }} whileInView={{ opacity: 1, y: 0 }}
@@ -376,23 +550,114 @@ function ComparisonCard({ comparison, theme, isDark }: {
         <div className="shrink-0 mt-1 text-[18px] font-bold" style={{ color: theme.accent }}>↓</div>
         <div className="flex-1 rounded-xl overflow-hidden"
           style={{
-            border: `1px solid ${theme.accent}${isDark ? '30' : '50'}`,
+            border: `1px solid ${borderColor}`,
             background: isDark ? `${theme.accent}08` : `${theme.accent}0F`,
             boxShadow: isDark ? 'none' : `0 2px 12px ${theme.accent}18`,
           }}>
-          {/* Colored header bar */}
+          {/* Header */}
           <div className="px-5 py-3 flex items-center gap-2"
             style={{ background: isDark ? `${theme.accent}10` : `${theme.accent}18`, borderBottom: `1px solid ${theme.accent}${isDark ? '20' : '35'}` }}>
             <span className="text-[13px]" style={{ color: theme.accent }}>↟</span>
-            <p className="text-[10px] font-bold uppercase tracking-[0.16em]" style={{ color: isDark ? theme.accent : theme.accent }}>
+            <p className="text-[10px] font-bold uppercase tracking-[0.16em]" style={{ color: theme.accent }}>
               Improvement over predecessor
             </p>
           </div>
+
+          {/* Content */}
           <div className="px-5 py-4 grid md:grid-cols-2 gap-x-6 gap-y-4">
             <CompField label="What was improved" body={comparison.what_was_improved} theme={theme} isDark={isDark} />
             <CompField label="How" body={comparison.how_it_was_improved} theme={theme} isDark={isDark} />
             <CompField label="Why it matters" body={comparison.why_it_matters} theme={theme} isDark={isDark} />
             <CompField label="Problem solved" body={comparison.problem_solved_from_predecessor} theme={theme} isDark={isDark} />
+          </div>
+
+          {/* Feedback footer */}
+          <div className="px-5 py-3 flex flex-col gap-2"
+            style={{ borderTop: `1px solid ${theme.accent}${isDark ? '18' : '28'}` }}>
+            {submitted ? (
+              <p className="text-[11px]" style={{ color: theme.textMuted }}>
+                Thanks for the feedback!
+              </p>
+            ) : (
+              <>
+                <div className="flex items-center gap-3">
+                  <span className="text-[10px] uppercase tracking-[0.12em]" style={{ color: theme.textMuted }}>
+                    Correct predecessor?
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={() => handleThumb(1)}
+                      disabled={submitting}
+                      className="w-7 h-7 rounded-lg flex items-center justify-center text-[14px] transition-all"
+                      style={{
+                        background: thumb === 1
+                          ? (isDark ? 'rgba(74,222,128,0.15)' : 'rgba(74,222,128,0.12)')
+                          : (isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)'),
+                        border: `1px solid ${thumb === 1 ? '#4ADE8066' : theme.border}`,
+                        color: thumb === 1 ? '#4ADE80' : theme.textMuted,
+                      }}
+                    >
+                      👍
+                    </button>
+                    <button
+                      onClick={() => handleThumb(-1)}
+                      disabled={submitting}
+                      className="w-7 h-7 rounded-lg flex items-center justify-center text-[14px] transition-all"
+                      style={{
+                        background: thumb === -1
+                          ? (isDark ? 'rgba(248,113,113,0.15)' : 'rgba(248,113,113,0.10)')
+                          : (isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)'),
+                        border: `1px solid ${thumb === -1 ? '#F8717166' : theme.border}`,
+                        color: thumb === -1 ? '#F87171' : theme.textMuted,
+                      }}
+                    >
+                      👎
+                    </button>
+                  </div>
+                </div>
+
+                {/* Comment field — only on thumbs down */}
+                <AnimatePresence>
+                  {thumb === -1 && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      transition={{ duration: 0.22 }}
+                      className="overflow-hidden"
+                    >
+                      <div className="flex gap-2 pt-1">
+                        <input
+                          type="text"
+                          value={comment}
+                          onChange={(e) => setComment(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === 'Enter') handleSubmitComment(); }}
+                          placeholder="What's wrong with this predecessor? (optional)"
+                          className="flex-1 bg-transparent outline-none text-[11.5px] px-2.5 py-1.5 rounded-lg"
+                          style={{
+                            color: theme.textPrimary,
+                            border: `1px solid ${theme.border}`,
+                            background: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)',
+                          }}
+                        />
+                        <button
+                          onClick={handleSubmitComment}
+                          disabled={submitting}
+                          className="px-3 py-1.5 rounded-lg text-[11px] font-medium transition-colors"
+                          style={{
+                            background: isDark ? 'rgba(248,113,113,0.15)' : 'rgba(248,113,113,0.10)',
+                            color: '#F87171',
+                            border: '1px solid rgba(248,113,113,0.30)',
+                          }}
+                        >
+                          {submitting ? '…' : 'Send'}
+                        </button>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </>
+            )}
           </div>
         </div>
       </div>

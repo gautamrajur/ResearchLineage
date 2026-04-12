@@ -15,6 +15,7 @@ Usage:
 
 import json
 import os
+import uuid
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -69,6 +70,15 @@ class ChatMessage(BaseModel):
 class ChatRequest(BaseModel):
     paper_id: str
     messages: list[ChatMessage]
+
+
+class FeedbackRequest(BaseModel):
+    paper_id: str
+    related_paper_id: Optional[str] = None
+    view_type: str = "timeline"          # "timeline" | "tree"
+    feedback_target: str = "predecessor_selection"
+    rating: int                          # 1 = thumbs up, -1 = thumbs down
+    comment: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
@@ -147,6 +157,24 @@ def search_papers(q: str = Query(..., min_length=1, description="Paper title to 
         pass
 
     return {"results": [], "source": "none"}
+
+
+@app.post("/feedback", status_code=201)
+def submit_feedback(req: FeedbackRequest):
+    """Store anonymous predecessor-selection feedback for drift detection."""
+    if req.rating not in (1, -1):
+        raise HTTPException(status_code=422, detail="rating must be 1 or -1")
+    cache = Cache(DATABASE_URL)
+    cache.save_feedback(
+        feedback_id=str(uuid.uuid4()),
+        paper_id=req.paper_id,
+        related_paper_id=req.related_paper_id,
+        view_type=req.view_type,
+        feedback_target=req.feedback_target,
+        rating=req.rating,
+        comment=req.comment or None,
+    )
+    return {"status": "ok"}
 
 
 @app.post("/chat")

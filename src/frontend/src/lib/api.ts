@@ -1,6 +1,7 @@
 import type {
   AnalyzeParams,
   AnalyzeResponse,
+  FeedbackPayload,
   SearchResponse,
 } from './types';
 
@@ -56,4 +57,11 @@ export function analyzePaper(
 
 export function healthCheck(signal?: AbortSignal): Promise<{ status: string }> {
   return request('/health', { signal });
+}
+
+export function submitFeedback(payload: FeedbackPayload): Promise<{ status: string }> {
+  return request('/feedback', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
 }

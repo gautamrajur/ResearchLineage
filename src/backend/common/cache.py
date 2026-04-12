@@ -354,7 +354,7 @@ class Cache:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
                 cur.execute(
                     'SELECT r.cited_paper_id, r.is_influential, r.intents, '
-                    '       r.cited_citation_count, p.title, p.year '
+                    '       r.cited_citation_count, p.title, p.year, p.arxiv_id '
                     'FROM   "references" r '
                     'JOIN   papers p ON p.paper_id = r.cited_paper_id '
                     "WHERE  r.paper_id = %s AND r.intents LIKE '%%methodology%%'",
@@ -366,7 +366,7 @@ class Cache:
                     seen = {r["cited_paper_id"] for r in methodology}
                     cur.execute(
                         'SELECT r.cited_paper_id, r.is_influential, r.intents, '
-                        '       r.cited_citation_count, p.title, p.year '
+                        '       r.cited_citation_count, p.title, p.year, p.arxiv_id '
                         'FROM   "references" r '
                         'JOIN   papers p ON p.paper_id = r.cited_paper_id '
                         'WHERE  r.paper_id = %s AND r.is_influential = 1',
@@ -391,6 +391,7 @@ class Cache:
                     "title":         r["title"],
                     "year":          r["year"],
                     "citationCount": r["cited_citation_count"],
+                    "externalIds":   {"ArXiv": r["arxiv_id"]} if r["arxiv_id"] else {},
                 },
             }
             for r in top
@@ -474,7 +475,7 @@ class Cache:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
                 cur.execute(
                     "SELECT c.citing_paper_id, c.is_influential, c.intents, "
-                    "       c.citing_citation_count, p.title, p.year "
+                    "       c.citing_citation_count, p.title, p.year, p.arxiv_id "
                     "FROM   citations c "
                     "JOIN   papers    p ON p.paper_id = c.citing_paper_id "
                     "WHERE  c.paper_id = %s "
@@ -488,7 +489,7 @@ class Cache:
                     seen = {r["citing_paper_id"] for r in methodology}
                     cur.execute(
                         "SELECT c.citing_paper_id, c.is_influential, c.intents, "
-                        "       c.citing_citation_count, p.title, p.year "
+                        "       c.citing_citation_count, p.title, p.year, p.arxiv_id "
                         "FROM   citations c "
                         "JOIN   papers    p ON p.paper_id = c.citing_paper_id "
                         "WHERE  c.paper_id = %s "
@@ -515,6 +516,7 @@ class Cache:
                     "title":         r["title"],
                     "year":          r["year"],
                     "citationCount": r["citing_citation_count"],
+                    "externalIds":   {"ArXiv": r["arxiv_id"]} if r["arxiv_id"] else {},
                 },
             }
             for r in top
@@ -817,6 +819,28 @@ class Cache:
                     "(tree_id, paper_id, node_type, depth, parent_paper_id) "
                     "VALUES %s ON CONFLICT DO NOTHING",
                     rows,
+                )
+            conn.commit()
+
+    # ------------------------------------------------------------------
+    # Feedback
+    # ------------------------------------------------------------------
+
+    def save_feedback(self, feedback_id: str, paper_id: str,
+                      related_paper_id: Optional[str], view_type: str,
+                      feedback_target: str, rating: int,
+                      comment: Optional[str]) -> None:
+        """Persist anonymous user feedback for drift detection."""
+        with self._get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO feedback "
+                    "(feedback_id, paper_id, related_paper_id, view_type, "
+                    " feedback_target, rating, comment, created_at) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s) "
+                    "ON CONFLICT DO NOTHING",
+                    (feedback_id, paper_id, related_paper_id, view_type,
+                     feedback_target, rating, comment, _now()),
                 )
             conn.commit()
 
