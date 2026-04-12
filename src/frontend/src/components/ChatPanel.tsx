@@ -56,7 +56,8 @@ export function ChatPanel({ paperId, seedTitle, theme, open, onOpenChange }: Cha
     abortRef.current = new AbortController();
 
     try {
-      const res = await fetch('/api/chat', {
+      const apiBase = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/+$/, '') || '/api';
+      const res = await fetch(`${apiBase}/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         signal: abortRef.current.signal,
