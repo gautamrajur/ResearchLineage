@@ -1,12 +1,12 @@
 """Retry Failed PDFs Task - Wrapper for retry_failed_pdfs flow."""
-import logging
 from typing import Dict, Any
 
 from src.database.connection import CloudSQLConnection
 from src.storage.gcs_client import GCSClient
 from src.tasks.retry_failed_pdfs import run_retry_failed_pdfs
+from src.utils.logging import get_logger
 
-LOG = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class RetryFailedPdfsTask:
@@ -26,7 +26,7 @@ class RetryFailedPdfsTask:
             self.gcs = GCSClient()
         if self.db is None:
             self.db = CloudSQLConnection()
-            LOG.info("Initialized CloudSQLConnection for retry_failed_pdfs")
+            logger.info("Initialized CloudSQLConnection for retry_failed_pdfs")
 
     async def execute(self) -> Dict[str, Any]:
         """
@@ -51,7 +51,7 @@ class RetryFailedPdfsTask:
         try:
             self._initialize()
         except Exception as e:
-            LOG.error("Failed to initialize clients: %s", e)
+            logger.exception("Failed to initialize clients: %s", e)
             return {
                 "status": "error",
                 "error": str(e),
@@ -63,7 +63,7 @@ class RetryFailedPdfsTask:
                 "alerted": 0,
             }
 
-        LOG.info("Starting retry-failed-PDFs task")
+        logger.info("Starting retry-failed-PDFs task")
 
         try:
             stats = await run_retry_failed_pdfs(
@@ -71,7 +71,7 @@ class RetryFailedPdfsTask:
                 gcs_client=self.gcs,
             )
         except Exception as e:
-            LOG.error("Retry failed PDFs task failed: %s", e)
+            logger.exception("Retry failed PDFs task failed: %s", e)
             return {
                 "status": "error",
                 "error": str(e),
@@ -83,7 +83,7 @@ class RetryFailedPdfsTask:
                 "alerted": 0,
             }
 
-        LOG.info(
+        logger.info(
             "Retry failed PDFs complete: fetched=%d, succeeded=%d, failed=%d, "
             "deleted_403_404=%d, reconciled=%d, alerted=%d",
             stats.get("fetched", 0),

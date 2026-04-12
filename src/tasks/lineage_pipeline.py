@@ -2,7 +2,6 @@
 lineage_pipeline.py
 ====================
 Self-contained end-to-end pipeline for generating fine-tuning data.
-No external project imports — everything is inlined.
 
 Steps:
     1. seed_generation        — Pick seed papers from Semantic Scholar
@@ -15,19 +14,19 @@ Steps:
     8. upload                 — Upload entire pipeline_output/ folder to GCS
 
 Logging:
-    Console: INFO and above
-    File:    DEBUG and above → pipeline_output/pipeline.log
+    Centralised via src.utils.logging (get_logger).
+    Console:   INFO and above (always).
+    JSON file: All levels → path set by LOG_JSON_FILE env var → shipped to
+               Elasticsearch/Kibana by Filebeat.
 """
 
 import argparse
 import json
-import logging
 import os
 import random
 import re
 import sys
 import time
-import traceback
 import numpy as np
 import pandas as pd
 import requests
@@ -67,7 +66,7 @@ from src.utils.config import (
     # Paths
     RUN_DIR, SEEDS_FILE, TRAINING_DATA_FILE, REPAIRED_DATA_FILE,
     SPLITS_DIR, QWEN_FORMAT_DIR, TIMELINE_OUTPUT_DIR,
-    STATE_FILE, REPORT_JSON, REPORT_TXT, LOG_FILE,
+    STATE_FILE, REPORT_JSON, REPORT_TXT,
     # Prompts
     MAIN_PROMPT, FOUNDATIONAL_PROMPT,
     # Logging
@@ -77,20 +76,10 @@ from src.utils.logging import get_logger
 
 
 # ════════════════════════════════════════
-# LOGGING — console via central config + file handler for persistent pipeline log
+# LOGGING — centralised via src.utils.logging
 # ════════════════════════════════════════
 
 logger = get_logger(__name__)
-
-# Add file handler so the full pipeline run is persisted to pipeline_output/pipeline.log
-RUN_DIR.mkdir(parents=True, exist_ok=True)
-_fh = logging.FileHandler(LOG_FILE, encoding="utf-8")
-_fh.setLevel(logging.DEBUG)
-_fh.setFormatter(logging.Formatter(
-    "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-))
-logger.addHandler(_fh)
 
 
 # ════════════════════════════════════════
@@ -136,7 +125,7 @@ def s2_api_call(endpoint, params=None):
                 logger.error(f"S2 error {r.status_code}: {r.text[:200]}")
                 return None
         except Exception as e:
-            logger.error(f"S2 request failed: {e}")
+            logger.exception(f"S2 request failed: {e}")
             return None
 
     logger.error(f"S2 failed after {S2_MAX_RETRIES} retries: {endpoint}")
@@ -410,7 +399,7 @@ def call_gemini(prompt_text, max_retries=3):
                 logger.warning(f"Gemini overloaded, waiting {int(wait)}s (attempt {attempt+1}/{max_retries})")
                 time.sleep(wait)
                 continue
-            logger.error(f"Gemini API error: {e}")
+            logger.exception(f"Gemini API error: {e}")
             return None
     logger.error(f"Gemini failed after {max_retries} retries")
     return None
@@ -442,7 +431,7 @@ def parse_gemini_response(response_text):
     try:
         return json.loads(fixed)
     except json.JSONDecodeError as e:
-        logger.error(f"JSON parse error: {e}")
+        logger.exception(f"JSON parse error: {e}")
         logger.debug(f"Raw response (first 500 chars): {text[:500]}")
         return None
 
@@ -956,8 +945,7 @@ def run_batch(seeds, depth, max_seeds, sleep, state_file=STATE_FILE, resume=True
                 "status": "failed", "depth": depth, "error": repr(e),
                 "domain": domain, "title": title,
             })
-            logger.error(f"Seed EXCEPTION for {seed_id}: {e!r}")
-            logger.debug(traceback.format_exc())
+            logger.exception(f"Seed EXCEPTION for {seed_id}: {e!r}")
 
         time.sleep(max(0.0, sleep))
 
@@ -1825,7 +1813,7 @@ def main():
 
     logger.info(f"Running steps: {' -> '.join(steps)}")
     logger.info(f"Output dir: {RUN_DIR}")
-    logger.info(f"Log file: {LOG_FILE}")
+    logger.info("JSON log: %s", os.getenv("LOG_JSON_FILE", "<stdout only — set LOG_JSON_FILE for file output>"))
 
     RUN_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -1867,12 +1855,11 @@ def main():
                 logger.error("No training examples generated. Stopping pipeline.")
                 sys.exit(1)
         except Exception as e:
-            logger.error(f"{label} failed: {e}")
-            logger.debug(traceback.format_exc())
+            logger.exception(f"{label} failed: {e}")
             sys.exit(1)
 
     logger.info(f"\nPipeline complete! All outputs in: {RUN_DIR}")
-    logger.info(f"Log file: {LOG_FILE}")
+    logger.info("JSON log: %s", os.getenv("LOG_JSON_FILE", "<stdout only>"))
 
 
 if __name__ == "__main__":

@@ -35,6 +35,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
+from src.utils.logging import get_logger
 from src.evaluation.config import EvaluationConfig
 from src.evaluation.evaluators.classification import evaluate_classification
 from src.evaluation.evaluators.llm_judge import evaluate_llm_judge
@@ -47,6 +48,8 @@ from src.evaluation.model_client import build_inference_client, build_judge_clie
 from src.evaluation.pipeline import _flatten_ground_truth, _parse_model_output
 from src.evaluation.types import GroundTruth
 from src.utils.config import GCS_BUCKET_NAME, GCS_PROJECT_ID
+
+logger = get_logger(__name__)
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -174,10 +177,10 @@ def run_inference(args: argparse.Namespace) -> None:
                     done[r["sample_id"]] = r
 
     todo = [s for s in samples if s["sample_id"] not in done]
-    print(f"[run_inference] total={len(samples)}  done={len(done)}  to_run={len(todo)}")
+    logger.info("run_inference total=%d done=%d to_run=%d", len(samples), len(done), len(todo))
 
     if not todo:
-        print("[run_inference] All samples already complete.")
+        logger.info("run_inference: all samples already complete")
         return
 
     client = build_inference_client(
@@ -195,7 +198,7 @@ def run_inference(args: argparse.Namespace) -> None:
                 raw = client.predict(sample["input_text"][:MAX_INPUT_CHARS])
                 latency_ms = (time.monotonic() - start) * 1000
                 parsed, parse_error = _parse_model_output(raw)
-                print(f"  OK  {sample['sample_id']}  attempt={attempt+1}  latency={latency_ms:.0f}ms")
+                logger.debug("inference ok sample_id=%s attempt=%d latency_ms=%.0f", sample["sample_id"], attempt + 1, latency_ms)
                 return {
                     "sample_id":        sample["sample_id"],
                     "run_id":           run_id,
@@ -212,9 +215,12 @@ def run_inference(args: argparse.Namespace) -> None:
                 latency_ms = (time.monotonic() - start) * 1000
                 last_exc = exc
                 is_last = attempt == MAX_RETRIES
-                print(
-                    f"  {'FAIL' if is_last else 'RETRY'}  {sample['sample_id']}  "
-                    f"attempt={attempt+1}  {type(exc).__name__}: {str(exc)[:120]}"
+                log_fn = logger.error if is_last else logger.warning
+                log_fn(
+                    "inference %s sample_id=%s attempt=%d error=%s: %s",
+                    "FAIL" if is_last else "RETRY",
+                    sample["sample_id"], attempt + 1,
+                    type(exc).__name__, str(exc)[:120],
                 )
                 if not is_last:
                     time.sleep(RETRY_DELAYS[attempt])
@@ -245,9 +251,9 @@ def run_inference(args: argparse.Namespace) -> None:
                     ok += 1
                 else:
                     errors += 1
-                print(f"  Progress {completed}/{len(todo)}  ok={ok}  errors={errors}")
+                logger.debug("inference progress %d/%d ok=%d errors=%d", completed, len(todo), ok, errors)
 
-    print(f"[run_inference] Done. ok={ok}  errors={errors}  saved to {raw_path}")
+    logger.info("run_inference done ok=%d errors=%d path=%s", ok, errors, raw_path)
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -272,7 +278,7 @@ def evaluate(args: argparse.Namespace) -> None:
         raise FileNotFoundError(f"Run inference first — {raw_path} not found.")
 
     raw_records = _load_jsonl_local(str(raw_path))
-    print(f"[evaluate] Loaded {len(raw_records)} inference results")
+    logger.info("evaluate loaded %d inference results", len(raw_records))
 
     # Build judge client once — used for ALL samples including foundational
     judge_client = build_judge_client(
@@ -326,7 +332,7 @@ def evaluate(args: argparse.Namespace) -> None:
                 ]) / 5, 4),
             }
         except Exception as e:
-            print(f"  WARNING: Judge failed for {r['sample_id']}: {e}")
+            logger.warning("judge failed sample_id=%s error=%s", r["sample_id"], e)
             judge_scores_dict = {
                 "judge_selection_reasoning": -1.0,
                 "judge_what_was_improved":   -1.0,
@@ -372,7 +378,7 @@ def evaluate(args: argparse.Namespace) -> None:
                     "schema_valid":       scores.schema_valid,
                 }
             except Exception as e:
-                print(f"  WARNING: Classification failed for {r['sample_id']}: {e}")
+                logger.warning("classification failed sample_id=%s error=%s", r["sample_id"], e)
                 n_errors += 1
 
         row = {
@@ -388,20 +394,17 @@ def evaluate(args: argparse.Namespace) -> None:
         }
         rows.append(row)
 
-        print(
-            f"  [{idx+1}/{len(raw_records)}] {r['sample_id']}"
-            f"  foundational={is_foundational}"
-            f"  judge_overall={judge_scores_dict.get('judge_overall')}"
+        logger.debug(
+            "evaluate [%d/%d] sample_id=%s foundational=%s judge_overall=%s",
+            idx + 1, len(raw_records), r["sample_id"],
+            is_foundational, judge_scores_dict.get("judge_overall"),
         )
 
     n_cls_evaluated = sum(1 for r in rows if r.get("predecessor_strict") is not None)
     n_judge_evaluated = sum(1 for r in rows if r.get("judge_overall") is not None)
-    print(
-        f"[evaluate] n_total={len(raw_records)}"
-        f"  n_foundational={n_foundational}"
-        f"  n_errors={n_errors}"
-        f"  n_cls={n_cls_evaluated}"
-        f"  n_judge={n_judge_evaluated}"
+    logger.info(
+        "evaluate complete n_total=%d n_foundational=%d n_errors=%d n_cls=%d n_judge=%d",
+        len(raw_records), n_foundational, n_errors, n_cls_evaluated, n_judge_evaluated,
     )
 
     # ── Per-sample JSONL ──────────────────────────────────────────────────────
@@ -486,7 +489,7 @@ def evaluate(args: argparse.Namespace) -> None:
     txt_path = output_dir / "aggregate_report.txt"
     txt_path.write_text(_build_txt(report), encoding="utf-8")
 
-    print(f"[evaluate] Reports written to {output_dir}")
+    logger.info("evaluate reports written to %s", output_dir)
 
 
 # ── Report formatters ─────────────────────────────────────────────────────────
@@ -612,7 +615,7 @@ def upload(args: argparse.Namespace) -> None:
     for filename, gcs_uri in files.items():
         local_file = output_dir / filename
         if not local_file.exists():
-            print(f"  SKIP (not found): {filename}")
+            logger.warning("upload skip (not found): %s", filename)
             continue
 
         if filename.endswith(".jsonl"):
@@ -627,9 +630,9 @@ def upload(args: argparse.Namespace) -> None:
                 content,
                 content_type="application/json" if filename.endswith(".json") else "text/plain",
             )
-        print(f"  Uploaded: {filename} → {gcs_uri}")
+        logger.info("upload %s → %s", filename, gcs_uri)
 
-    print(f"[upload] Done. GCS prefix: {base_gcs}")
+    logger.info("upload done gcs_prefix=%s", base_gcs)
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -687,7 +690,7 @@ def bias_check(args: argparse.Namespace) -> None:
     report_path = output_dir / "aggregate_report.json"
 
     if not report_path.exists():
-        print("[bias_check] ERROR: aggregate_report.json not found. Run 'evaluate' step first.")
+        logger.error("bias_check: aggregate_report.json not found at %s — run 'evaluate' step first", report_path)
         sys.exit(1)
 
     report = json.loads(report_path.read_text(encoding="utf-8"))
@@ -705,7 +708,7 @@ def bias_check(args: argparse.Namespace) -> None:
                 cls_accs.append(cls["predecessor_strict"])
         if len(cls_accs) >= 2:
             disparity = max(cls_accs) - min(cls_accs)
-            print(f"  Domain accuracy disparity: {disparity:.4f} (threshold: {BIAS_MAX_ACCURACY_DISPARITY})")
+            logger.info("bias_check domain accuracy disparity=%.4f threshold=%.4f", disparity, BIAS_MAX_ACCURACY_DISPARITY)
             if disparity > BIAS_MAX_ACCURACY_DISPARITY:
                 violations.append(f"Domain accuracy disparity {disparity:.4f} > {BIAS_MAX_ACCURACY_DISPARITY}")
 
@@ -717,7 +720,7 @@ def bias_check(args: argparse.Namespace) -> None:
                 judge_scores.append(judge["judge_overall"])
         if len(judge_scores) >= 2:
             disparity = max(judge_scores) - min(judge_scores)
-            print(f"  Domain judge disparity: {disparity:.4f} (threshold: {BIAS_MAX_JUDGE_DISPARITY})")
+            logger.info("bias_check domain judge disparity=%.4f threshold=%.4f", disparity, BIAS_MAX_JUDGE_DISPARITY)
             if disparity > BIAS_MAX_JUDGE_DISPARITY:
                 violations.append(f"Domain judge disparity {disparity:.4f} > {BIAS_MAX_JUDGE_DISPARITY}")
 
@@ -731,7 +734,7 @@ def bias_check(args: argparse.Namespace) -> None:
                 cls_accs.append(cls["predecessor_strict"])
         if len(cls_accs) >= 2:
             disparity = max(cls_accs) - min(cls_accs)
-            print(f"  Popularity accuracy disparity: {disparity:.4f} (threshold: {BIAS_MAX_ACCURACY_DISPARITY})")
+            logger.info("bias_check popularity accuracy disparity=%.4f threshold=%.4f", disparity, BIAS_MAX_ACCURACY_DISPARITY)
             if disparity > BIAS_MAX_ACCURACY_DISPARITY:
                 violations.append(f"Popularity accuracy disparity {disparity:.4f} > {BIAS_MAX_ACCURACY_DISPARITY}")
 
@@ -742,7 +745,7 @@ def bias_check(args: argparse.Namespace) -> None:
                 judge_scores.append(judge["judge_overall"])
         if len(judge_scores) >= 2:
             disparity = max(judge_scores) - min(judge_scores)
-            print(f"  Popularity judge disparity: {disparity:.4f} (threshold: {BIAS_MAX_JUDGE_DISPARITY})")
+            logger.info("bias_check popularity judge disparity=%.4f threshold=%.4f", disparity, BIAS_MAX_JUDGE_DISPARITY)
             if disparity > BIAS_MAX_JUDGE_DISPARITY:
                 violations.append(f"Popularity judge disparity {disparity:.4f} > {BIAS_MAX_JUDGE_DISPARITY}")
 
@@ -776,15 +779,13 @@ def bias_check(args: argparse.Namespace) -> None:
             passed=bool(bias_report["passed"]),
         )
     except Exception as exc:
-        print(f"  MLflow bias logging skipped: {exc}")
+        logger.warning("bias_check MLflow logging skipped: %s", exc)
 
     if violations:
-        print(f"\n[bias_check] FAILED — {len(violations)} violation(s):")
-        for v in violations:
-            print(f"  - {v}")
+        logger.error("bias_check FAILED %d violation(s): %s", len(violations), violations)
         sys.exit(1)
     else:
-        print("[bias_check] PASSED — no bias threshold violations detected.")
+        logger.info("bias_check PASSED — no bias threshold violations detected")
 
 
 if __name__ == "__main__":

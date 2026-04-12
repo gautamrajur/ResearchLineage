@@ -6,8 +6,6 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: airflow
-    ports:
-      - "5433:5432"
     volumes:
       - airflow_metadata:/var/lib/postgresql/data
     healthcheck:
@@ -25,7 +23,7 @@ services:
       - "--port=5432"
       - "researchlineage:us-central1:researchlineage-db"
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - ${GCLOUD_CONFIG_DIR}:/gcp/config:ro
     environment:
@@ -98,6 +96,8 @@ services:
       - CLOUD_SQL_DB=${CLOUD_SQL_DB}
       - CLOUD_SQL_USER=${CLOUD_SQL_USER}
       - CLOUD_SQL_PASSWORD=${CLOUD_SQL_PASSWORD}
+      # Elasticsearch structured logging (picked up by Filebeat)
+      - LOG_JSON_FILE=/opt/airflow/logs/app/researchlineage.jsonl
     env_file:
       - .env
     ports:
@@ -142,6 +142,8 @@ services:
       - CLOUD_SQL_DB=${CLOUD_SQL_DB}
       - CLOUD_SQL_USER=${CLOUD_SQL_USER}
       - CLOUD_SQL_PASSWORD=${CLOUD_SQL_PASSWORD}
+      # Elasticsearch structured logging (picked up by Filebeat)
+      - LOG_JSON_FILE=/opt/airflow/logs/app/researchlineage.jsonl
     env_file:
       - .env
     command: scheduler
@@ -197,6 +199,26 @@ services:
     depends_on:
       mlflow-db:
         condition: service_healthy
+    restart: unless-stopped
+
+  filebeat:
+    image: docker.elastic.co/beats/filebeat:9.3.3
+    container_name: researchlineage_filebeat
+    user: root  # needed to read Docker socket and host log files
+    environment:
+      - ELASTICSEARCH_HOST=host.docker.internal
+      - ELASTICSEARCH_PORT=9200
+      - KIBANA_HOST=host.docker.internal
+      - KIBANA_PORT=5601
+    volumes:
+      - ./filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+      - ./logs:/logs:ro
+    command: filebeat -e --strict.perms=false
+    depends_on:
+      - airflow-webserver
+      - airflow-scheduler
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     restart: unless-stopped
 
 volumes:

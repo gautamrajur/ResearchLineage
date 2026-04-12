@@ -4,12 +4,12 @@ Called after the main PDF fetch run completes. Uses upsert: insert if paper_id
 not present, else update fail_runs, reason, last_attempt_at, retry_after (+30s).
 Designed to be callable from script or from a DAG task (pass get_session).
 """
-import logging
 from typing import Any, Callable, Dict, List
 
 from src.database.fetch_pdf_failures_repository import FetchPdfFailuresRepository
+from src.utils.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def sync_failures_to_db(

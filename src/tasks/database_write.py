@@ -68,5 +68,5 @@ class DatabaseWriteTask:
                 }
 
         except Exception as e:
-            logger.error(f"Database write failed: {e}")
+            logger.exception(f"Database write failed: {e}")
             raise DatabaseError(f"Failed to write to database: {e}")

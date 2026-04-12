@@ -24,6 +24,9 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.evaluation.model_selection import load_reports_from_dirs, select_best_model
 from src.utils.config import GCS_BUCKET_NAME, GCS_PROJECT_ID
+from src.utils.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 def _parse_args() -> argparse.Namespace:
@@ -52,14 +55,14 @@ def _parse_args() -> argparse.Namespace:
 def run_selection(args: argparse.Namespace) -> dict:
     """Load reports, run selection, write results."""
     if len(args.report_dirs) != len(args.model_names):
-        print(f"ERROR: --report-dirs count ({len(args.report_dirs)}) != --model-names count ({len(args.model_names)})")
+        logger.error("--report-dirs count (%d) != --model-names count (%d)", len(args.report_dirs), len(args.model_names))
         sys.exit(1)
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Load reports
-    print(f"[model_selection] Loading reports from {len(args.report_dirs)} directories...")
+    logger.info("model_selection loading reports from %d directories", len(args.report_dirs))
     reports = load_reports_from_dirs(args.report_dirs, args.model_names)
 
     # Run selection
@@ -70,12 +73,12 @@ def run_selection(args: argparse.Namespace) -> dict:
     # Strip full reports from saved JSON (too large), keep scores + rankings
     save_result = {k: v for k, v in result.items() if k != "reports"}
     report_path.write_text(json.dumps(save_result, indent=2, ensure_ascii=False), encoding="utf-8")
-    print(f"[model_selection] Winner: {result['winner']} (composite={result['scores'][result['winner']]['composite']:.4f})")
-    print(f"[model_selection] Report: {report_path}")
+    logger.info("model_selection winner=%s composite=%.4f report=%s",
+                result["winner"], result["scores"][result["winner"]]["composite"], report_path)
 
     # Rankings
     for rank, (name, score) in enumerate(result["rankings"], 1):
-        print(f"  #{rank} {name}: {score:.4f}")
+        logger.info("  model_selection rank=%d name=%s composite=%.4f", rank, name, score)
 
     return result
 
@@ -84,11 +87,9 @@ def run_visualization(result: dict, output_dir: str) -> list[str]:
     """Generate comparison charts + HTML report."""
     from src.evaluation.visualization import generate_comparison_report
 
-    print("[model_selection] Generating visualizations...")
+    logger.info("model_selection generating visualizations")
     paths = generate_comparison_report(result, output_dir)
-    print(f"[model_selection] Generated {len(paths)} visualization files:")
-    for p in paths:
-        print(f"  {p}")
+    logger.info("model_selection generated %d visualization files: %s", len(paths), paths)
     return paths
 
 
@@ -98,9 +99,9 @@ def log_to_mlflow(result: dict, artifact_dir: str | None = None) -> None:
         from src.mlflow_utils import log_model_comparison
 
         run_id = log_model_comparison(result, artifact_dir=artifact_dir)
-        print(f"[model_selection] MLflow run: {run_id}")
+        logger.info("model_selection MLflow run_id=%s", run_id)
     except Exception as exc:
-        print(f"[model_selection] MLflow logging skipped: {exc}")
+        logger.warning("model_selection MLflow logging skipped: %s", exc)
 
 
 def run_promotion(result: dict, project_id: str, bucket_name: str) -> bool:
@@ -123,14 +124,14 @@ def run_promotion(result: dict, project_id: str, bucket_name: str) -> bool:
 
     if current_prod:
         current_score = current_prod.get("composite_score", 0.0)
-        print(f"[promote] Current production: {current_prod['version']} (composite={current_score:.4f})")
-        print(f"[promote] Challenger: {winner} (composite={winner_score:.4f})")
+        logger.info("promote current_prod=%s composite=%.4f challenger=%s composite=%.4f",
+                    current_prod["version"], current_score, winner, winner_score)
 
         if winner_score <= current_score:
-            print("[promote] Current model retained — winner does not beat production.")
+            logger.info("promote: current model retained — winner does not beat production")
             return False
 
-    print(f"[promote] Promoting {winner} to production...")
+    logger.info("promote: promoting %s to production", winner)
 
     # Find winner's version in registry, or register if not found
     winner_version = None
@@ -146,10 +147,10 @@ def run_promotion(result: dict, project_id: str, bucket_name: str) -> bool:
             bucket_name=bucket_name,
             project_id=project_id,
         )
-        print(f"[promote] PROMOTED {winner_version} to production.")
+        logger.info("promote: PROMOTED %s to production", winner_version)
         return True
     else:
-        print(f"[promote] WARNING: No registry entry found for winner '{winner}'. Skipping promotion.")
+        logger.warning("promote: no registry entry found for winner=%r — skipping promotion", winner)
         return False
 
 
@@ -166,9 +167,9 @@ def upload_to_gcs(output_dir: str, bucket_name: str, project_id: str) -> None:
         if file_path.is_file():
             blob_name = f"{gcs_prefix}/{file_path.name}"
             bucket.blob(blob_name).upload_from_filename(str(file_path))
-            print(f"  Uploaded: {file_path.name} → gs://{bucket_name}/{blob_name}")
+            logger.info("upload %s → gs://%s/%s", file_path.name, bucket_name, blob_name)
 
-    print(f"[upload] Done. GCS prefix: gs://{bucket_name}/{gcs_prefix}")
+    logger.info("upload done gcs_prefix=gs://%s/%s", bucket_name, gcs_prefix)
 
 
 if __name__ == "__main__":

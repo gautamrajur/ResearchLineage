@@ -9,7 +9,6 @@ Fallback chain for PDF URL resolution:
   3. Unpaywall DOI → free open-access lookup by DOI
 """
 import asyncio
-import logging
 from dataclasses import dataclass, field
 from typing import Dict, Any, List, Optional, Set
 
@@ -18,8 +17,9 @@ import httpx
 from src.storage.gcs_client import GCSClient
 from src.utils.config import settings
 from src.utils.id_mapper import IDMapper
+from src.utils.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 ARXIV_PDF_BASE = "https://arxiv.org/pdf"
 S2_API_BASE = settings.semantic_scholar_base_url

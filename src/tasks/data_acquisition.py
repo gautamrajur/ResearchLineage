@@ -104,7 +104,7 @@ class DataAcquisitionTask:
             return result
 
         except Exception as e:
-            logger.error(f"Data acquisition failed: {e}")
+            logger.exception(f"Data acquisition failed: {e}")
             raise
 
     def _get_max_papers_for_depth(self, current_depth: int) -> int:
