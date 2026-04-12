@@ -128,7 +128,7 @@ export function ResultsPage({ result, onBack, theme }: ResultsPageProps) {
       <AnimatePresence mode="wait">
         <motion.div key={tab} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
           transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}>
-          {tab === 'timeline' && timeline && <TimelineView timeline={timeline} theme={theme} />}
+          {tab === 'timeline' && timeline && <TimelineView timeline={timeline} theme={theme} chatPaperId={result.paper_id} />}
           {tab === 'tree' && tree && <TreeView tree={tree} theme={theme} />}
           {tab === 'raw' && <RawJson result={result} theme={theme} />}
         </motion.div>

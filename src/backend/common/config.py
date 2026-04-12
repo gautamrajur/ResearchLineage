@@ -70,10 +70,13 @@ S2_CITATION_FIELDS = (
 )
 
 # ---------------------------------------------------------------------------
-# Gemini (evolution_view only)
+# Gemini — Vertex AI (paid endpoint, no free-tier quota cap)
 # ---------------------------------------------------------------------------
+# Auth: gcloud auth application-default login  OR  GOOGLE_APPLICATION_CREDENTIALS
 
-GEMINI_API_KEY          = os.environ.get("GEMINI_API_KEY")
+GEMINI_API_KEY          = os.environ.get("GEMINI_API_KEY")   # kept for fallback
+GEMINI_PROJECT          = os.environ.get("GEMINI_PROJECT", "researchlineage")
+GEMINI_LOCATION         = os.environ.get("GEMINI_LOCATION", "us-central1")
 GEMINI_MODEL            = "gemini-2.5-pro"
 GEMINI_TEMPERATURE      = 0.2
 GEMINI_MAX_OUTPUT_TOKENS = 16000

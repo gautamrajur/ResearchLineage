@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
+import Markdown from 'react-markdown';
 import type { Theme } from '../lib/theme';
 
 interface Message {
@@ -27,7 +28,7 @@ export function ChatPanel({ paperId, seedTitle, theme, open, onOpenChange }: Cha
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [streaming, setStreaming] = useState(false);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const messagesRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const isDark = theme.id === 'dark';
@@ -37,7 +38,8 @@ export function ChatPanel({ paperId, seedTitle, theme, open, onOpenChange }: Cha
   }, [open]);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const el = messagesRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
   }, [messages]);
 
   async function send(text: string) {
@@ -110,12 +112,10 @@ export function ChatPanel({ paperId, seedTitle, theme, open, onOpenChange }: Cha
     } catch (e) {
       if ((e as Error).name === 'AbortError') return;
       const raw = (e as Error).message ?? 'Unknown error';
-      // Surface quota errors in plain language
-      const errMsg = raw.includes('quota') || raw.includes('RESOURCE_EXHAUSTED')
-        ? 'Gemini quota exceeded. Please wait a minute and try again.'
-        : raw.includes('404') || raw.includes('No timeline')
+      // Only treat as cache-miss if our endpoint said so — Gemini errors also contain "404"
+      const errMsg = raw.includes('No timeline') || raw.includes('Run /analyze')
         ? 'No cached timeline for this paper. Run /analyze first.'
-        : `Error: ${raw.slice(0, 120)}`;
+        : `Error: ${raw.slice(0, 200)}`;
       setMessages((prev) => {
         const updated = [...prev];
         const last = updated[updated.length - 1];
@@ -174,7 +174,7 @@ export function ChatPanel({ paperId, seedTitle, theme, open, onOpenChange }: Cha
             animate={{ opacity: 1, width: 380, x: 0 }}
             exit={{ opacity: 0, width: 0, x: 20 }}
             transition={{ type: 'spring', stiffness: 340, damping: 32 }}
-            className="shrink-0 flex flex-col rounded-2xl overflow-hidden sticky top-24"
+            className="shrink-0 flex flex-col rounded-2xl overflow-hidden"
             style={{
               width: 380,
               background: panelBg,
@@ -205,8 +205,8 @@ export function ChatPanel({ paperId, seedTitle, theme, open, onOpenChange }: Cha
               </div>
             </div>
 
-            {/* Messages — grows with conversation */}
-            <div className="px-4 py-4 space-y-3">
+            {/* Messages — scrollable, capped height */}
+            <div ref={messagesRef} className="px-4 py-4 space-y-3 overflow-y-auto max-h-[60vh]">
               {messages.length === 0 && (
                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.1 }}
                   className="space-y-3">
@@ -237,9 +237,21 @@ export function ChatPanel({ paperId, seedTitle, theme, open, onOpenChange }: Cha
                       {msg.content}
                     </div>
                   ) : (
-                    <div className="max-w-[90%] px-3.5 py-2.5 rounded-2xl rounded-bl-md text-[12.5px] leading-relaxed"
+                    <div className="max-w-[90%] px-3.5 py-2.5 rounded-2xl rounded-bl-md text-[12.5px] leading-relaxed prose prose-sm max-w-none"
                       style={{ background: aiBubbleBg, color: theme.textPrimary }}>
-                      {msg.content || (msg.streaming && (
+                      {msg.content ? (
+                        <Markdown
+                          components={{
+                            p: ({ children }) => <p className="mb-1.5 last:mb-0">{children}</p>,
+                            h3: ({ children }) => <p className="font-semibold mt-2 mb-1">{children}</p>,
+                            h2: ({ children }) => <p className="font-bold mt-2.5 mb-1">{children}</p>,
+                            strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+                            li: ({ children }) => <li className="ml-3 list-disc">{children}</li>,
+                            ul: ({ children }) => <ul className="mb-1.5 space-y-0.5">{children}</ul>,
+                            ol: ({ children }) => <ol className="mb-1.5 space-y-0.5 list-decimal ml-3">{children}</ol>,
+                          }}
+                        >{msg.content}</Markdown>
+                      ) : (msg.streaming && (
                         <span className="flex gap-1 items-center py-0.5">
                           {[0, 1, 2].map((d) => (
                             <motion.span key={d} className="w-1.5 h-1.5 rounded-full"
@@ -257,7 +269,6 @@ export function ChatPanel({ paperId, seedTitle, theme, open, onOpenChange }: Cha
                   )}
                 </motion.div>
               ))}
-              <div ref={bottomRef} />
             </div>
 
             {/* Input */}

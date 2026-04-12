@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Header } from './components/Header';
 import { BackgroundFX } from './components/BackgroundFX';
@@ -30,9 +30,12 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [themeId, setThemeId] = useState<ThemeId>('warm');
   const theme = THEMES[themeId];
+  const analyzingRef = useRef(false);
 
   const runAnalyze = useCallback(
     async (rawPaperId: string, title?: string, year?: number | null) => {
+      if (analyzingRef.current) return;
+      analyzingRef.current = true;
       const paperId = normalizePaperId(rawPaperId);
       setError(null);
       setLoadingCtx({ paperId, title, year });
@@ -61,6 +64,8 @@ export default function App() {
               : 'Unknown error';
         setError(msg);
         setView('home');
+      } finally {
+        analyzingRef.current = false;
       }
     },
     [],

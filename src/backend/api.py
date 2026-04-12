@@ -24,7 +24,7 @@ from pydantic import BaseModel
 from typing import Optional
 
 from .orchestrator import run
-from .common.config import MAX_DEPTH, DATABASE_URL, GEMINI_API_KEY, GEMINI_MODEL
+from .common.config import MAX_DEPTH, DATABASE_URL, GEMINI_PROJECT, GEMINI_LOCATION, GEMINI_MODEL
 from .common.cache import Cache
 from .common.s2_client import SemanticScholarClient
 
@@ -180,8 +180,18 @@ def submit_feedback(req: FeedbackRequest):
 @app.post("/chat")
 def chat(req: ChatRequest):
     """Stream a chat response about a paper's lineage using Gemini."""
+    print(f"[chat] paper_id received: {req.paper_id!r}", flush=True)
     cache = Cache(DATABASE_URL)
+
+    # Debug: check what's in the papers table for this id
+    from .common.s2_client import SemanticScholarClient as _S2
+    norm = _S2.normalize_paper_id(req.paper_id)
+    arxiv_bare = norm.replace("ARXIV:", "").replace("arxiv:", "")
+    paper_row = cache.get_paper(arxiv_bare) or cache.get_paper(norm) or cache.get_paper(req.paper_id)
+    print(f"[chat] paper lookup → norm={norm!r} arxiv_bare={arxiv_bare!r} found={paper_row is not None}", flush=True)
+
     steps, ok = cache.get_cached_timeline(req.paper_id)
+    print(f"[chat] cache lookup ok={ok}, steps={len(steps) if steps else 0}", flush=True)
     if not ok or not steps:
         raise HTTPException(
             status_code=404,
@@ -256,28 +266,31 @@ def _build_chat_system_prompt(steps: list) -> str:
     return "\n".join(lines)
 
 
+_CHAT_MODEL = "gemini-2.5-pro"  # Same model as analysis — confirmed available on this project
+
+
 def _stream_gemini(system_prompt: str, messages: list[ChatMessage]):
     """Generator that yields SSE-formatted chunks from Gemini."""
     from google import genai
     from google.genai import types
 
-    client = genai.Client(api_key=GEMINI_API_KEY)
+    client = genai.Client(
+        vertexai=True,
+        project=GEMINI_PROJECT,
+        location=GEMINI_LOCATION,
+    )
     contents = [
         types.Content(role=m.role, parts=[types.Part(text=m.content)])
         for m in messages
     ]
     try:
-        # Use non-streaming generate_content — same as the analysis pipeline.
-        # Streaming with Gemini 2.5 Pro produces empty chunks until thinking
-        # tokens are exhausted; single-call is simpler and reliable.
         result = client.models.generate_content(
-            model=GEMINI_MODEL,
+            model=_CHAT_MODEL,
             contents=contents,
             config=types.GenerateContentConfig(
                 system_instruction=system_prompt,
                 temperature=0.7,
                 max_output_tokens=2048,
-                thinking_config=types.ThinkingConfig(thinking_budget=1024),
             ),
         )
         text = result.text if result else ""
@@ -291,6 +304,7 @@ def _stream_gemini(system_prompt: str, messages: list[ChatMessage]):
                     piece += " "
                 yield f"data: {json.dumps({'text': piece})}\n\n"
     except Exception as e:
+        print(f"[chat] Gemini error ({type(e).__name__}): {e}", flush=True)
         yield f"data: {json.dumps({'error': str(e)})}\n\n"
     yield "data: [DONE]\n\n"
 

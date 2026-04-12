@@ -13,13 +13,14 @@ import { submitFeedback } from '../lib/api';
 interface TimelineViewProps {
   timeline: Timeline;
   theme: Theme;
+  chatPaperId?: string;
 }
 
-export function TimelineView({ timeline, theme }: TimelineViewProps) {
+export function TimelineView({ timeline, theme, chatPaperId }: TimelineViewProps) {
   const isDark = theme.id === 'dark';
   const chain = timeline.chain;
   const seedTitle = timeline.seed_paper?.title ?? '';
-  const seedPaperId = timeline.seed_paper?.paper_id ?? '';
+  const seedPaperId = chatPaperId ?? timeline.seed_paper?.paper_id ?? '';
   const [chatOpen, setChatOpen] = useState(false);
   const [legendOpen, setLegendOpen] = useState(false);
   const legendRef = useRef<HTMLDivElement>(null);
@@ -126,14 +127,16 @@ export function TimelineView({ timeline, theme }: TimelineViewProps) {
         </motion.div>
       </div>
 
-      {/* Chat panel — fixed to viewport right edge */}
-      <ChatPanel
-        paperId={seedPaperId}
-        seedTitle={seedTitle}
-        theme={theme}
-        open={chatOpen}
-        onOpenChange={setChatOpen}
-      />
+      {/* Chat panel — offset to align with first paper card, not legend button */}
+      <div className="mt-14 shrink-0">
+        <ChatPanel
+          paperId={seedPaperId}
+          seedTitle={seedTitle}
+          theme={theme}
+          open={chatOpen}
+          onOpenChange={setChatOpen}
+        />
+      </div>
     </div>
   );
 }

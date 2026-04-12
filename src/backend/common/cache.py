@@ -174,6 +174,10 @@ def _get_pool(dsn: str) -> ThreadedConnectionPool:
             minconn=2,
             maxconn=20,
             dsn=dsn,
+            keepalives=1,
+            keepalives_idle=30,
+            keepalives_interval=10,
+            keepalives_count=5,
         )
     return _pools[dsn]
 
