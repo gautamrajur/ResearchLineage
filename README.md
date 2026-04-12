@@ -9,26 +9,28 @@ Given a seed paper ID, this pipeline crawls the Semantic Scholar citation graph,
 ## Table of Contents
 
 1. [Architecture](#architecture)
-2. [Data Acquisition](#data-acquisition)
-3. [Data Preprocessing](#data-preprocessing)
-4. [Schema & Statistics Generation](#schema--statistics-generation)
-5. [Pipeline Flow Optimization](#pipeline-flow-optimization)
-6. [Anomaly Detection & Alerting](#anomaly-detection--alerting)
-7. [Bias Detection & Mitigation (DAG 2)](#bias-detection--mitigation-dag-2)
-8. [CI/CD Pipeline](#cicd-pipeline)
-9. [Model Comparison & Selection](#model-comparison--selection)
-10. [Experiment Tracking (MLflow)](#experiment-tracking-mlflow)
-11. [Model Registry & Rollback](#model-registry--rollback)
-12. [Notifications & Alerts](#notifications--alerts)
-13. [Error Handling](#error-handling)
-14. [Tracking & Logging](#tracking--logging)
-15. [Running Tests](#running-tests)
-16. [Data Versioning (DVC)](#data-versioning-dvc)
-17. [Project Structure](#project-structure)
-18. [Prerequisites](#prerequisites)
-19. [Setup & Reproducibility](#setup--reproducibility)
-20. [Running the Pipeline](#running-the-pipeline)
-21. [Configuration Reference](#configuration-reference)
+2. [Research Lineage UI](#research-lineage-ui)
+3. [Data Acquisition](#data-acquisition)
+4. [Data Preprocessing](#data-preprocessing)
+5. [Schema & Statistics Generation](#schema--statistics-generation)
+6. [Pipeline Flow Optimization](#pipeline-flow-optimization)
+7. [Anomaly Detection & Alerting](#anomaly-detection--alerting)
+8. [Bias Detection & Mitigation (DAG 2)](#bias-detection--mitigation-dag-2)
+9. [Model Development (Fine-tuning & Evaluation)](#model-development-fine-tuning--evaluation)
+10. [CI/CD Pipeline](#cicd-pipeline)
+11. [Model Comparison & Selection](#model-comparison--selection)
+12. [Experiment Tracking (MLflow)](#experiment-tracking-mlflow)
+13. [Model Registry & Rollback](#model-registry--rollback)
+14. [Notifications & Alerts](#notifications--alerts)
+15. [Error Handling](#error-handling)
+16. [Tracking & Logging](#tracking--logging)
+17. [Running Tests](#running-tests)
+18. [Data Versioning (DVC)](#data-versioning-dvc)
+19. [Project Structure](#project-structure)
+20. [Prerequisites](#prerequisites)
+21. [Setup & Reproducibility](#setup--reproducibility)
+22. [Running the Pipeline](#running-the-pipeline)
+23. [Configuration Reference](#configuration-reference)
 
 ---
 
@@ -73,6 +75,71 @@ Three Airflow DAGs, all running locally via Docker Compose:
 Inter-task data passes through Airflow **XCom**. The NetworkX graph is not serialised to XCom; only derived metrics are pushed downstream.
 
 **Config:** `max_active_runs=1`, `retries=3`, `retry_delay=5m`, `execution_timeout=60m` (pdf_upload: 120m).
+
+---
+
+## Research Lineage UI
+
+A full-stack web interface for exploring paper lineages interactively, backed by a FastAPI server and a Vite + React frontend.
+
+### FastAPI Backend (`src/backend/`)
+
+| Endpoint | Method | Purpose |
+|---|---|---|
+| `/health` | GET | Health check |
+| `/search` | GET | Paper title search via Semantic Scholar (DB cache fallback) |
+| `/analyze` | POST / GET | Run both views for a paper — returns tree + timeline JSON |
+| `/chat` | POST | Stream a Gemini-powered chat response about the lineage (SSE) |
+| `/feedback` | POST | Store anonymous predecessor-selection feedback |
+
+The backend wraps `orchestrator.py`, which coordinates two views:
+- **Evolution view** (`evolution_view/`) — Gemini-analyzed timeline chain from seed → foundational papers
+- **Pred/Successor view** (`pred_successor_view/`) — bidirectional citation tree (ancestors + descendants)
+
+Both views share a PostgreSQL-backed cache (`common/cache.py`) with a module-level connection pool.
+
+```bash
+uvicorn src.backend.api:app --reload --port 8000
+```
+
+### React Frontend (`src/frontend/`)
+
+Built with Vite, React, TypeScript, Tailwind CSS, Framer Motion, and React Flow.
+
+**Timeline View** — chronological chain from seed → foundational paper:
+- Per-card sections: key innovation, problem addressed, core method, ELI5 / intuitive / technical explanations, limitations, secondary influences, abstract
+- Comparison cards between each adjacent pair ("Improvement over predecessor") with predecessor-selection feedback
+- Source type and breakthrough level badges with a collapsible badge guide (ⓘ) explaining each tag and its hallucination risk implication
+
+**Predecessor / Successor Tree View** — interactive React Flow graph:
+- Ancestors (blue) flow left → target; descendants (green) flow right
+- Click any node to highlight its lineage path to the target; click canvas to reset
+- Toggle ancestors / descendants independently
+- Hover any node to reveal S2 and arXiv links (where available)
+
+**Theme system** — 6 themes (Midnight, Slate, Ocean, Forest, Crimson, Dusk) selectable at runtime via `ThemePicker`.
+
+**Gemini Chat Assistant** — collapsible sidebar panel:
+- Full lineage context injected as a system prompt
+- Streaming SSE response rendered word-by-word
+- Suggested questions for quick entry
+- Quota-exceeded and missing-timeline errors surfaced in plain language
+
+```bash
+cd src/frontend && npm install && npm run dev
+# Vite proxies /api/* → http://localhost:8000
+```
+
+### User Feedback (Concept Drift Detection)
+
+Each comparison card includes an anonymous thumbs up / down widget:
+
+| Action | Behavior |
+|---|---|
+| 👍 Thumbs up | Submits immediately — predecessor selection confirmed correct |
+| 👎 Thumbs down | Reveals optional comment field before submitting |
+
+Feedback is stored in the `feedback` table (`paper_id`, `related_paper_id`, `view_type`, `feedback_target`, `rating`, `comment`, `created_at`) and can be queried to detect concept drift in Gemini's predecessor-selection decisions over time.
 
 ---
 
@@ -233,6 +300,69 @@ CS being over-represented at ~50% is considered an **acceptable structural compr
 2. **Cluster profiling** — dominant field, popularity tier, max year, size
 3. **Stratified allocation** — composite key (domain × tier), temporal ordering, 70/15/15
 4. **Integrity verification** — zero cross-split paper ID overlap confirmed
+
+---
+
+## Model Development (Fine-tuning & Evaluation)
+
+### Fine-tuning — Qwen 2.5-7B on Modal
+
+| Parameter | Value |
+|---|---|
+| Base model | `Qwen/Qwen2.5-7B-Instruct` |
+| Hardware | Modal A100 GPU |
+| Method | LoRA (`r=16`, `alpha=16`, `max_seq_length=8192`) |
+| Training data | Research citation pairs in Qwen chat format (`data/tasks/pipeline_output/qwen_format/`) |
+| Output | Adapter weights → `gs://researchlineage-gcs/models/trained/<version>/` |
+
+```bash
+modal run scripts/modal_train.py
+```
+
+**Why LoRA?** Full fine-tuning a 7B model requires ~80 GB VRAM. LoRA (r=16) achieves comparable task-specific adaptation with ~4 GB of trainable parameters on a single A100.
+
+### Evaluation
+
+Each model is scored on 101 test samples across three steps: `run_inference` → `evaluate` → `bias_check`.
+
+| Metric | Description |
+|---|---|
+| `predecessor_strict` | Exact match — did the model identify the correct predecessor? |
+| `predecessor_soft` | Soft match — correct predecessor OR a valid secondary influence |
+| `mrr` | Mean Reciprocal Rank of the correct predecessor in the model's output |
+| `secondary_f1` | F1 score for secondary influence identification |
+| `judge_overall` | Mean LLM-as-judge score across 5 reasoning dimensions (1–5 scale, Gemini Flash) |
+
+**Bias check** flags domain disparity (CS / Physics / Math) and citation-tier disparity exceeding a 0.15 threshold.
+
+### Latest Results (101 samples)
+
+| Model | Predecessor Soft | Judge Overall | Composite |
+|---|---|---|---|
+| **Gemini 2.5 Flash** | 0.856 | 3.84 | **0.785** |
+| Qwen 2.5-7B Fine-tuned | 0.776 | 3.09 | **0.736** |
+
+Gap: **0.05** — meaningful given the 7B model runs locally vs a frontier API.
+
+**Why compare against Gemini?** Gemini 2.5 Flash serves as the zero-shot baseline. A fine-tuned 7B scoring within 0.05 composite validates that the fine-tuning signal is meaningful.
+
+### Airflow DAGs
+
+| DAG | File | Purpose |
+|---|---|---|
+| `training_dag` | `dags/training_dag.py` | Modal training → MLflow log → GCS register |
+| `evaluate_performance` | `dags/evaluate_performance.py` | Inference + judge scoring + bias check + notify |
+| `compare_models` | `dags/compare_models.py` | Parallel eval → selection → visualization → notify |
+
+### Key Scripts
+
+| Script / File | Purpose |
+|---|---|
+| `scripts/modal_train.py` | LoRA fine-tuning on Modal A100 |
+| `scripts/modal_serve.py` | vLLM serving on Modal |
+| `src/tasks/evaluation_task.py` | Inference, judge scoring, bias check (3-step CLI) |
+| `src/tasks/model_selection_task.py` | Composite scoring, winner selection, visualization |
+| `src/mlflow_utils.py` | MLflow log helpers for training, evaluation, comparison |
 
 ---
 
@@ -714,6 +844,39 @@ dvc pull data/raw.dvc
 │   └── retry_failed_pdfs_dag.py       # Standalone PDF retry DAG
 │
 ├── src/
+│   ├── backend/                       # FastAPI server + both lineage views
+│   │   ├── api.py                     # FastAPI app — /search /analyze /chat /feedback
+│   │   ├── orchestrator.py            # Runs pred_successor + evolution views together
+│   │   ├── common/
+│   │   │   ├── cache.py               # PostgreSQL cache (connection pool, all tables)
+│   │   │   ├── config.py              # S2/Gemini/DB config + field sets
+│   │   │   └── s2_client.py           # Semantic Scholar API client with retry/backoff
+│   │   ├── pred_successor_view/
+│   │   │   └── builder.py             # Builds ancestor + descendant citation tree
+│   │   └── evolution_view/
+│   │       ├── pipeline.py            # Gemini-driven lineage chain construction
+│   │       ├── gemini_analysis.py     # Per-paper analysis + comparison generation
+│   │       ├── text_extraction.py     # PDF / abstract text extraction
+│   │       └── prompts/               # Versioned Gemini prompt templates
+│   ├── frontend/                      # Vite + React + TypeScript UI
+│   │   └── src/
+│   │       ├── App.tsx                # Root — search → analyze → results routing
+│   │       ├── components/
+│   │       │   ├── TimelineView.tsx   # Evolution view — timeline cards, badge guide, feedback
+│   │       │   ├── TreeView.tsx       # Pred/successor React Flow graph with filters
+│   │       │   ├── ChatPanel.tsx      # Gemini chat sidebar (streaming SSE)
+│   │       │   ├── nodes/
+│   │       │   │   ├── PaperNode.tsx  # Ancestor/descendant node with hover S2/arXiv links
+│   │       │   │   └── SeedNode.tsx   # Target paper node with hover S2/arXiv links
+│   │       │   ├── HeroSearch.tsx     # Paper search with autocomplete
+│   │       │   ├── ResultsPage.tsx    # Tab switcher: Timeline / Tree
+│   │       │   ├── Header.tsx         # Top navigation bar
+│   │       │   └── ThemePicker.tsx    # 6-theme selector
+│   │       └── lib/
+│   │           ├── api.ts             # Typed fetch wrappers for all backend endpoints
+│   │           ├── types.ts           # Shared TypeScript types (mirrors backend schemas)
+│   │           ├── theme.ts           # Theme definitions (Midnight/Slate/Ocean/Forest/…)
+│   │           └── utils.ts           # Formatting helpers
 │   ├── api/
 │   │   ├── semantic_scholar.py        # Async S2 client with retry/backoff
 │   │   ├── openalex.py                # OpenAlex enrichment client
