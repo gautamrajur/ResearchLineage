@@ -13,7 +13,7 @@ from google import genai
 from google.genai import types
 
 from ..common.config import (
-    GEMINI_API_KEY, GEMINI_MODEL,
+    GEMINI_PROJECT, GEMINI_LOCATION, GEMINI_MODEL,
     GEMINI_TEMPERATURE, GEMINI_MAX_OUTPUT_TOKENS,
     VERBOSE, logger, log_event,
 )
@@ -21,7 +21,11 @@ from .prompts.prompts import MAIN_PROMPT, FOUNDATIONAL_PROMPT
 
 print = logger.info
 
-_client = genai.Client(api_key=GEMINI_API_KEY)
+_client = genai.Client(
+    vertexai=True,
+    project=GEMINI_PROJECT,
+    location=GEMINI_LOCATION,
+)
 
 
 # ── Input construction ────────────────────────────────────────────────────────

@@ -13,15 +13,18 @@ Usage:
     uvicorn src.backend.api:app --reload --port 8000
 """
 
+import json
 import os
+import uuid
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Optional
 
 from .orchestrator import run
-from .common.config import MAX_DEPTH, DATABASE_URL
+from .common.config import MAX_DEPTH, DATABASE_URL, GEMINI_PROJECT, GEMINI_LOCATION, GEMINI_MODEL
 from .common.cache import Cache
 from .common.s2_client import SemanticScholarClient
 
@@ -57,6 +60,25 @@ class AnalyzeRequest(BaseModel):
     max_depth_tree: int = 2
     window_years: int = 3
     max_depth_evolution: int = MAX_DEPTH
+
+
+class ChatMessage(BaseModel):
+    role: str   # "user" or "model"
+    content: str
+
+
+class ChatRequest(BaseModel):
+    paper_id: str
+    messages: list[ChatMessage]
+
+
+class FeedbackRequest(BaseModel):
+    paper_id: str
+    related_paper_id: Optional[str] = None
+    view_type: str = "timeline"          # "timeline" | "tree"
+    feedback_target: str = "predecessor_selection"
+    rating: int                          # 1 = thumbs up, -1 = thumbs down
+    comment: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
@@ -135,6 +157,156 @@ def search_papers(q: str = Query(..., min_length=1, description="Paper title to 
         pass
 
     return {"results": [], "source": "none"}
+
+
+@app.post("/feedback", status_code=201)
+def submit_feedback(req: FeedbackRequest):
+    """Store anonymous predecessor-selection feedback for drift detection."""
+    if req.rating not in (1, -1):
+        raise HTTPException(status_code=422, detail="rating must be 1 or -1")
+    cache = Cache(DATABASE_URL)
+    cache.save_feedback(
+        feedback_id=str(uuid.uuid4()),
+        paper_id=req.paper_id,
+        related_paper_id=req.related_paper_id,
+        view_type=req.view_type,
+        feedback_target=req.feedback_target,
+        rating=req.rating,
+        comment=req.comment or None,
+    )
+    return {"status": "ok"}
+
+
+@app.post("/chat")
+def chat(req: ChatRequest):
+    """Stream a chat response about a paper's lineage using Gemini."""
+    print(f"[chat] paper_id received: {req.paper_id!r}", flush=True)
+    cache = Cache(DATABASE_URL)
+
+    # Debug: check what's in the papers table for this id
+    from .common.s2_client import SemanticScholarClient as _S2
+    norm = _S2.normalize_paper_id(req.paper_id)
+    arxiv_bare = norm.replace("ARXIV:", "").replace("arxiv:", "")
+    paper_row = cache.get_paper(arxiv_bare) or cache.get_paper(norm) or cache.get_paper(req.paper_id)
+    print(f"[chat] paper lookup → norm={norm!r} arxiv_bare={arxiv_bare!r} found={paper_row is not None}", flush=True)
+
+    steps, ok = cache.get_cached_timeline(req.paper_id)
+    print(f"[chat] cache lookup ok={ok}, steps={len(steps) if steps else 0}", flush=True)
+    if not ok or not steps:
+        raise HTTPException(
+            status_code=404,
+            detail="No timeline found for this paper. Run /analyze first.",
+        )
+
+    system_prompt = _build_chat_system_prompt(steps)
+    return StreamingResponse(
+        _stream_gemini(system_prompt, req.messages),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+def _build_chat_system_prompt(steps: list) -> str:
+    """Serialize the cached timeline into a Gemini system prompt."""
+    # Steps are seed → foundational; reverse for oldest-first narrative
+    ordered = list(reversed(steps))
+    seed_paper = steps[0].get("target_paper", {})
+
+    lines = [
+        "You are a research assistant specializing in academic paper lineages.",
+        f'You are helping a user explore the intellectual lineage of the paper "{seed_paper.get("title", "Unknown")}" ({seed_paper.get("year", "?")}).',
+        "The chain below runs from the oldest foundational work to the seed paper.",
+        "Use this context to answer questions. Be specific and cite paper titles and years.",
+        "Keep answers conversational, well-structured, and concise unless depth is requested.",
+        "",
+        "=" * 64,
+        "LINEAGE CHAIN",
+        "=" * 64,
+    ]
+
+    for i, step in enumerate(ordered):
+        paper = step.get("target_paper", {})
+        analysis_wrap = step.get("analysis", {})
+        analysis = analysis_wrap.get("target_analysis", {})
+        comparison = analysis_wrap.get("comparison")
+        is_seed = i == len(ordered) - 1
+        label = "SEED PAPER" if is_seed else f"Paper {i + 1} of {len(ordered) - 1}"
+
+        lines += [
+            "",
+            f"[{label}]",
+            f"Title    : {paper.get('title', 'Unknown')}",
+            f"Year     : {paper.get('year', '?')}",
+            f"Citations: {paper.get('citation_count', '?')}",
+            f"Level    : {analysis.get('breakthrough_level', '?')}",
+        ]
+        for field, key in [
+            ("Problem addressed", "problem_addressed"),
+            ("Key innovation", "key_innovation"),
+            ("Core method", "core_method"),
+        ]:
+            val = analysis.get(key)
+            if val:
+                lines.append(f"{field}: {val}")
+
+        if comparison and not is_seed:
+            lines += [
+                "  Improvement over predecessor:",
+                f"    What changed : {comparison.get('what_was_improved', '')}",
+                f"    How          : {comparison.get('how_it_was_improved', '')}",
+                f"    Why it matters: {comparison.get('why_it_matters', '')}",
+            ]
+
+    lines += [
+        "",
+        "=" * 64,
+        "Answer only questions about this lineage and the papers above.",
+        "If a question is unrelated, politely redirect to the lineage.",
+    ]
+    return "\n".join(lines)
+
+
+_CHAT_MODEL = "gemini-2.5-pro"  # Same model as analysis — confirmed available on this project
+
+
+def _stream_gemini(system_prompt: str, messages: list[ChatMessage]):
+    """Generator that yields SSE-formatted chunks from Gemini."""
+    from google import genai
+    from google.genai import types
+
+    client = genai.Client(
+        vertexai=True,
+        project=GEMINI_PROJECT,
+        location=GEMINI_LOCATION,
+    )
+    contents = [
+        types.Content(role=m.role, parts=[types.Part(text=m.content)])
+        for m in messages
+    ]
+    try:
+        result = client.models.generate_content(
+            model=_CHAT_MODEL,
+            contents=contents,
+            config=types.GenerateContentConfig(
+                system_instruction=system_prompt,
+                temperature=0.7,
+                max_output_tokens=2048,
+            ),
+        )
+        text = result.text if result else ""
+        if text:
+            # Yield in small word-group chunks so the frontend still animates
+            words = text.split(" ")
+            chunk_size = 6
+            for i in range(0, len(words), chunk_size):
+                piece = " ".join(words[i:i + chunk_size])
+                if i + chunk_size < len(words):
+                    piece += " "
+                yield f"data: {json.dumps({'text': piece})}\n\n"
+    except Exception as e:
+        print(f"[chat] Gemini error ({type(e).__name__}): {e}", flush=True)
+        yield f"data: {json.dumps({'error': str(e)})}\n\n"
+    yield "data: [DONE]\n\n"
 
 
 def _run(paper_id, max_children, max_depth_tree, window_years, max_depth_evolution):

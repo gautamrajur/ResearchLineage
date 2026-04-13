@@ -19,6 +19,13 @@ poetry.lock
 .env
 .env.local
 *.json
+!vercel.json
+!package.json
+!package-lock.json
+!tsconfig*.json
+!tailwind.config*
+!postcss.config*
+!vite.config*
 docker-compose.yml
 
 # IDEs
