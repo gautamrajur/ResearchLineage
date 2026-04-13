@@ -89,16 +89,19 @@ class VertexAIClient(ModelClient):
                 )
                 creds.refresh(google.auth.transport.requests.Request())
 
+                # DEBUG — remove once 503 is resolved
+                print(f"DEBUG URL: {self._url}")
+                print(f"DEBUG project_id: {self.project_id}")
+                print(f"DEBUG prompt[:100]: {formatted_prompt[:100]}")
+
                 response = req.post(
                     self._url,
                     json={
-                        "instances": [
-                            {
-                                "prompt": formatted_prompt,
-                                "max_tokens": self.max_output_tokens,
-                                "temperature": self.temperature,
-                            }
-                        ]
+                        "instances": [{
+                            "prompt": formatted_prompt,
+                            "max_tokens": self.max_output_tokens,
+                            "temperature": self.temperature,
+                        }]
                     },
                     headers={
                         "Authorization": f"Bearer {creds.token}",
@@ -130,8 +133,8 @@ class VertexAIClient(ModelClient):
                 if is_last or not is_503:
                     latency_ms = (_time.monotonic() - start) * 1000
                     logger.error(
-                        "Vertex AI predict call failed: %s", exc,
-                        extra={"latency_ms": round(latency_ms, 1)},
+                        "Vertex AI predict call failed",
+                        extra={"latency_ms": round(latency_ms, 1), "error": str(exc)},
                     )
                     raise
 
@@ -171,25 +174,23 @@ class GeminiClient(ModelClient):
         location: str = "us-central1",
         max_output_tokens: int = 1024,
         temperature: float = 0.0,
-        response_mime_type: str | None = None,
     ) -> None:
-        # Use google-genai SDK (>=1.0) which works with both Vertex AI and AI Studio
-        from google import genai
-        from google.genai import types
+        import vertexai
+        from vertexai.generative_models import GenerationConfig, GenerativeModel
 
         self.model_name = model_name
+        self.project_id = project_id
+        self.location = location
         self.max_output_tokens = max_output_tokens
         self.temperature = temperature
 
-        self._client = genai.Client(
-            vertexai=True,
-            project=project_id,
-            location=location,
+        vertexai.init(project=project_id, location=location)
+
+        self._model = GenerativeModel(model_name)
+        self._generation_config = GenerationConfig(
+            temperature=temperature,
+            max_output_tokens=max_output_tokens,
         )
-        config_kwargs: dict = dict(temperature=temperature, max_output_tokens=max_output_tokens)
-        if response_mime_type:
-            config_kwargs["response_mime_type"] = response_mime_type
-        self._gen_config = types.GenerateContentConfig(**config_kwargs)
 
         logger.info(
             "GeminiClient initialised",
@@ -197,43 +198,25 @@ class GeminiClient(ModelClient):
         )
 
     def predict(self, prompt: str) -> str:
-        max_retries = 4
-        retry_delays = [10, 30, 60, 120]
         start = time.monotonic()
-
-        for attempt in range(max_retries + 1):
-            try:
-                response = self._client.models.generate_content(
-                    model=self.model_name,
-                    contents=prompt,
-                    config=self._gen_config,
-                )
-                latency_ms = (time.monotonic() - start) * 1000
-                logger.debug(
-                    "Gemini predict succeeded",
-                    extra={"latency_ms": round(latency_ms, 1)},
-                )
-                return response.text
-            except Exception as exc:
-                is_429 = "429" in str(exc) or "RESOURCE_EXHAUSTED" in str(exc)
-                is_last = attempt == max_retries
-
-                if is_last or not is_429:
-                    latency_ms = (time.monotonic() - start) * 1000
-                    logger.error(
-                        "Gemini predict call failed: %s", exc,
-                        extra={"latency_ms": round(latency_ms, 1)},
-                    )
-                    raise
-
-                delay = retry_delays[attempt]
-                logger.warning(
-                    "Gemini 429 on attempt %d/%d — retrying in %ds: %s",
-                    attempt + 1, max_retries, delay, exc,
-                )
-                time.sleep(delay)
-
-        raise RuntimeError("predict: exhausted retries")
+        try:
+            response = self._model.generate_content(
+                prompt,
+                generation_config=self._generation_config,
+            )
+            latency_ms = (time.monotonic() - start) * 1000
+            logger.debug(
+                "Gemini predict succeeded",
+                extra={"latency_ms": round(latency_ms, 1)},
+            )
+            return response.text
+        except Exception as exc:
+            latency_ms = (time.monotonic() - start) * 1000
+            logger.error(
+                "Gemini predict call failed",
+                extra={"latency_ms": round(latency_ms, 1), "error": str(exc)},
+            )
+            raise
 
     def health_check(self) -> bool:
         try:
@@ -249,9 +232,9 @@ class GeminiClient(ModelClient):
 
 class ModalClient(ModelClient):
     """
-    Client for fine-tuned models served on Modal via vLLM (OpenAI-compatible /v1 API).
-    Pass the base URL (with or without /v1) as endpoint_url.
-    The served model name is auto-discovered from /v1/models on first call.
+    Client for Qwen2.5-7B-AWQ hosted on Modal via vLLM.
+    After deploying modal_app.py, set the printed endpoint URL
+    as MODAL_ENDPOINT_URL in your .env file.
     """
 
     def __init__(
@@ -261,56 +244,55 @@ class ModalClient(ModelClient):
         temperature: float = 0.0,
         timeout: float = 600.0,
     ) -> None:
-        base = endpoint_url.rstrip("/")
-        if not base.endswith("/v1"):
-            base = base + "/v1"
-        self.base_url = base
+        self.endpoint_url = endpoint_url.rstrip("/")
         self.max_tokens = max_tokens
         self.temperature = temperature
         self.timeout = timeout
-        self._model_name: str | None = None
-        logger.info("ModalClient initialised", extra={"base_url": self.base_url})
-
-    def _get_model_name(self) -> str:
-        """Discover the first available model from /v1/models (cached after first call)."""
-        if self._model_name:
-            return self._model_name
-        import requests as req
-        resp = req.get(self.base_url + "/models", timeout=30)
-        resp.raise_for_status()
-        models = resp.json().get("data", [])
-        if not models:
-            raise RuntimeError("No models returned by /v1/models")
-        self._model_name = models[0]["id"]
-        logger.info("ModalClient: discovered model %s", self._model_name)
-        return self._model_name
+        logger.info(
+            "ModalClient initialised",
+            extra={"endpoint_url": endpoint_url},
+        )
 
     def predict(self, prompt: str) -> str:
-        from openai import OpenAI
+        import requests as req
 
         start = time.monotonic()
         try:
-            client = OpenAI(base_url=self.base_url, api_key="dummy", max_retries=0)
-            response = client.chat.completions.create(
-                model=self._get_model_name(),
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=self.max_tokens,
-                temperature=self.temperature,
+            response = req.post(
+                self.endpoint_url,
+                json={
+                    "prompt": prompt,
+                    "max_tokens": self.max_tokens,
+                    "temperature": self.temperature,
+                },
                 timeout=self.timeout,
             )
-            text = response.choices[0].message.content or ""
+            response.raise_for_status()
+            text = response.json().get("text", "")
             latency_ms = (time.monotonic() - start) * 1000
-            logger.debug("Modal predict succeeded", extra={"latency_ms": round(latency_ms, 1)})
+            logger.debug(
+                "Modal predict succeeded",
+                extra={"latency_ms": round(latency_ms, 1)},
+            )
             return text
         except Exception as exc:
             latency_ms = (time.monotonic() - start) * 1000
-            logger.error("Modal predict failed: %s", exc, extra={"latency_ms": round(latency_ms, 1)})
+            logger.error(
+                "Modal predict failed",
+                extra={"latency_ms": round(latency_ms, 1), "error": str(exc)},
+            )
             raise
 
     def health_check(self) -> bool:
+        import requests as req
+
         try:
-            self._get_model_name()
-            return True
+            response = req.post(
+                self.endpoint_url,
+                json={"prompt": "ping", "max_tokens": 1},
+                timeout=600.0,
+            )
+            return response.status_code == 200
         except Exception:
             return False
 
@@ -319,35 +301,26 @@ class ModalClient(ModelClient):
 
 
 def build_inference_client(
-    model_endpoint: str,
+    endpoint_id: str,
     project_id: str,
     location: str = "us-central1",
+    modal_endpoint_url: str | None = None,
 ) -> ModelClient:
     """
-    Build client for the inference model based on the endpoint string:
-    - 'gemini-*'    → GeminiClient (managed Vertex AI Gemini API)
-    - 'http*'       → ModalClient  (Modal web endpoint URL)
-    - anything else → VertexAIClient (Vertex AI endpoint ID)
+    Build client for the inference model.
+    - If modal_endpoint_url is set: uses ModalClient (Qwen2.5 on Modal).
+    - Otherwise: falls back to VertexAIClient.
     """
-    if model_endpoint.startswith("gemini-"):
-        logger.info("Using GeminiClient for inference", extra={"model": model_endpoint})
-        return GeminiClient(
-            model_name=model_endpoint,
-            project_id=project_id,
-            location=location,
-            max_output_tokens=8192,
-            temperature=0.0,
-        )
-    if model_endpoint.startswith("http"):
-        logger.info("Using ModalClient for inference", extra={"url": model_endpoint})
+    if modal_endpoint_url:
+        logger.info("Using ModalClient for inference")
         return ModalClient(
-            endpoint_url=model_endpoint,
+            endpoint_url=modal_endpoint_url,
             max_tokens=8192,
             temperature=0.0,
         )
-    logger.info("Using VertexAIClient for inference", extra={"endpoint_id": model_endpoint})
+    logger.info("Using VertexAIClient for inference")
     return VertexAIClient(
-        endpoint_id=model_endpoint,
+        endpoint_id=endpoint_id,
         project_id=project_id,
         location=location,
         max_output_tokens=8192,
