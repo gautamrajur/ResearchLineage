@@ -15,7 +15,8 @@ import json
 import os
 
 AIRFLOW_IDX = "rl-idx-airflow"
-CLM_IDX = "rl-idx-all"   # combined wildcard for Centralized Log Management
+CLM_IDX    = "rl-idx-all"    # combined wildcard for Centralized Log Management
+DRIFT_IDX  = "rl-idx-drift"  # rl-finetuning-* for Data Drift dashboard
 IDX_REF = "kibanaSavedObjectMeta.searchSourceJSON.index"
 
 
@@ -48,12 +49,13 @@ def _terms_agg(agg_id: str, field: str, size: int = 15,
     }
 
 
-def _date_histogram_agg(agg_id: str, schema: str = "segment") -> dict:
+def _date_histogram_agg(agg_id: str, schema: str = "segment",
+                        field: str = "@timestamp") -> dict:
     return {
         "id": agg_id, "enabled": True,
         "type": "date_histogram", "schema": schema,
         "params": {
-            "field": "@timestamp", "interval": "auto",
+            "field": field, "interval": "auto",
             "time_zone": "UTC", "drop_partials": False,
             "min_doc_count": 1, "extended_bounds": {},
         },
@@ -145,9 +147,10 @@ def vis_pie(id: str, title: str, idx_id: str,
 
 
 def vis_area(id: str, title: str, idx_id: str, split_field: str | None = None,
-             stacked: bool = True, query: str = "", val_label: str = "Count") -> dict:
+             stacked: bool = True, query: str = "", val_label: str = "Count",
+             date_field: str = "@timestamp") -> dict:
     cat_axes, val_axes = _xy_axes(y_label=val_label)
-    aggs = [_count_agg(), _date_histogram_agg("2")]
+    aggs = [_count_agg(), _date_histogram_agg("2", field=date_field)]
     if split_field:
         aggs.append(_split_terms_agg("3", split_field))
     vis_state = json.dumps({
@@ -217,12 +220,15 @@ def vis_line(id: str, title: str, idx_id: str,
 
 def vis_hbar(id: str, title: str, idx_id: str, field: str,
              size: int = 15, query: str = "",
-             cat_label: str = "", val_label: str = "Count") -> dict:
+             cat_label: str = "", val_label: str = "Count",
+             hide_cat_labels: bool = False) -> dict:
     """Horizontal bar — best for ranked categorical data (loggers, DAGs, tasks)."""
     cat_axes, val_axes = _xy_axes(y_label=val_label, cat_label=cat_label)
     # For horizontal_bar, category axis is on the left
     cat_axes[0]["position"] = "left"
     val_axes[0]["position"] = "bottom"
+    if hide_cat_labels:
+        cat_axes[0]["labels"]["show"] = False
     vis_state = json.dumps({
         "type": "horizontal_bar",
         "aggs": [_count_agg(), _terms_agg("2", field, size)],
@@ -521,6 +527,165 @@ objects.append(dashboard(
     "All ResearchLineage logs in one place — app scripts, Airflow DAGs, "
     "and individual pipeline tasks. Filter by source, level, logger, or DAG.",
     clm_panels, clm_refs,
+))
+
+# ===========================================================================
+# Fine-Tuning Data Drift — snapshot (GCS) vs live (Cloud SQL) comparison
+#
+# Elasticsearch indices:
+#   rl-finetuning-snapshot  — static GCS training snapshot (293 records)
+#   rl-finetuning-live      — current DB lineage state (refreshed by sync script)
+#
+# To populate: python scripts/sync_finetuning_elasticsearch.py
+# ===========================================================================
+
+objects.append(index_pattern(DRIFT_IDX, "rl-finetuning-*"))
+
+# ── Drift Viz 1: Snapshot Record Count (Metric) ───────────────────────────
+objects.append(vis_metric(
+    "rl-viz-drift-snap-count", "[RL Drift] Snapshot Records",
+    DRIFT_IDX, label="GCS Snapshot",
+    query='data_source: "snapshot"',
+))
+
+# ── Drift Viz 2: Live Record Count (Metric) ───────────────────────────────
+objects.append(vis_metric(
+    "rl-viz-drift-live-count", "[RL Drift] Live DB Records",
+    DRIFT_IDX, label="Live DB",
+    query='data_source: "live"',
+))
+
+# ── Drift Viz 3: Snapshot vs Live Split (Pie) ─────────────────────────────
+objects.append(vis_pie(
+    "rl-viz-drift-source", "[RL Drift] Snapshot vs Live Distribution",
+    DRIFT_IDX, "data_source.keyword", size=2,
+))
+
+# ── Drift Viz 4: Year Distribution — Snapshot (VBar) ─────────────────────
+objects.append(vis_vbar(
+    "rl-viz-drift-snap-year", "[RL Drift] Year Distribution — Snapshot",
+    DRIFT_IDX, "year", size=60,
+    query='data_source: "snapshot"',
+    cat_label="Publication Year", val_label="Papers",
+))
+
+# ── Drift Viz 5: Year Distribution — Live DB (VBar) ──────────────────────
+objects.append(vis_vbar(
+    "rl-viz-drift-live-year", "[RL Drift] Year Distribution — Live DB",
+    DRIFT_IDX, "year", size=60,
+    query='data_source: "live"',
+    cat_label="Publication Year", val_label="Papers",
+))
+
+# ── Drift Viz 6: Depth Distribution — Snapshot (VBar) ────────────────────
+objects.append(vis_vbar(
+    "rl-viz-drift-snap-depth", "[RL Drift] Lineage Depth — Snapshot",
+    DRIFT_IDX, "depth", size=10,
+    query='data_source: "snapshot"',
+    cat_label="Depth in Lineage Chain", val_label="Records",
+))
+
+# ── Drift Viz 7: Depth Distribution — Live DB (VBar) ─────────────────────
+objects.append(vis_vbar(
+    "rl-viz-drift-live-depth", "[RL Drift] Lineage Depth — Live DB",
+    DRIFT_IDX, "depth", size=10,
+    query='data_source: "live"',
+    cat_label="Depth in Lineage Chain", val_label="Records",
+))
+
+# ── Drift Viz 8: Source Type — Snapshot (Pie) ────────────────────────────
+objects.append(vis_pie(
+    "rl-viz-drift-snap-srctype", "[RL Drift] Text Source Type — Snapshot",
+    DRIFT_IDX, "source_type.keyword", size=5,
+    query='data_source: "snapshot"',
+))
+
+# ── Drift Viz 9: Source Type — Live DB (Pie) ─────────────────────────────
+objects.append(vis_pie(
+    "rl-viz-drift-live-srctype", "[RL Drift] Text Source Type — Live DB",
+    DRIFT_IDX, "source_type.keyword", size=5,
+    query='data_source: "live"',
+))
+
+# ── Drift Viz 10: Field of Study — Snapshot (HBar) ───────────────────────
+# Live DB does not carry field_of_study; snapshot only.
+objects.append(vis_hbar(
+    "rl-viz-drift-fos", "[RL Drift] Field of Study — Snapshot",
+    DRIFT_IDX, "field_of_study.keyword", size=15,
+    query='data_source: "snapshot"',
+    cat_label="Field of Study", val_label="Papers",
+    hide_cat_labels=True,
+))
+
+# ── Drift Viz 11: Terminal vs Non-Terminal — Snapshot (Pie) ──────────────
+objects.append(vis_pie(
+    "rl-viz-drift-snap-terminal", "[RL Drift] Terminal Nodes — Snapshot",
+    DRIFT_IDX, "is_terminal", size=2,
+    query='data_source: "snapshot"',
+))
+
+# ── Drift Viz 12: Terminal vs Non-Terminal — Live DB (Pie) ───────────────
+objects.append(vis_pie(
+    "rl-viz-drift-live-terminal", "[RL Drift] Terminal Nodes — Live DB",
+    DRIFT_IDX, "is_terminal", size=2,
+    query='data_source: "live"',
+))
+
+# ── Drift Viz 13: DB Paper Growth Over Time (Area) ────────────────────────
+# @timestamp for live docs = first_queried_at, so this tracks genuine DB growth.
+objects.append(vis_area(
+    "rl-viz-drift-growth", "[RL Drift] DB Paper Growth Over Time",
+    DRIFT_IDX, stacked=False,
+    query='data_source: "live"',
+    val_label="Papers Added",
+))
+
+# ── Dashboard: Fine-Tuning Data Drift ─────────────────────────────────────
+#
+#  Row 1 (y=0,  h=8):  [Snap Count 12w] [Live Count 12w] [Source Pie 24w]
+#  Row 2 (y=8,  h=16): [Snap Year 24w]  [Live Year 24w]
+#  Row 3 (y=24, h=14): [Snap Depth 24w] [Live Depth 24w]
+#  Row 4 (y=38, h=14): [Snap SrcType 16w] [Live SrcType 16w] [FoS 16w]
+#  Row 5 (y=52, h=14): [Snap Terminal 16w] [Live Terminal 16w] [empty 16w]
+#  Row 6 (y=66, h=16): [DB Growth 48w]
+
+drift_panels = [
+    _panel("d01", "visualization",  0,  0, 12,  8),  # snap count metric
+    _panel("d02", "visualization", 12,  0, 12,  8),  # live count metric
+    _panel("d03", "visualization", 24,  0, 24,  8),  # source split pie
+    _panel("d04", "visualization",  0,  8, 24, 16),  # year — snapshot
+    _panel("d05", "visualization", 24,  8, 24, 16),  # year — live
+    _panel("d06", "visualization",  0, 24, 24, 14),  # depth — snapshot
+    _panel("d07", "visualization", 24, 24, 24, 14),  # depth — live
+    _panel("d08", "visualization",  0, 38, 16, 14),  # source type — snapshot
+    _panel("d09", "visualization", 16, 38, 16, 14),  # source type — live
+    _panel("d10", "visualization", 32, 38, 16, 14),  # field of study — snapshot
+    _panel("d11", "visualization",  0, 52, 24, 14),  # terminal — snapshot
+    _panel("d12", "visualization", 24, 52, 24, 14),  # terminal — live
+    _panel("d13", "visualization",  0, 66, 48, 16),  # DB growth over time
+]
+drift_refs = [
+    {"type": "visualization", "id": "rl-viz-drift-snap-count",    "name": "d01"},
+    {"type": "visualization", "id": "rl-viz-drift-live-count",    "name": "d02"},
+    {"type": "visualization", "id": "rl-viz-drift-source",        "name": "d03"},
+    {"type": "visualization", "id": "rl-viz-drift-snap-year",     "name": "d04"},
+    {"type": "visualization", "id": "rl-viz-drift-live-year",     "name": "d05"},
+    {"type": "visualization", "id": "rl-viz-drift-snap-depth",    "name": "d06"},
+    {"type": "visualization", "id": "rl-viz-drift-live-depth",    "name": "d07"},
+    {"type": "visualization", "id": "rl-viz-drift-snap-srctype",  "name": "d08"},
+    {"type": "visualization", "id": "rl-viz-drift-live-srctype",  "name": "d09"},
+    {"type": "visualization", "id": "rl-viz-drift-fos",           "name": "d10"},
+    {"type": "visualization", "id": "rl-viz-drift-snap-terminal", "name": "d11"},
+    {"type": "visualization", "id": "rl-viz-drift-live-terminal", "name": "d12"},
+    {"type": "visualization", "id": "rl-viz-drift-growth",        "name": "d13"},
+]
+objects.append(dashboard(
+    "rl-dash-drift", "[RL] Fine-Tuning Data Drift",
+    "Side-by-side comparison of the GCS training snapshot vs the live Cloud SQL "
+    "lineage database. Shows how dataset coverage, depth, source types, and field "
+    "distribution change as new papers are added. Re-run sync_finetuning_elasticsearch.py "
+    "to refresh the live index.",
+    drift_panels, drift_refs,
 ))
 
 # ---------------------------------------------------------------------------

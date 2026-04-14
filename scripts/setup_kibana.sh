@@ -108,6 +108,23 @@ _delete_obj search        rl-search-errors
 # Retired index patterns (app-only index no longer needed)
 _delete_obj index-pattern rl-idx-app
 
+# Drift dashboard objects (deleted and re-imported fresh on every run)
+_delete_obj dashboard     rl-dash-drift
+_delete_obj visualization rl-viz-drift-snap-count
+_delete_obj visualization rl-viz-drift-live-count
+_delete_obj visualization rl-viz-drift-source
+_delete_obj visualization rl-viz-drift-snap-year
+_delete_obj visualization rl-viz-drift-live-year
+_delete_obj visualization rl-viz-drift-snap-depth
+_delete_obj visualization rl-viz-drift-live-depth
+_delete_obj visualization rl-viz-drift-snap-srctype
+_delete_obj visualization rl-viz-drift-live-srctype
+_delete_obj visualization rl-viz-drift-fos
+_delete_obj visualization rl-viz-drift-snap-terminal
+_delete_obj visualization rl-viz-drift-live-terminal
+_delete_obj visualization rl-viz-drift-growth
+_delete_obj index-pattern rl-idx-drift
+
 # Delete any stray data views created by Filebeat auto-setup or manually
 # (identified by title — their IDs are dynamic so we search first)
 for _title in "ResearchLineage App" "ResearchLineage Airflow"; do
