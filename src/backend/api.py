@@ -27,6 +27,9 @@ from .orchestrator import run
 from .common.config import MAX_DEPTH, DATABASE_URL, GEMINI_PROJECT, GEMINI_LOCATION, GEMINI_MODEL
 from .common.cache import Cache
 from .common.s2_client import SemanticScholarClient
+from src.utils.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 @asynccontextmanager
@@ -180,18 +183,17 @@ def submit_feedback(req: FeedbackRequest):
 @app.post("/chat")
 def chat(req: ChatRequest):
     """Stream a chat response about a paper's lineage using Gemini."""
-    print(f"[chat] paper_id received: {req.paper_id!r}", flush=True)
+    logger.info("chat request received", extra={"paper_id": req.paper_id})
     cache = Cache(DATABASE_URL)
 
-    # Debug: check what's in the papers table for this id
     from .common.s2_client import SemanticScholarClient as _S2
     norm = _S2.normalize_paper_id(req.paper_id)
     arxiv_bare = norm.replace("ARXIV:", "").replace("arxiv:", "")
     paper_row = cache.get_paper(arxiv_bare) or cache.get_paper(norm) or cache.get_paper(req.paper_id)
-    print(f"[chat] paper lookup → norm={norm!r} arxiv_bare={arxiv_bare!r} found={paper_row is not None}", flush=True)
+    logger.debug("chat paper lookup", extra={"paper_id": req.paper_id, "found": paper_row is not None})
 
     steps, ok = cache.get_cached_timeline(req.paper_id)
-    print(f"[chat] cache lookup ok={ok}, steps={len(steps) if steps else 0}", flush=True)
+    logger.debug("chat cache lookup", extra={"paper_id": req.paper_id, "ok": ok, "steps": len(steps) if steps else 0})
     if not ok or not steps:
         raise HTTPException(
             status_code=404,
@@ -304,7 +306,7 @@ def _stream_gemini(system_prompt: str, messages: list[ChatMessage]):
                     piece += " "
                 yield f"data: {json.dumps({'text': piece})}\n\n"
     except Exception as e:
-        print(f"[chat] Gemini error ({type(e).__name__}): {e}", flush=True)
+        logger.error("Gemini stream error: %s: %s", type(e).__name__, e)
         yield f"data: {json.dumps({'error': str(e)})}\n\n"
     yield "data: [DONE]\n\n"
 
