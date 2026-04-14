@@ -125,6 +125,26 @@ _delete_obj visualization rl-viz-drift-live-terminal
 _delete_obj visualization rl-viz-drift-growth
 _delete_obj index-pattern rl-idx-drift
 
+# Concept drift dashboard objects (deleted and re-imported fresh on every run)
+_delete_obj dashboard     rl-dash-concept-drift
+_delete_obj visualization rl-viz-cd-total
+_delete_obj visualization rl-viz-cd-positive
+_delete_obj visualization rl-viz-cd-negative
+_delete_obj visualization rl-viz-cd-sentiment
+_delete_obj visualization rl-viz-cd-trend
+_delete_obj visualization rl-viz-cd-neg-trend
+_delete_obj visualization rl-viz-cd-viewtype
+_delete_obj visualization rl-viz-cd-neg-viewtype
+_delete_obj visualization rl-viz-cd-target
+_delete_obj visualization rl-viz-cd-bad-papers
+_delete_obj search        rl-search-cd-negative
+_delete_obj index-pattern rl-idx-feedback
+
+# Retired concept drift vizzes (removed after user review)
+_delete_obj visualization rl-viz-cd-viewtype
+_delete_obj visualization rl-viz-cd-neg-viewtype
+_delete_obj visualization rl-viz-cd-target
+
 # Delete any stray data views created by Filebeat auto-setup or manually
 # (identified by title — their IDs are dynamic so we search first)
 for _title in "ResearchLineage App" "ResearchLineage Airflow"; do

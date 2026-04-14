@@ -14,9 +14,10 @@ Usage:
 import json
 import os
 
-AIRFLOW_IDX = "rl-idx-airflow"
-CLM_IDX    = "rl-idx-all"    # combined wildcard for Centralized Log Management
-DRIFT_IDX  = "rl-idx-drift"  # rl-finetuning-* for Data Drift dashboard
+AIRFLOW_IDX  = "rl-idx-airflow"
+CLM_IDX      = "rl-idx-all"       # combined wildcard for Centralized Log Management
+DRIFT_IDX    = "rl-idx-drift"     # rl-finetuning-* for Data Drift dashboard
+FEEDBACK_IDX = "rl-idx-feedback"  # rl-feedback for Concept Drift dashboard
 IDX_REF = "kibanaSavedObjectMeta.searchSourceJSON.index"
 
 
@@ -261,9 +262,12 @@ def vis_hbar(id: str, title: str, idx_id: str, field: str,
 def vis_vbar(id: str, title: str, idx_id: str, field: str,
              size: int = 20, metric_agg: dict | None = None,
              query: str = "",
-             cat_label: str = "", val_label: str = "Count") -> dict:
+             cat_label: str = "", val_label: str = "Count",
+             hide_cat_labels: bool = False) -> dict:
     """Vertical bar — for task IDs, depth buckets, etc."""
     cat_axes, val_axes = _xy_axes(y_label=val_label, cat_label=cat_label)
+    if hide_cat_labels:
+        cat_axes[0]["labels"]["show"] = False
     agg_metric = metric_agg if metric_agg is not None else _count_agg()
     terms = _terms_agg("2", field, size, metric_ref=agg_metric["id"])
     vis_state = json.dumps({
@@ -686,6 +690,118 @@ objects.append(dashboard(
     "distribution change as new papers are added. Re-run sync_finetuning_elasticsearch.py "
     "to refresh the live index.",
     drift_panels, drift_refs,
+))
+
+# ===========================================================================
+# Concept Drift — User Feedback (thumbs up / thumbs down)
+#
+# Tracks whether users are satisfied with model responses over time.
+# A rising thumbs-down rate signals concept drift → model needs retraining.
+#
+# Elasticsearch index: rl-feedback
+# To populate: python scripts/sync_feedback_elasticsearch.py
+# ===========================================================================
+
+objects.append(index_pattern(FEEDBACK_IDX, "rl-feedback"))
+
+# ── CD Viz 1: Total Feedback Count (Metric) ───────────────────────────────
+objects.append(vis_metric(
+    "rl-viz-cd-total", "[RL CD] Total Feedback",
+    FEEDBACK_IDX, label="Responses Rated",
+))
+
+# ── CD Viz 2: Thumbs Up Count (Metric) ───────────────────────────────────
+objects.append(vis_metric(
+    "rl-viz-cd-positive", "[RL CD] Thumbs Up",
+    FEEDBACK_IDX, label="Thumbs Up",
+    query='sentiment: "positive"',
+))
+
+# ── CD Viz 3: Thumbs Down Count (Metric) ─────────────────────────────────
+objects.append(vis_metric(
+    "rl-viz-cd-negative", "[RL CD] Thumbs Down",
+    FEEDBACK_IDX, label="Thumbs Down",
+    query='sentiment: "negative"',
+))
+
+# ── CD Viz 4: Sentiment Split (Pie) ──────────────────────────────────────
+objects.append(vis_pie(
+    "rl-viz-cd-sentiment", "[RL CD] Sentiment Distribution",
+    FEEDBACK_IDX, "sentiment.keyword", size=3,
+))
+
+# ── CD Viz 5: Feedback Volume Over Time split by Sentiment (Area) ────────
+# Rising negative area = concept drift signal.
+objects.append(vis_area(
+    "rl-viz-cd-trend", "[RL CD] Feedback Trend Over Time",
+    FEEDBACK_IDX, split_field="sentiment.keyword", stacked=True,
+    val_label="Feedback Count",
+))
+
+# ── CD Viz 6: Thumbs Down Over Time (Line) ───────────────────────────────
+# Isolated negative trend — makes drift spikes clearly visible.
+objects.append(vis_line(
+    "rl-viz-cd-neg-trend", "[RL CD] Thumbs Down Trend (Drift Signal)",
+    FEEDBACK_IDX,
+    query='sentiment: "negative"',
+    val_label="Negative Feedback",
+))
+
+# ── CD Viz 7: Papers with Most Negative Feedback (VBar) ─────────────────
+# Papers that repeatedly get thumbs down → priority retraining candidates.
+objects.append(vis_vbar(
+    "rl-viz-cd-bad-papers", "[RL CD] Papers with Most Thumbs Down",
+    FEEDBACK_IDX, "paper_label.keyword", size=15,
+    query='sentiment: "negative"',
+    cat_label="Paper", val_label="Thumbs Down",
+    hide_cat_labels=True,
+))
+
+# ── CD Saved Search: Recent Negative Feedback with Comments ──────────────
+objects.append(saved_search(
+    "rl-search-cd-negative", "[RL CD] Recent Negative Feedback",
+    FEEDBACK_IDX,
+    query_str='sentiment: "negative"',
+    columns=["@timestamp", "view_type", "feedback_target", "paper_id",
+             "rating", "comment"],
+    description="All thumbs-down feedback with user comments — review to identify model weaknesses",
+))
+
+# ── Dashboard: Concept Drift — User Feedback ─────────────────────────────
+#
+#  Row 1 (y=0,  h=8):  [Total 12w] [Up 12w] [Down 12w] [Sentiment Pie 12w]
+#  Row 2 (y=8,  h=16): [Feedback Trend 48w]
+#  Row 3 (y=24, h=14): [Thumbs Down Trend (Drift Signal) 48w]
+#  Row 4 (y=38, h=14): [Bad Papers 48w]
+#  Row 5 (y=52, h=22): [Negative Feedback Table 48w]
+
+cd_panels = [
+    _panel("c01", "visualization",  0,  0, 12,  8),  # total metric
+    _panel("c02", "visualization", 12,  0, 12,  8),  # thumbs up metric
+    _panel("c03", "visualization", 24,  0, 12,  8),  # thumbs down metric
+    _panel("c04", "visualization", 36,  0, 12,  8),  # sentiment pie
+    _panel("c05", "visualization",  0,  8, 48, 16),  # feedback trend
+    _panel("c06", "visualization",  0, 24, 48, 14),  # thumbs down drift signal
+    _panel("c07", "visualization",  0, 38, 48, 14),  # bad papers (full width)
+    _panel("c08", "search",         0, 52, 48, 22),  # negative feedback table
+]
+cd_refs = [
+    {"type": "visualization", "id": "rl-viz-cd-total",       "name": "c01"},
+    {"type": "visualization", "id": "rl-viz-cd-positive",    "name": "c02"},
+    {"type": "visualization", "id": "rl-viz-cd-negative",    "name": "c03"},
+    {"type": "visualization", "id": "rl-viz-cd-sentiment",   "name": "c04"},
+    {"type": "visualization", "id": "rl-viz-cd-trend",       "name": "c05"},
+    {"type": "visualization", "id": "rl-viz-cd-neg-trend",   "name": "c06"},
+    {"type": "visualization", "id": "rl-viz-cd-bad-papers",  "name": "c07"},
+    {"type": "search",        "id": "rl-search-cd-negative", "name": "c08"},
+]
+objects.append(dashboard(
+    "rl-dash-concept-drift", "[RL] Concept Drift — User Feedback",
+    "Tracks user satisfaction (thumbs up / thumbs down) to detect concept drift. "
+    "A rising thumbs-down rate or a spike in negative feedback on specific view types "
+    "or papers signals that the model needs retraining. "
+    "Run sync_feedback_elasticsearch.py to refresh.",
+    cd_panels, cd_refs,
 ))
 
 # ---------------------------------------------------------------------------
