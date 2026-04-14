@@ -41,6 +41,9 @@ from src.utils.config import (
     SPLIT_TRAIN_FRAC, SPLIT_VAL_FRAC, SPLIT_TEST_FRAC, SPLIT_RANDOM_SEED,
     GCS_BUCKET_NAME, GCS_PROJECT_ID, GCS_UPLOAD_PREFIX,
 )
+from src.utils.logging import get_logger
+
+logger = get_logger(__name__)
 
 PIPELINE_SCRIPT = os.path.join(PROJECT_ROOT, "src", "tasks", "lineage_pipeline.py")
 

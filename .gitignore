@@ -43,6 +43,9 @@ data/processed/*
 # Logs
 logs/*
 !logs/.gitkeep
+!logs/app/
+logs/app/*
+!logs/app/.gitkeep
 *.log
 
 # Cache

@@ -155,7 +155,11 @@ def run_pipeline_thread(paper_id, depth, result_q, log_list):
     orig = cfg.logger
     cfg.logger = LogCapture(log_list)
 
-    import pipeline, semantic_scholar, text_extraction, gemini_analysis, data_export
+    import pipeline
+    import semantic_scholar
+    import text_extraction
+    import gemini_analysis
+    import data_export
     for mod in [pipeline, semantic_scholar, text_extraction, gemini_analysis, data_export]:
         mod.print = cfg.logger.info
 

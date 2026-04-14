@@ -6,8 +6,6 @@ and evolution_view.
 """
 
 import os
-import logging
-from datetime import datetime
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -112,38 +110,12 @@ TIMELINE_OUTPUT_DIR  = os.path.join(OUTPUT_DIR, "timelines")
 # ---------------------------------------------------------------------------
 
 VERBOSE = True
-LOG_DIR = "logs"
 
+# Use the project-wide centralized logger so all backend logs flow through
+# the same handler chain (console + JSON file for Filebeat when in Docker).
+from src.utils.logging import get_logger  # noqa: E402
 
-def get_logger(name: str = "research_lineage") -> logging.Logger:
-    logger = logging.getLogger(name)
-    if not logger.handlers:
-        logger.setLevel(logging.DEBUG)
-        logger.propagate = False
-
-        fmt = logging.Formatter(
-            "%(asctime)s | %(levelname)-5s | %(name)s | %(message)s",
-            datefmt="%H:%M:%S",
-        )
-
-        ch = logging.StreamHandler()
-        ch.setLevel(logging.INFO)
-        ch.setFormatter(fmt)
-        logger.addHandler(ch)
-
-        os.makedirs(LOG_DIR, exist_ok=True)
-        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-        fh = logging.FileHandler(
-            os.path.join(LOG_DIR, f"{name}_{ts}.log"), encoding="utf-8"
-        )
-        fh.setLevel(logging.DEBUG)
-        fh.setFormatter(fmt)
-        logger.addHandler(fh)
-
-    return logger
-
-
-logger = get_logger("backend")
+logger = get_logger("src.backend")
 
 
 def log_event(tag: str, **kwargs) -> None:

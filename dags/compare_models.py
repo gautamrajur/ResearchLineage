@@ -32,6 +32,9 @@ from src.utils.config import (
     EVAL_FINETUNING_DATA_GCS_PATH,
     EVAL_JUDGE_MODEL,
 )
+from src.utils.logging import get_logger
+
+logger = get_logger(__name__)
 
 EVAL_TASK_SCRIPT = os.path.join(PROJECT_ROOT, "src", "tasks", "evaluation_task.py")
 SELECTION_TASK_SCRIPT = os.path.join(PROJECT_ROOT, "src", "tasks", "model_selection_task.py")
