@@ -99,7 +99,10 @@ async def run_retry_failed_pdfs(
                 else:
                     repo.delete(row["paper_id"])
                     stats["deleted_403_404"] += 1
-                    logger.info("Deleted paper_id=%s (reason=%s)", row["paper_id"], result.response_code)
+                    logger.info(
+                        "Deleted paper_id=%s (reason=%s)", row["paper_id"], result.response_code,
+                        extra={"paper_id": row["paper_id"]},
+                    )
             else:
                 reason = result.error or result.status
                 if len(reason) > 64:

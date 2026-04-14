@@ -8,8 +8,21 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
-load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+import os  # noqa: E402 (needed before dotenv for LOG_JSON_FILE bootstrap)
+
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+sys.path.insert(0, str(_PROJECT_ROOT))
+
+# Fix: load from project root .env (3 levels up from scripts/cli/pdfs.py)
+load_dotenv(_PROJECT_ROOT / ".env")
+
+# Bootstrap LOG_JSON_FILE before any src.* import so that setup_logging()
+# (which runs at import time) installs the JSON FileHandler that Filebeat reads.
+# Only set if not already provided by the environment or .env file.
+if not os.environ.get("LOG_JSON_FILE"):
+    _json_log = _PROJECT_ROOT / "logs" / "app" / "researchlineage.jsonl"
+    _json_log.parent.mkdir(parents=True, exist_ok=True)
+    os.environ["LOG_JSON_FILE"] = str(_json_log)
 
 for ns in ["httpx", "httpcore", "google", "src", "urllib3"]:
     logging.getLogger(ns).setLevel(logging.WARNING)
@@ -23,7 +36,9 @@ from src.tasks.pdf_failure_sync import sync_failures_to_db  # noqa: E402
 from src.tasks.retry_failed_pdfs import run_retry_failed_pdfs  # noqa: E402
 from src.database.connection import DatabaseConnection  # noqa: E402
 
-LOG = logging.getLogger("pdf_fetch")
+# Use src.* namespace so _AppLogFilter in src/utils/logging.py passes these
+# records through to the JSON file handler (and on to Kibana via Filebeat).
+LOG = logging.getLogger("src.scripts.pdfs")
 
 
 def _setup_pdf_fetch_log_file(project_root: Path) -> tuple[logging.FileHandler, Path]:

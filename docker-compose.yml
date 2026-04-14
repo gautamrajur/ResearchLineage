@@ -1,13 +1,17 @@
 services:
   postgres:
     image: postgres:15
-    container_name: airflow_metadata_db
+    container_name: research_lineage_db
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: airflow
+      POSTGRES_DB: researchlineage
+    # Host 5435 avoids conflict with a local Postgres on 5432; containers still use postgres:5432
+    ports:
+      - "5435:5432"
     volumes:
-      - airflow_metadata:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres-init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s
@@ -98,6 +102,10 @@ services:
       - CLOUD_SQL_PASSWORD=${CLOUD_SQL_PASSWORD}
       # Elasticsearch structured logging (picked up by Filebeat)
       - LOG_JSON_FILE=/opt/airflow/logs/app/researchlineage.jsonl
+      # Pipeline DB — override .env host/port so tasks use the postgres service on the Docker network
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=researchlineage
     env_file:
       - .env
     ports:
@@ -144,6 +152,10 @@ services:
       - CLOUD_SQL_PASSWORD=${CLOUD_SQL_PASSWORD}
       # Elasticsearch structured logging (picked up by Filebeat)
       - LOG_JSON_FILE=/opt/airflow/logs/app/researchlineage.jsonl
+      # Pipeline DB — override .env host/port so tasks use the postgres service on the Docker network
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=researchlineage
     env_file:
       - .env
     command: scheduler
@@ -224,3 +236,4 @@ services:
 volumes:
   airflow_metadata:
   mlflow_metadata:
+  postgres_data:

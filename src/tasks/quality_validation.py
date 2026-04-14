@@ -19,7 +19,8 @@ class QualityValidationTask:
         Returns:
             Validated data with quality report
         """
-        logger.info("Starting quality validation")
+        paper_id = db_data.get("target_paper_id", "")
+        logger.info("Starting quality validation", extra={"paper_id": paper_id})
 
         papers = db_data["papers_table"]
         authors = db_data["authors_table"]
@@ -50,10 +51,10 @@ class QualityValidationTask:
                 failed_checks.extend(results["failed"])
 
             error_msg = f"Quality validation failed: {quality_score:.1%} score. Failed checks: {failed_checks}"
-            logger.error(error_msg)
+            logger.error(error_msg, extra={"paper_id": paper_id})
             raise DataQualityError(error_msg)
 
-        logger.info(f"Quality validation passed: {quality_score:.1%} score")
+        logger.info(f"Quality validation passed: {quality_score:.1%} score", extra={"paper_id": paper_id})
 
         return {
             "target_paper_id": db_data["target_paper_id"],

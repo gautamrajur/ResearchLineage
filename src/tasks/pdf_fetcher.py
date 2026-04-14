@@ -320,6 +320,10 @@ class PDFFetcher:
                     self.gcs.upload, filename, content, "application/pdf", metadata
                 )
             except Exception as e:
+                logger.warning(
+                    "GCS upload failed for paper %s: %s", pid, e,
+                    extra={"paper_id": pid}, exc_info=True,
+                )
                 return FetchResult(
                     paper_id=pid, title=title, status="gcs_upload_failed",
                     source=source, error=str(e), fetch_url=url,
@@ -329,6 +333,10 @@ class PDFFetcher:
                 gcs_uri=gcs_uri, source=source, size_bytes=len(content),
             )
         except Exception as e:
+            logger.error(
+                "Unexpected error fetching paper %s: %s", pid, e,
+                extra={"paper_id": pid}, exc_info=True,
+            )
             return FetchResult(
                 paper_id=pid, title=title, status="error", error=str(e),
             )
@@ -395,6 +403,10 @@ class PDFFetcher:
                     metadata,
                 )
             except Exception as e:
+                logger.warning(
+                    "GCS upload failed for paper %s: %s", paper_id, e,
+                    extra={"paper_id": paper_id}, exc_info=True,
+                )
                 return FetchResult(
                     paper_id=paper_id,
                     title=title,
@@ -411,6 +423,10 @@ class PDFFetcher:
                 fetch_url=fetch_url,
             )
         except Exception as e:
+            logger.error(
+                "Unexpected error fetching paper %s: %s", paper_id, e,
+                extra={"paper_id": paper_id}, exc_info=True,
+            )
             return FetchResult(
                 paper_id=paper_id,
                 title=title,

@@ -29,7 +29,8 @@ class DatabaseWriteTask:
         Returns:
             Write statistics
         """
-        logger.info("Starting database write")
+        paper_id = final_data.get("target_paper_id", "")
+        logger.info("Starting database write", extra={"paper_id": paper_id})
 
         papers = final_data["papers_table"]
         authors = final_data["authors_table"]
@@ -53,7 +54,8 @@ class DatabaseWriteTask:
 
                 logger.info(
                     f"Database write complete: {papers_written} papers, "
-                    f"{authors_written} authors, {citations_written} citations"
+                    f"{authors_written} authors, {citations_written} citations",
+                    extra={"paper_id": paper_id},
                 )
 
                 return {
@@ -68,5 +70,5 @@ class DatabaseWriteTask:
                 }
 
         except Exception as e:
-            logger.exception(f"Database write failed: {e}")
+            logger.exception(f"Database write failed: {e}", extra={"paper_id": paper_id})
             raise DatabaseError(f"Failed to write to database: {e}")

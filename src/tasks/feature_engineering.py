@@ -19,10 +19,10 @@ class FeatureEngineeringTask:
         Returns:
             Graph data enriched with features
         """
-        logger.info("Starting feature engineering")
+        target_paper_id = graph_data["target_paper_id"]
+        logger.info("Starting feature engineering", extra={"paper_id": target_paper_id})
 
         papers = graph_data["papers"]
-        target_paper_id = graph_data["target_paper_id"]
         metrics = graph_data["metrics"]
 
         # Get target paper for reference
@@ -56,7 +56,8 @@ class FeatureEngineeringTask:
         enriched_papers = self._normalize_influence_scores(enriched_papers)
 
         logger.info(
-            f"Feature engineering complete: added features to {len(enriched_papers)} papers"
+            f"Feature engineering complete: added features to {len(enriched_papers)} papers",
+            extra={"paper_id": target_paper_id},
         )
 
         return {

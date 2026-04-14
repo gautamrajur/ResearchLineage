@@ -18,7 +18,7 @@ db_host = (
 
 DATABASE_URL = (
     f"postgresql://{os.getenv('POSTGRES_USER', 'postgres')}:{os.getenv('POSTGRES_PASSWORD', 'postgres')}"
-    f"@{db_host}:{os.getenv('POSTGRES_PORT', '5432')}"
+    f"@{db_host}:{os.getenv('POSTGRES_PORT', '5435')}"
     f"/{os.getenv('POSTGRES_DB', 'researchlineage')}"
 )
 

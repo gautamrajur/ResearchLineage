@@ -19,7 +19,8 @@ class DataCleaningTask:
         Returns:
             Cleaned data dictionary
         """
-        logger.info("Starting data cleaning")
+        paper_id = validated_data.get("target_paper_id", "")
+        logger.info("Starting data cleaning", extra={"paper_id": paper_id})
 
         # Extract data
         papers = validated_data["papers"]
@@ -45,7 +46,8 @@ class DataCleaningTask:
 
         logger.info(
             f"Cleaning complete: {len(unique_papers)} unique papers, "
-            f"{len(filtered_refs)} references, {len(filtered_cits)} citations"
+            f"{len(filtered_refs)} references, {len(filtered_cits)} citations",
+            extra={"paper_id": paper_id},
         )
 
         return {

@@ -44,4 +44,6 @@ async def test_acquisition():
 
 
 if __name__ == "__main__":
+    from src.utils.logging import enable_script_logging
+    enable_script_logging(__file__)
     asyncio.run(test_acquisition())

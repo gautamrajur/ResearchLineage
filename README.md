@@ -1079,8 +1079,8 @@ All settings are loaded from `.env` via `src/utils/config.py` (Pydantic `BaseSet
 | `SEMANTIC_SCHOLAR_API_KEY` | `""` | S2 API key (empty = 1 req/s, key = 100 req/s) |
 | `GEMINI_API_KEY` | `""` | Google Gemini key for LLM analysis in fine-tuning DAG |
 | `POSTGRES_HOST` | `localhost` | PostgreSQL host |
-| `POSTGRES_PORT` | `5432` | PostgreSQL port |
-| `POSTGRES_DB` | `research_lineage` | Database name |
+| `POSTGRES_PORT` | `5435` | PostgreSQL port (host; Docker Compose maps `5435→5432` to avoid clashing with local Postgres) |
+| `POSTGRES_DB` | `researchlineage` | Database name (matches Docker Compose `POSTGRES_DB`) |
 | `POSTGRES_USER` | `postgres` | Database user |
 | `POSTGRES_PASSWORD` | `postgres` | Database password |
 | `REDIS_HOST` | `localhost` | Redis host |
