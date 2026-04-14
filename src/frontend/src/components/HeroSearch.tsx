@@ -69,7 +69,7 @@ export function HeroSearch({ onSubmitPaperId, onPickResult, error, theme }: Hero
     : `0 0 0 1px ${theme.border}, 0 8px 32px -8px rgba(0,0,0,0.10)`;
 
   return (
-    <section className="min-h-screen flex flex-col items-center justify-center px-6 pt-24 pb-16">
+    <section className="flex flex-col items-center justify-center px-6 pt-24 pb-12">
       {/* Eyebrow */}
       <motion.div
         initial={{ opacity: 0, y: 10 }}

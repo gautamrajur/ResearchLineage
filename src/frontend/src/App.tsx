@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { Header } from './components/Header';
 import { BackgroundFX } from './components/BackgroundFX';
 import { HeroSearch } from './components/HeroSearch';
+import { FAQ } from './components/FAQ';
 import { AnalyzeLoader } from './components/AnalyzeLoader';
 import { ResultsPage } from './components/ResultsPage';
 import { ThemePicker } from './components/ThemePicker';
@@ -113,6 +114,7 @@ export default function App() {
               error={error}
               theme={theme}
             />
+            <FAQ theme={theme} />
           </motion.main>
         )}
 
