@@ -55,18 +55,15 @@ export function HeroSearch({ onSubmitPaperId, onPickResult, error, theme }: Hero
     return () => { clearTimeout(t); ctrl.abort(); };
   }, [query]);
 
-  const canSubmit =
-    query.trim().length > 0 &&
-    (isDirectId(query.trim()) || (!loading && results.length > 0));
+  // Trace button / Enter only fires for recognised IDs.
+  // Free-text results must be picked explicitly from the dropdown.
+  const canSubmit = query.trim().length > 0 && isDirectId(query.trim());
 
   const submit = useCallback(() => {
     const q = query.trim();
-    if (!q) return;
-    if (isDirectId(q)) {
-      onSubmitPaperId(q); return;
-    }
-    if (!loading && results[0]) onPickResult(results[0]);
-  }, [query, results, loading, onSubmitPaperId, onPickResult]);
+    if (!q || !isDirectId(q)) return;
+    onSubmitPaperId(q);
+  }, [query, onSubmitPaperId]);
 
   const isDark = theme.id === 'dark';
   const boxShadowFocused = isDark
