@@ -41,9 +41,6 @@ from src.utils.config import (
     EVAL_FINETUNING_DATA_GCS_PATH,
     EVAL_JUDGE_MODEL,
 )
-from src.utils.logging import get_logger
-
-logger = get_logger(__name__)
 
 TASK_SCRIPT = os.path.join(PROJECT_ROOT, "src", "tasks", "evaluation_task.py")
 _BASE = f"cd {PROJECT_ROOT} && PYTHONPATH={PROJECT_ROOT} python {TASK_SCRIPT}"
@@ -187,5 +184,4 @@ with DAG(
 
     # ── Flow ──────────────────────────────────────────────────────────────────
     run_inference >> evaluate >> [upload_to_gcs, bias_check]
-    upload_to_gcs >> [notify_success, notify_failure]
-    bias_check >> [notify_success, notify_failure]
+    [upload_to_gcs, bias_check] >> [notify_success, notify_failure]

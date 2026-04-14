@@ -98,8 +98,6 @@ services:
       - CLOUD_SQL_DB=${CLOUD_SQL_DB}
       - CLOUD_SQL_USER=${CLOUD_SQL_USER}
       - CLOUD_SQL_PASSWORD=${CLOUD_SQL_PASSWORD}
-      # Structured JSON logging — Filebeat tails this file and ships to Elasticsearch
-      - LOG_JSON_FILE=/opt/airflow/logs/app/researchlineage.jsonl
     env_file:
       - .env
     ports:
@@ -144,8 +142,6 @@ services:
       - CLOUD_SQL_DB=${CLOUD_SQL_DB}
       - CLOUD_SQL_USER=${CLOUD_SQL_USER}
       - CLOUD_SQL_PASSWORD=${CLOUD_SQL_PASSWORD}
-      # Structured JSON logging — Filebeat tails this file and ships to Elasticsearch
-      - LOG_JSON_FILE=/opt/airflow/logs/app/researchlineage.jsonl
     env_file:
       - .env
     command: scheduler
@@ -203,85 +199,6 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  # ---------------------------------------------------------------------------
-  # ELK Stack — Elasticsearch + Kibana + Filebeat
-  #
-  # Architecture:
-  #   Python app writes JSON logs to logs/app/researchlineage.jsonl
-  #   Filebeat tails that file and ships each line to Elasticsearch
-  #   Kibana reads from Elasticsearch and displays the dashboard
-  #
-  # Security is disabled (xpack.security.enabled=false) for local dev.
-  # Ports:
-  #   Elasticsearch: http://localhost:9200
-  #   Kibana:        http://localhost:5601
-  # ---------------------------------------------------------------------------
-
-  elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.13.0
-    container_name: researchlineage_elasticsearch
-    environment:
-      # Single-node mode — no cluster coordination overhead in dev.
-      - discovery.type=single-node
-      # Disable security so we don't need TLS certs or passwords locally.
-      # Re-enable for production: set xpack.security.enabled=true and configure certs.
-      - xpack.security.enabled=false
-      # Limit JVM heap to 512MB — enough for dev, prevents OOM on laptops.
-      - ES_JAVA_OPTS=-Xms512m -Xmx512m
-    ports:
-      - "9200:9200"
-    volumes:
-      - elasticsearch_data:/usr/share/elasticsearch/data
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health | grep -qv '\"status\":\"red\"'"]
-      interval: 15s
-      timeout: 10s
-      retries: 10
-      start_period: 30s
-    restart: unless-stopped
-
-  kibana:
-    image: docker.elastic.co/kibana/kibana:8.13.0
-    container_name: researchlineage_kibana
-    environment:
-      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
-      # Suppress the "Welcome to Elastic" setup wizard on first launch.
-      - TELEMETRY_ENABLED=false
-    ports:
-      - "5601:5601"
-    depends_on:
-      elasticsearch:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:5601/api/status | grep -q '\"overall\":{\"level\":\"available\"'"]
-      interval: 15s
-      timeout: 10s
-      retries: 10
-      start_period: 60s
-    restart: unless-stopped
-
-  filebeat:
-    image: docker.elastic.co/beats/filebeat:8.13.0
-    container_name: researchlineage_filebeat
-    # Run as root so Filebeat can read the log file regardless of who created it.
-    user: root
-    volumes:
-      # Config file (read-only so Filebeat doesn't corrupt it).
-      - ./filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
-      # The log directory — Filebeat reads, app containers write.
-      - ./logs:/logs:ro
-    # --strict.perms=false disables the ownership check Filebeat does on its
-    # config file — needed because the file is owned by the host user, not
-    # the filebeat container user.
-    command: filebeat -e --strict.perms=false
-    depends_on:
-      elasticsearch:
-        condition: service_healthy
-      kibana:
-        condition: service_healthy
-    restart: unless-stopped
-
 volumes:
   airflow_metadata:
   mlflow_metadata:
-  elasticsearch_data:
