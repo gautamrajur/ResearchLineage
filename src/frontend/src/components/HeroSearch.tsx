@@ -59,6 +59,14 @@ export function HeroSearch({ onSubmitPaperId, onPickResult, error, theme }: Hero
   // Free-text results must be picked explicitly from the dropdown.
   const canSubmit = query.trim().length > 0 && isDirectId(query.trim());
 
+  const isTextSearch = query.trim().length >= 3 && !isDirectId(query.trim());
+  const hint =
+    isTextSearch && !loading && !searchError && results.length === 0
+      ? 'No papers found — try a different title or enter an arXiv ID (e.g. 1706.03762).'
+      : isTextSearch && !loading && results.length > 0 && !focused
+      ? 'Select a paper from the list above to trace its lineage.'
+      : null;
+
   const submit = useCallback(() => {
     const q = query.trim();
     if (!q || !isDirectId(q)) return;
@@ -236,10 +244,20 @@ export function HeroSearch({ onSubmitPaperId, onPickResult, error, theme }: Hero
           </AnimatePresence>
         </div>
 
-        {error && (
-          <motion.p initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }}
-            className="mt-4 text-center text-[13px] text-red-500">⚠ {error}</motion.p>
-        )}
+        <AnimatePresence>
+          {error && (
+            <motion.p key="error" initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+              className="mt-4 text-center text-[13px] text-red-500">⚠ {error}</motion.p>
+          )}
+          {!error && hint && (
+            <motion.p key="hint" initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="mt-3 text-center text-[13px]"
+              style={{ color: results.length === 0 ? '#f87171' : theme.textMuted }}>
+              {results.length === 0 ? '⚠ ' : '→ '}{hint}
+            </motion.p>
+          )}
+        </AnimatePresence>
       </motion.div>
 
       {/* Examples */}
