@@ -62,7 +62,7 @@ export function HeroSearch({ onSubmitPaperId, onPickResult, error, theme }: Hero
   const isTextSearch = query.trim().length >= 3 && !isDirectId(query.trim());
   const hint =
     isTextSearch && !loading && !searchError && results.length === 0
-      ? 'No papers found — try a different title or enter an arXiv ID (e.g. 1706.03762).'
+      ? 'No papers found. Try a different title or enter an arXiv ID (e.g. 1706.03762).'
       : isTextSearch && !loading && results.length > 0 && !focused
       ? 'Select a paper from the list above to trace its lineage.'
       : null;

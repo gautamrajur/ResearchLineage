@@ -28,12 +28,12 @@ export function Header({ onHome, compact, theme }: HeaderProps) {
       }}
     >
       <div className="max-w-[1400px] mx-auto px-6 flex items-center justify-between">
-        {/* Wordmark — matches logo: Research bold + Lineage regular, navy */}
+        {/* Wordmark - matches logo: Research bold + Lineage regular, navy */}
         <button
           onClick={onHome}
           className="group flex items-center gap-3 focus:outline-none"
         >
-          {/* Logo mark — tree + book abstraction */}
+          {/* Logo mark - tree + book abstraction */}
           <motion.div
             whileHover={{ scale: 1.08 }}
             transition={{ type: 'spring', stiffness: 280, damping: 22 }}

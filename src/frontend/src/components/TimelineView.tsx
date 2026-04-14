@@ -27,7 +27,7 @@ export function TimelineView({ timeline, theme, chatPaperId }: TimelineViewProps
 
   return (
     <div className="flex gap-6 items-start">
-      {/* Timeline — flex-1 fills all remaining space */}
+      {/* Timeline - flex-1 fills all remaining space */}
       <div className="relative flex-1 min-w-0">
         {/* Legend info button */}
         <div className="relative inline-block mb-6 ml-16" ref={legendRef}>
@@ -127,7 +127,7 @@ export function TimelineView({ timeline, theme, chatPaperId }: TimelineViewProps
         </motion.div>
       </div>
 
-      {/* Chat panel — offset to align with first paper card, not legend button */}
+      {/* Chat panel - offset to align with first paper card, not legend button */}
       <div className="mt-14 shrink-0">
         <ChatPanel
           paperId={seedPaperId}
@@ -383,10 +383,10 @@ function YearChip({ year, theme }: { year: number | null; theme: Theme }) {
 // ─────────────────────────────────────────────────────────────────────────
 
 const LEGEND_BREAKTHROUGH: { level: BreakthroughLevel; desc: string }[] = [
-  { level: 'revolutionary', desc: 'Paradigm shift — redefines an entire field or introduces a fundamentally new approach.' },
-  { level: 'major',         desc: 'Significant leap — substantially advances state-of-the-art in a meaningful direction.' },
-  { level: 'moderate',      desc: 'Incremental advance — solid improvement on prior work within an established direction.' },
-  { level: 'minor',         desc: 'Marginal refinement — small contribution, optimization, or ablation.' },
+  { level: 'revolutionary', desc: 'Paradigm shift: redefines an entire field or introduces a fundamentally new approach.' },
+  { level: 'major',         desc: 'Significant leap: substantially advances state-of-the-art in a meaningful direction.' },
+  { level: 'moderate',      desc: 'Incremental advance: solid improvement on prior work within an established direction.' },
+  { level: 'minor',         desc: 'Marginal refinement: small contribution, optimization, or ablation.' },
 ];
 
 function legendSourceItems(isDark: boolean): { label: string; pill: React.ReactElement; desc: string }[] {
@@ -401,7 +401,7 @@ function legendSourceItems(isDark: boolean): { label: string; pill: React.ReactE
           ● Full text
         </span>
       ),
-      desc: 'Full PDF was sent to Gemini — lowest hallucination risk.',
+      desc: 'Full PDF was sent to Gemini, lowest hallucination risk.',
     },
     {
       label: 'Abstract only',
@@ -410,7 +410,7 @@ function legendSourceItems(isDark: boolean): { label: string; pill: React.ReactE
           ◐ Abstract only
         </span>
       ),
-      desc: 'Only the abstract was available — higher hallucination risk.',
+      desc: 'Only the abstract was available, higher hallucination risk.',
     },
     {
       label: 'Foundation',
@@ -420,7 +420,7 @@ function legendSourceItems(isDark: boolean): { label: string; pill: React.ReactE
           🏛 Foundation
         </span>
       ),
-      desc: 'Identified as a foundational work in the lineage — the earliest anchor paper.',
+      desc: 'Identified as a foundational work in the lineage, the earliest anchor paper.',
     },
   ];
 }
@@ -632,7 +632,7 @@ function ComparisonCard({ comparison, theme, isDark, seedPaperId, relatedPaperId
                   </div>
                 </div>
 
-                {/* Comment field — only on thumbs down */}
+                {/* Comment field - only on thumbs down */}
                 <AnimatePresence>
                   {thumb === -1 && (
                     <motion.div

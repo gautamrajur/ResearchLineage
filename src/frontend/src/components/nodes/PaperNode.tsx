@@ -56,7 +56,7 @@ export function PaperNode({ data, selected }: NodeProps) {
         </span>
       </div>
 
-      {/* Paper links — visible on hover */}
+      {/* Paper links - visible on hover */}
       {hovered && (
         <div className="absolute -top-8 left-0 flex items-center gap-1.5 px-2 py-1 rounded-lg"
           style={{ background: 'rgba(18,20,26,0.95)', border: '1px solid rgba(255,255,255,0.10)' }}>

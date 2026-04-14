@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────
-// Backend response shapes — mirrors src/backend/api.py + data_export.py
+// Backend response shapes - mirrors src/backend/api.py + data_export.py
 // ─────────────────────────────────────────────────────────────────────────
 
 export type BreakthroughLevel = 'revolutionary' | 'major' | 'moderate' | 'minor';

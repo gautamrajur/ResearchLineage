@@ -41,7 +41,7 @@ export const THEMES: Record<ThemeId, Theme> = {
     scrollThumb: 'rgba(255,255,255,0.08)',
   },
 
-  // ── Warm Scholar — ivory, navy text, logo-exact vibe ──
+  // ── Warm Scholar - ivory, navy text, logo-exact vibe ──
   warm: {
     id: 'warm',
     label: 'Warm',
@@ -62,7 +62,7 @@ export const THEMES: Record<ThemeId, Theme> = {
     scrollThumb: 'rgba(27,35,88,0.12)',
   },
 
-  // ── Pearl — clean, cool blue-white ──
+  // ── Pearl - clean, cool blue-white ──
   pearl: {
     id: 'pearl',
     label: 'Pearl',
@@ -83,7 +83,7 @@ export const THEMES: Record<ThemeId, Theme> = {
     scrollThumb: 'rgba(30,42,100,0.12)',
   },
 
-  // ── Morning — near-white with soft rose + sage ──
+  // ── Morning - near-white with soft rose + sage ──
   morning: {
     id: 'morning',
     label: 'Morning',

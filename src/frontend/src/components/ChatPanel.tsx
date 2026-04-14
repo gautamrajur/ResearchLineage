@@ -113,7 +113,7 @@ export function ChatPanel({ paperId, seedTitle, theme, open, onOpenChange }: Cha
     } catch (e) {
       if ((e as Error).name === 'AbortError') return;
       const raw = (e as Error).message ?? 'Unknown error';
-      // Only treat as cache-miss if our endpoint said so — Gemini errors also contain "404"
+      // Only treat as cache-miss if our endpoint said so - Gemini errors also contain "404"
       const errMsg = raw.includes('No timeline') || raw.includes('Run /analyze')
         ? 'No cached timeline for this paper. Run /analyze first.'
         : `Error: ${raw.slice(0, 200)}`;
@@ -152,7 +152,7 @@ export function ChatPanel({ paperId, seedTitle, theme, open, onOpenChange }: Cha
 
   return (
     <>
-      {/* Toggle button — fixed bottom-right, above ThemePicker */}
+      {/* Toggle button - fixed bottom-right, above ThemePicker */}
       <motion.button
         onClick={() => onOpenChange(!open)}
         whileHover={{ scale: 1.05, y: -2 }}
@@ -206,7 +206,7 @@ export function ChatPanel({ paperId, seedTitle, theme, open, onOpenChange }: Cha
               </div>
             </div>
 
-            {/* Messages — scrollable, capped height */}
+            {/* Messages - scrollable, capped height */}
             <div ref={messagesRef} className="px-4 py-4 space-y-3 overflow-y-auto max-h-[60vh]">
               {messages.length === 0 && (
                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.1 }}

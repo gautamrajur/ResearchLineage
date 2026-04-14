@@ -49,7 +49,7 @@ export function BackgroundFX({ variant, theme }: BackgroundFXProps) {
         style={{ background: theme.bodyBg }}
       />
 
-      {/* Blob 1 — top-left */}
+      {/* Blob 1 - top-left */}
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: hero ? blobs[0].opacityHero : blobs[0].opacitySub }}
@@ -58,7 +58,7 @@ export function BackgroundFX({ variant, theme }: BackgroundFXProps) {
         style={{ background: blobs[0].style, animation: 'aurora 18s ease-in-out infinite' }}
       />
 
-      {/* Blob 2 — bottom-right */}
+      {/* Blob 2 - bottom-right */}
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: hero ? blobs[1].opacityHero : blobs[1].opacitySub }}
@@ -67,7 +67,7 @@ export function BackgroundFX({ variant, theme }: BackgroundFXProps) {
         style={{ background: blobs[1].style, animation: 'aurora 22s ease-in-out infinite reverse' }}
       />
 
-      {/* Blob 3 — center, hero only */}
+      {/* Blob 3 - center, hero only */}
       {hero && (
         <motion.div
           initial={{ opacity: 0 }}
