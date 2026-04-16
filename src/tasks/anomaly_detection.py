@@ -32,7 +32,8 @@ class AnomalyDetectionTask:
         Returns:
             Data with anomaly report
         """
-        logger.info("Starting anomaly detection")
+        paper_id = validated_data.get("target_paper_id", "")
+        logger.info("Starting anomaly detection", extra={"paper_id": paper_id})
 
         papers = validated_data["papers_table"]
         authors = validated_data["authors_table"]
@@ -56,7 +57,7 @@ class AnomalyDetectionTask:
 
         # Log anomalies
         if total_anomalies > 0:
-            logger.warning(f"Detected {total_anomalies} anomalies")
+            logger.warning(f"Detected {total_anomalies} anomalies", extra={"paper_id": paper_id})
             for category, results in anomalies.items():
                 if isinstance(results, dict):
                     for anomaly_type, anomaly_list in results.items():
@@ -70,7 +71,7 @@ class AnomalyDetectionTask:
                 anomalies=anomalies,
             )
         else:
-            logger.info("No anomalies detected")
+            logger.info("No anomalies detected", extra={"paper_id": paper_id})
 
         return {
             "target_paper_id": validated_data["target_paper_id"],

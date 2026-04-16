@@ -43,7 +43,8 @@ class DataAcquisitionTask:
 
         logger.info(
             f"Starting data acquisition for paper {paper_id}, "
-            f"max_depth={max_depth}, direction={direction}"
+            f"max_depth={max_depth}, direction={direction}",
+            extra={"paper_id": paper_id},
         )
 
         self._validate_inputs(paper_id, max_depth, direction)
@@ -56,7 +57,7 @@ class DataAcquisitionTask:
 
         try:
             if direction in ["backward", "both"]:
-                logger.info("Fetching backward lineage (references)...")
+                logger.info("Fetching backward lineage (references)...", extra={"paper_id": paper_id})
                 await self._fetch_recursive(
                     paper_id=paper_id,
                     current_depth=0,
@@ -68,7 +69,7 @@ class DataAcquisitionTask:
                 )
 
             if direction in ["forward", "both"]:
-                logger.info("Fetching forward lineage (citations)...")
+                logger.info("Fetching forward lineage (citations)...", extra={"paper_id": paper_id})
                 if direction == "both":
                     self.fetched_papers.discard(paper_id)
 
@@ -98,13 +99,14 @@ class DataAcquisitionTask:
             logger.info(
                 f"Completed data acquisition: {result['total_papers']} papers, "
                 f"{result['total_references']} references, "
-                f"{result['total_citations']} citations"
+                f"{result['total_citations']} citations",
+                extra={"paper_id": paper_id},
             )
 
             return result
 
         except Exception as e:
-            logger.error(f"Data acquisition failed: {e}")
+            logger.exception(f"Data acquisition failed: {e}", extra={"paper_id": paper_id})
             raise
 
     def _get_max_papers_for_depth(self, current_depth: int) -> int:
@@ -183,7 +185,8 @@ class DataAcquisitionTask:
 
         logger.info(
             f"Filtered references (depth {current_depth}): {len(references)} -> {len(top_refs)} "
-            f"(limit: {max_papers})"
+            f"(limit: {max_papers})",
+            extra={"depth": current_depth},
         )
 
         return top_refs
@@ -283,7 +286,8 @@ class DataAcquisitionTask:
 
         logger.info(
             f"Filtered citations (depth {current_depth}): {len(citations)} -> {len(top_cites)} "
-            f"(limit: {max_cites}, removed {len(citations) - len(relevant_cites)} irrelevant)"
+            f"(limit: {max_cites}, removed {len(citations) - len(relevant_cites)} irrelevant)",
+            extra={"depth": current_depth},
         )
 
         return top_cites
@@ -323,6 +327,10 @@ class DataAcquisitionTask:
         try:
             paper_data = await self.api_client.get_paper(paper_id)
             all_papers.append(paper_data)
+            logger.info(
+                f"Fetched paper at depth {current_depth}: {paper_data.get('title', paper_id)[:60]}",
+                extra={"paper_id": paper_id, "depth": current_depth},
+            )
 
             if fetch_direction == "backward":
                 references = await self.api_client.get_references(
@@ -410,7 +418,10 @@ class DataAcquisitionTask:
                             )
 
         except APIError as e:
-            logger.warning(f"Failed to fetch paper {paper_id}: {e}")
+            logger.warning(
+                f"Failed to fetch paper {paper_id}: {e}",
+                extra={"paper_id": paper_id, "depth": current_depth},
+            )
 
     async def close(self):
         """Close API client connections."""

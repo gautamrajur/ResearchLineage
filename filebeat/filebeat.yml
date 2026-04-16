@@ -1,0 +1,72 @@
+filebeat.inputs:
+  # ── Python application logs (structured JSON, one record per line) ─────────
+  - type: filestream
+    id: researchlineage-app
+    paths:
+      - /logs/app/researchlineage.jsonl
+    parsers:
+      - ndjson:
+          target: ""           # merge JSON fields to root
+          overwrite_keys: true
+          add_error_key: true
+    fields_under_root: true
+    fields:
+      log_type: app
+      service: researchlineage
+
+  # ── Airflow task execution logs ───────────────────────────────────────────
+  - type: filestream
+    id: airflow-tasks
+    paths:
+      - /logs/dag_id=*/**/*.log
+    multiline:
+      type: pattern
+      pattern: '^\[20\d{2}'   # lines starting with [202x are new log entries
+      negate: true
+      match: after
+    processors:
+      # Airflow log format: [TIMESTAMP] {module.py:line} LEVEL - message
+      # Step 1: parse level + clean message out of the raw log line.
+      # ignore_failure keeps multiline continuation lines from crashing.
+      - dissect:
+          tokenizer: "[%{_af_ts}] {%{_af_src}} %{level} - %{_af_msg}"
+          field: "message"
+          target_prefix: ""
+          ignore_failure: true
+      # Step 2: overwrite `message` with just the text after "LEVEL - "
+      # so the column shows only the actual log message, not the full raw line.
+      # ignore_missing means this is a no-op when dissect failed (continuation lines).
+      - copy_fields:
+          fields:
+            - from: _af_msg
+              to: message
+          fail_on_error: false
+          ignore_missing: true
+      # Step 3: drop the temporary dissect fields from the document.
+      - drop_fields:
+          fields: ["_af_ts", "_af_src", "_af_msg"]
+          ignore_missing: true
+    fields_under_root: true
+    fields:
+      log_type: airflow
+      service: researchlineage
+
+processors:
+  - add_host_metadata: ~
+
+output.elasticsearch:
+  hosts: ["http://${ELASTICSEARCH_HOST}:${ELASTICSEARCH_PORT}"]
+  indices:
+    - index: "researchlineage-app-%{+yyyy.MM.dd}"
+      when.equals:
+        log_type: "app"
+    - index: "researchlineage-airflow-%{+yyyy.MM.dd}"
+      when.equals:
+        log_type: "airflow"
+
+setup.kibana:
+  host: "http://${KIBANA_HOST}:${KIBANA_PORT}"
+
+setup.ilm.enabled: false
+
+logging.level: warning

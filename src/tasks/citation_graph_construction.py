@@ -19,7 +19,8 @@ class CitationGraphConstructionTask:
         Returns:
             Dictionary with graph and metadata
         """
-        logger.info("Starting citation graph construction")
+        paper_id = cleaned_data.get("target_paper_id", "")
+        logger.info("Starting citation graph construction", extra={"paper_id": paper_id})
 
         papers = cleaned_data["papers"]
         references = cleaned_data["references"]
@@ -36,7 +37,8 @@ class CitationGraphConstructionTask:
 
         logger.info(
             f"Graph constructed: {G.number_of_nodes()} nodes, "
-            f"{G.number_of_edges()} edges"
+            f"{G.number_of_edges()} edges",
+            extra={"paper_id": paper_id},
         )
 
         return {

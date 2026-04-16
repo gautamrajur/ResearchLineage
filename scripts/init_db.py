@@ -1,4 +1,5 @@
 """Initialize database schema for ResearchLineage."""
+import os
 from pathlib import Path
 from sqlalchemy import create_engine, text
 from dotenv import load_dotenv
@@ -6,15 +7,20 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv(Path(__file__).parent.parent / ".env")
 
-# Database connection string
-"""DATABASE_URL = (
-    f"postgresql://{os.getenv('POSTGRES_USER')}:{os.getenv('POSTGRES_PASSWORD')}"
-    f"@{os.getenv('POSTGRES_HOST')}:{os.getenv('POSTGRES_PORT')}"
-    f"/{os.getenv('POSTGRES_DB')}"
-)"""
+# When running inside Docker (Airflow sets AIRFLOW_HOME), connect via Docker service name.
+# When running locally, use POSTGRES_HOST from .env.
+is_docker = os.getenv("AIRFLOW_HOME") is not None
+db_host = (
+    os.getenv("POSTGRES_HOST_DOCKER", "postgres")
+    if is_docker
+    else os.getenv("POSTGRES_HOST", "localhost")
+)
 
-# At the top, replace the DATABASE_URL with GCP directly
-DATABASE_URL = "postgresql://shivram:shivram@136.111.19.109:5432/researchlineage"
+DATABASE_URL = (
+    f"postgresql://{os.getenv('POSTGRES_USER', 'postgres')}:{os.getenv('POSTGRES_PASSWORD', 'postgres')}"
+    f"@{db_host}:{os.getenv('POSTGRES_PORT', '5435')}"
+    f"/{os.getenv('POSTGRES_DB', 'researchlineage')}"
+)
 
 # SQL schema
 SCHEMA_SQL = """

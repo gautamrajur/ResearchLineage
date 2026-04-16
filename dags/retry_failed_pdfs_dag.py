@@ -18,10 +18,9 @@ from airflow.operators.python import PythonOperator  # noqa: E402
 import asyncio  # noqa: E402
 
 from src.tasks.retry_failed_pdfs_task import RetryFailedPdfsTask  # noqa: E402
-from src.utils.logging import setup_logging  # noqa: E402
+from src.utils.logging import get_logger  # noqa: E402
 
-# Configure logging
-setup_logging()
+logger = get_logger(__name__)
 
 # Default arguments
 default_args = {
@@ -63,6 +62,8 @@ def task_retry_failed_pdfs(**context):
     attempts to re-download and upload, updates/deletes rows based on result,
     reconciles with GCS, and sends alerts for persistent failures.
     """
+    logger.info("Starting retry_failed_pdfs task")
+
     async def retry():
         task = RetryFailedPdfsTask()
         return await task.execute()
@@ -74,13 +75,16 @@ def task_retry_failed_pdfs(**context):
 
     # Build return message
     if result.get("status") == "error":
+        logger.error("retry_failed_pdfs task failed: %s", result.get("error"))
         raise Exception(f"Retry failed: {result.get('error')}")
 
-    return (
+    summary = (
         f"Retry complete: {result['succeeded']} succeeded, "
         f"{result['failed']} failed, {result['deleted_403_404']} deleted (403/404), "
         f"{result['reconciled']} reconciled, {result['alerted']} alerted"
     )
+    logger.info(summary)
+    return summary
 
 
 # ══════════════════════════════════════════════════════════════════════

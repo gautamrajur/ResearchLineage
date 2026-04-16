@@ -32,8 +32,8 @@ class Settings(BaseSettings):
 
     # Database settings
     postgres_host: str = "localhost"
-    postgres_port: int = 5432
-    postgres_db: str = "research_lineage"
+    postgres_port: int = 5435
+    postgres_db: str = "researchlineage"
     postgres_user: str = "postgres"
     postgres_password: str = "postgres"
     postgres_pool_size: int = 20

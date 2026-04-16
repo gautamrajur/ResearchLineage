@@ -2,7 +2,7 @@
 from sqlalchemy import create_engine, text
 
 # Local Docker database connection
-LOCAL_DB_URL = "postgresql://postgres:postgres@localhost:5432/research_lineage"
+LOCAL_DB_URL = "postgresql://postgres:postgres@localhost:5432/researchlineage"
 
 
 def query_local_db():
@@ -71,4 +71,6 @@ def query_local_db():
 
 
 if __name__ == "__main__":
+    from src.utils.logging import enable_script_logging
+    enable_script_logging(__file__)
     query_local_db()

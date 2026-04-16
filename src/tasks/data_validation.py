@@ -22,7 +22,8 @@ class DataValidationTask:
         Raises:
             ValidationError: If critical validation fails
         """
-        logger.info("Starting data validation")
+        paper_id = raw_data.get("target_paper_id", "")
+        logger.info("Starting data validation", extra={"paper_id": paper_id})
 
         # Validate inputs
         self._validate_structure(raw_data)
@@ -67,13 +68,15 @@ class DataValidationTask:
         # Check if error rate is acceptable
         if validation_report["error_rate"] > 0.1:  # More than 10% errors
             logger.error(
-                f"Validation failed: {validation_report['error_rate']:.1%} error rate"
+                f"Validation failed: {validation_report['error_rate']:.1%} error rate",
+                extra={"paper_id": paper_id},
             )
             raise ValidationError(f"Too many validation errors: {total_errors}")
 
         logger.info(
             f"Validation complete: {len(valid_papers)} papers, "
-            f"{len(valid_refs)} references, {len(valid_cits)} citations validated"
+            f"{len(valid_refs)} references, {len(valid_cits)} citations validated",
+            extra={"paper_id": paper_id},
         )
 
         return {

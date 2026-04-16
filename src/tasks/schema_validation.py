@@ -95,5 +95,5 @@ class SchemaValidationTask:
         except DatabaseError:
             raise
         except Exception as e:
-            logger.error(f"Schema validation failed: {e}")
+            logger.exception(f"Schema validation failed: {e}")
             raise DatabaseError(f"Failed to validate schema: {e}")

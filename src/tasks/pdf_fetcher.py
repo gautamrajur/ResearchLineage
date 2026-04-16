@@ -9,7 +9,6 @@ Fallback chain for PDF URL resolution:
   3. Unpaywall DOI → free open-access lookup by DOI
 """
 import asyncio
-import logging
 from dataclasses import dataclass, field
 from typing import Dict, Any, List, Optional, Set
 
@@ -18,8 +17,9 @@ import httpx
 from src.storage.gcs_client import GCSClient
 from src.utils.config import settings
 from src.utils.id_mapper import IDMapper
+from src.utils.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 ARXIV_PDF_BASE = "https://arxiv.org/pdf"
 S2_API_BASE = settings.semantic_scholar_base_url
@@ -320,6 +320,10 @@ class PDFFetcher:
                     self.gcs.upload, filename, content, "application/pdf", metadata
                 )
             except Exception as e:
+                logger.warning(
+                    "GCS upload failed for paper %s: %s", pid, e,
+                    extra={"paper_id": pid}, exc_info=True,
+                )
                 return FetchResult(
                     paper_id=pid, title=title, status="gcs_upload_failed",
                     source=source, error=str(e), fetch_url=url,
@@ -329,6 +333,10 @@ class PDFFetcher:
                 gcs_uri=gcs_uri, source=source, size_bytes=len(content),
             )
         except Exception as e:
+            logger.error(
+                "Unexpected error fetching paper %s: %s", pid, e,
+                extra={"paper_id": pid}, exc_info=True,
+            )
             return FetchResult(
                 paper_id=pid, title=title, status="error", error=str(e),
             )
@@ -395,6 +403,10 @@ class PDFFetcher:
                     metadata,
                 )
             except Exception as e:
+                logger.warning(
+                    "GCS upload failed for paper %s: %s", paper_id, e,
+                    extra={"paper_id": paper_id}, exc_info=True,
+                )
                 return FetchResult(
                     paper_id=paper_id,
                     title=title,
@@ -411,6 +423,10 @@ class PDFFetcher:
                 fetch_url=fetch_url,
             )
         except Exception as e:
+            logger.error(
+                "Unexpected error fetching paper %s: %s", paper_id, e,
+                extra={"paper_id": paper_id}, exc_info=True,
+            )
             return FetchResult(
                 paper_id=paper_id,
                 title=title,

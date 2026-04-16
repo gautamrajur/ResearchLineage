@@ -8,7 +8,6 @@ fail_runs+1. Reconciles with GCS, and sends one alert for fail_runs > 5.
 Callable from script or DAG; no Airflow dependency.
 """
 import asyncio
-import logging
 from typing import Any, Callable, Dict, List, Optional
 
 from src.database.fetch_pdf_failures_repository import FetchPdfFailuresRepository
@@ -16,8 +15,9 @@ from src.storage.gcs_client import GCSClient
 from src.tasks.pdf_fetcher import PDFFetcher, FetchResult
 from src.utils.config import settings
 from src.utils.email_templates import AlertLevel, EmailTemplate, send_alert_email
+from src.utils.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 async def run_retry_failed_pdfs(
@@ -99,7 +99,10 @@ async def run_retry_failed_pdfs(
                 else:
                     repo.delete(row["paper_id"])
                     stats["deleted_403_404"] += 1
-                    logger.info("Deleted paper_id=%s (reason=%s)", row["paper_id"], result.response_code)
+                    logger.info(
+                        "Deleted paper_id=%s (reason=%s)", row["paper_id"], result.response_code,
+                        extra={"paper_id": row["paper_id"]},
+                    )
             else:
                 reason = result.error or result.status
                 if len(reason) > 64:

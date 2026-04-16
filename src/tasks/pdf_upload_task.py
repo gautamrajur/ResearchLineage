@@ -1,13 +1,13 @@
 """PDF Upload Task - Upload research paper PDFs to GCS."""
-import logging
 from typing import Dict, Any, Optional
 
 from src.storage.gcs_client import GCSClient
 from src.tasks.pdf_fetcher import PDFFetcher, BatchResult
 from src.tasks.pdf_failure_sync import sync_failures_to_db
 from src.database.connection import DatabaseConnection
+from src.utils.logging import get_logger
 
-LOG = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class PDFUploadTask:
@@ -69,7 +69,7 @@ class PDFUploadTask:
         """
         # Validate input
         if not acquisition_result:
-            LOG.warning("No acquisition result provided")
+            logger.warning("No acquisition result provided")
             return {
                 "status": "no_data",
                 "uploaded": 0,
@@ -82,7 +82,7 @@ class PDFUploadTask:
 
         papers = acquisition_result.get("papers", [])
         if not papers:
-            LOG.warning("No papers in acquisition result")
+            logger.warning("No papers in acquisition result")
             return {
                 "status": "no_papers",
                 "uploaded": 0,
@@ -96,7 +96,7 @@ class PDFUploadTask:
         # Initialize clients
         self._initialize()
 
-        LOG.info(
+        logger.info(
             "Starting PDF upload for %d papers (target: %s)",
             len(papers),
             acquisition_result.get("target_paper_id", "unknown"),
@@ -106,7 +106,7 @@ class PDFUploadTask:
         try:
             batch = await self.fetcher.fetch_batch(papers)
         except Exception as e:
-            LOG.error("PDF fetch batch failed: %s", e)
+            logger.exception("PDF fetch batch failed: %s", e)
             return {
                 "status": "error",
                 "error": str(e),
@@ -119,7 +119,7 @@ class PDFUploadTask:
             }
 
         # Log results
-        LOG.info(
+        logger.info(
             "PDF upload complete: uploaded=%d, already_in_gcs=%d, "
             "download_failed=%d, no_pdf_found=%d, errors=%d, total=%d",
             batch.uploaded,
@@ -136,9 +136,9 @@ class PDFUploadTask:
             try:
                 db = DatabaseConnection()
                 synced = sync_failures_to_db(failure_list, db.get_session)
-                LOG.info("Synced %d failure(s) to fetch_pdf_failures table", synced)
+                logger.info("Synced %d failure(s) to fetch_pdf_failures table", synced)
             except Exception as e:
-                LOG.warning(
+                logger.warning(
                     "Could not sync failures to database: %s", e
                 )
 

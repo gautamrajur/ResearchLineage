@@ -175,5 +175,5 @@ class ReportGenerationTask:
                 }
 
         except Exception as e:
-            logger.error(f"Report generation failed: {e}")
+            logger.exception(f"Report generation failed: {e}")
             raise

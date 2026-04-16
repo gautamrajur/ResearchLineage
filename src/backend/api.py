@@ -24,7 +24,7 @@ from pydantic import BaseModel
 from typing import Optional
 
 from .orchestrator import run
-from .common.config import MAX_DEPTH, DATABASE_URL, GEMINI_PROJECT, GEMINI_LOCATION, GEMINI_MODEL
+from .common.config import MAX_DEPTH, DATABASE_URL, GEMINI_PROJECT, GEMINI_LOCATION, GEMINI_MODEL, logger
 from .common.cache import Cache
 from .common.s2_client import SemanticScholarClient
 from src.utils.logging import get_logger
@@ -136,8 +136,8 @@ def search_papers(q: str = Query(..., min_length=1, description="Paper title to 
         )
         if result and result.get("data"):
             return {"results": result["data"], "source": "semantic_scholar"}
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("Semantic Scholar search failed for query=%r: %s", q, exc)
 
     # 2. Fallback: search the local database cache
     cache = Cache(DATABASE_URL)
@@ -156,8 +156,8 @@ def search_papers(q: str = Query(..., min_length=1, description="Paper title to 
                 rows = [dict(r) for r in cur.fetchall()]
         if rows:
             return {"results": rows, "source": "database"}
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.error("Database fallback search failed for query=%r: %s", q, exc)
 
     return {"results": [], "source": "none"}
 

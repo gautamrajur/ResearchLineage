@@ -20,12 +20,12 @@ class SchemaTransformationTask:
         Returns:
             Database-ready structured data
         """
-        logger.info("Starting schema transformation")
+        target_paper_id = enriched_data["target_paper_id"]
+        logger.info("Starting schema transformation", extra={"paper_id": target_paper_id})
 
         papers = enriched_data["papers"]
         references = enriched_data["references"]
         citations = enriched_data["citations"]
-        target_paper_id = enriched_data["target_paper_id"]
 
         # Transform to database tables
         papers_table = self._transform_papers(papers)
@@ -34,7 +34,8 @@ class SchemaTransformationTask:
 
         logger.info(
             f"Schema transformation complete: {len(papers_table)} papers, "
-            f"{len(authors_table)} authors, {len(citations_table)} citations"
+            f"{len(authors_table)} authors, {len(citations_table)} citations",
+            extra={"paper_id": target_paper_id},
         )
 
         return {

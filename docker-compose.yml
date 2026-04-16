@@ -6,10 +6,12 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: airflow
+    # Host 5435 avoids conflict with a local Postgres on 5432; containers still use postgres:5432
     ports:
       - "5433:5432"
     volumes:
       - airflow_metadata:/var/lib/postgresql/data
+      - ./docker/postgres-init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s
@@ -98,6 +100,12 @@ services:
       - CLOUD_SQL_DB=${CLOUD_SQL_DB}
       - CLOUD_SQL_USER=${CLOUD_SQL_USER}
       - CLOUD_SQL_PASSWORD=${CLOUD_SQL_PASSWORD}
+      # Elasticsearch structured logging (picked up by Filebeat)
+      - LOG_JSON_FILE=/opt/airflow/logs/app/researchlineage.jsonl
+      # Pipeline DB — override .env host/port so tasks use the postgres service on the Docker network
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=researchlineage
     env_file:
       - .env
     ports:
@@ -142,6 +150,12 @@ services:
       - CLOUD_SQL_DB=${CLOUD_SQL_DB}
       - CLOUD_SQL_USER=${CLOUD_SQL_USER}
       - CLOUD_SQL_PASSWORD=${CLOUD_SQL_PASSWORD}
+      # Elasticsearch structured logging (picked up by Filebeat)
+      - LOG_JSON_FILE=/opt/airflow/logs/app/researchlineage.jsonl
+      # Pipeline DB — override .env host/port so tasks use the postgres service on the Docker network
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=researchlineage
     env_file:
       - .env
     command: scheduler
@@ -199,6 +213,27 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  filebeat:
+    image: docker.elastic.co/beats/filebeat:9.3.3
+    container_name: researchlineage_filebeat
+    user: root  # needed to read Docker socket and host log files
+    environment:
+      - ELASTICSEARCH_HOST=host.docker.internal
+      - ELASTICSEARCH_PORT=9200
+      - KIBANA_HOST=host.docker.internal
+      - KIBANA_PORT=5601
+    volumes:
+      - ./filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+      - ./logs:/logs:ro
+    command: filebeat -e --strict.perms=false
+    depends_on:
+      - airflow-webserver
+      - airflow-scheduler
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+
 volumes:
   airflow_metadata:
   mlflow_metadata:
+  postgres_data:
