@@ -10,6 +10,19 @@ multiple times — it only configures the root logger once.
 
 Elasticsearch integration: set LOG_JSON_FILE env var to a file path and
 Filebeat will ship those structured JSON logs to Elasticsearch.
+Three runtime environments are detected automatically:
+
+  1. Cloud Run  (K_SERVICE env var set by GCP)
+     → JSON to stdout only.  Cloud Logging ingests every stdout line and
+       parses the JSON fields (level, logger, message, etc.) as indexed
+       attributes you can filter on in Logs Explorer.
+
+  2. Docker / Airflow  (LOG_JSON_FILE env var set via docker-compose)
+     → Human-readable to stdout  +  NDJSON to file.
+       Filebeat tails the file and ships each line to Elasticsearch/Kibana.
+
+  3. Local dev  (neither env var set)
+     → Human-readable to stdout only.  No files written, no external deps.
 """
 import json
 import logging
@@ -98,6 +111,54 @@ def _json_log_path() -> Optional[Path]:
         return None
 
 
+class _JsonFormatter(logging.Formatter):
+    """Emits one JSON object per line.
+
+    Used in two places:
+      - stdout on Cloud Run  (Cloud Logging parses the JSON fields)
+      - file handler in Docker  (Filebeat ships each line to Elasticsearch)
+
+    "application" is used instead of "service" to avoid conflicting with
+    Filebeat's own ECS service.name object mapping in Elasticsearch.
+    """
+
+    def format(self, record: logging.LogRecord) -> str:
+        entry: dict = {
+            "@timestamp": datetime.fromtimestamp(record.created, tz=timezone.utc).isoformat(),
+            "level": record.levelname,
+            "logger": record.name,
+            "message": record.getMessage(),
+            "module": record.module,
+            "function": record.funcName,
+            "line": record.lineno,
+            "application": "researchlineage",
+        }
+        if record.exc_info:
+            entry["exception"] = self.formatException(record.exc_info)
+        for key in _EXTRA_FIELDS:
+            if hasattr(record, key):
+                entry[key] = getattr(record, key)
+        return json.dumps(entry, ensure_ascii=False)
+
+
+def _on_cloud_run() -> bool:
+    """True when running inside Cloud Run. GCP sets K_SERVICE automatically."""
+    return bool(os.getenv("K_SERVICE"))
+
+
+def _json_log_path() -> Optional[Path]:
+    """Return the JSON log file path from LOG_JSON_FILE env var, or None."""
+    raw = os.getenv("LOG_JSON_FILE", "").strip()
+    if not raw:
+        return None
+    path = Path(raw)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        return path
+    except OSError:
+        return None
+
+
 def setup_logging(level: Optional[str] = None) -> None:
     """Configure the root logger. Safe to call multiple times.
 
@@ -108,9 +169,11 @@ def setup_logging(level: Optional[str] = None) -> None:
     in task subprocesses.  Re-running this function on every ``get_logger()``
     call recovers the FileHandler transparently.
 
-    Args:
-        level: Log level override (DEBUG/INFO/WARNING/ERROR).
-               Defaults to LOG_LEVEL from settings, falls back to INFO.
+    Handler selection (mutually exclusive environments):
+
+      Cloud Run   → JSON StreamHandler to stdout
+      Docker      → plain StreamHandler to stdout  +  JSON FileHandler
+      Local dev   → plain StreamHandler to stdout only
     """
     if level is None:
         try:
@@ -155,6 +218,24 @@ def enable_script_logging(script_file: str) -> None:
     Call this inside ``if __name__ == "__main__":`` BEFORE the main function.
     It sets LOG_JSON_FILE (if not already set) so that setup_logging() installs
     the JSON FileHandler that Filebeat ships to Elasticsearch / Kibana.
+        if _on_cloud_run():
+            # Cloud Run: write JSON to stdout so Cloud Logging indexes the fields.
+            # No file handler — containers are ephemeral, no Filebeat sidecar.
+            handler = logging.StreamHandler(sys.stdout)
+            handler.setFormatter(_JsonFormatter())
+            root.addHandler(handler)
+        else:
+            # Local dev or Docker: human-readable console output.
+            console = logging.StreamHandler(sys.stdout)
+            console.setFormatter(logging.Formatter(LOG_FORMAT, datefmt=DATE_FORMAT))
+            root.addHandler(console)
+
+            # Docker only: JSON file for Filebeat → Elasticsearch.
+            json_path = _json_log_path()
+            if json_path:
+                file_handler = logging.FileHandler(json_path, encoding="utf-8")
+                file_handler.setFormatter(_JsonFormatter())
+                root.addHandler(file_handler)
 
     Args:
         script_file: Pass ``__file__`` — used to locate the project root.
@@ -172,18 +253,9 @@ def enable_script_logging(script_file: str) -> None:
 
 
 def get_logger(name: str) -> logging.Logger:
-    """Get a named logger. Ensures root logging is configured first.
-
-    Args:
-        name: Logger name — always pass __name__.
-
-    Returns:
-        Logger instance.
-    """
+    """Get a named logger, ensuring root logging is configured first."""
     setup_logging()
     return logging.getLogger(name)
 
 
-# Auto-configure on import so any file using logging.getLogger directly
-# also inherits the consistent format via the root logger.
 setup_logging()

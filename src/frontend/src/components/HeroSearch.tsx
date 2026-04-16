@@ -19,6 +19,10 @@ const EXAMPLES = [
   { id: '1810.04805', title: 'BERT', year: 2018 },
 ];
 
+function isDirectId(q: string): boolean {
+  return /^(arxiv:|arxiv\.org|[0-9]{4}\.[0-9]{4,5})/i.test(q) || /^[A-Fa-f0-9]{30,}$/.test(q);
+}
+
 export function HeroSearch({ onSubmitPaperId, onPickResult, error, theme }: HeroSearchProps) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResultPaper[]>([]);
@@ -51,14 +55,18 @@ export function HeroSearch({ onSubmitPaperId, onPickResult, error, theme }: Hero
     return () => { clearTimeout(t); ctrl.abort(); };
   }, [query]);
 
+  const canSubmit =
+    query.trim().length > 0 &&
+    (isDirectId(query.trim()) || (!loading && results.length > 0));
+
   const submit = useCallback(() => {
     const q = query.trim();
     if (!q) return;
-    if (/^(arxiv:|arxiv\.org|[0-9]{4}\.[0-9]{4,5})/i.test(q) || /^[A-Fa-f0-9]{30,}$/.test(q)) {
+    if (isDirectId(q)) {
       onSubmitPaperId(q); return;
     }
-    if (results[0]) onPickResult(results[0]);
-  }, [query, results, onSubmitPaperId, onPickResult]);
+    if (!loading && results[0]) onPickResult(results[0]);
+  }, [query, results, loading, onSubmitPaperId, onPickResult]);
 
   const isDark = theme.id === 'dark';
   const boxShadowFocused = isDark
@@ -155,9 +163,9 @@ export function HeroSearch({ onSubmitPaperId, onPickResult, error, theme }: Hero
             )}
             <button
               onClick={submit}
-              disabled={!query.trim()}
+              disabled={!canSubmit}
               className="px-4 py-1.5 rounded-lg text-[13px] font-semibold transition-all shrink-0"
-              style={query.trim() ? {
+              style={canSubmit ? {
                 background: `linear-gradient(135deg, ${theme.seed}, ${theme.accent})`,
                 color: '#fff',
                 boxShadow: `0 4px 20px ${theme.accent}44`,
