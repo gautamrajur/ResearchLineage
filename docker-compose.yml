@@ -1,16 +1,16 @@
 services:
   postgres:
     image: postgres:15
-    container_name: research_lineage_db
+    container_name: airflow_metadata_db
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: researchlineage
+      POSTGRES_DB: airflow
     # Host 5435 avoids conflict with a local Postgres on 5432; containers still use postgres:5432
     ports:
-      - "5435:5432"
+      - "5433:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - airflow_metadata:/var/lib/postgresql/data
       - ./docker/postgres-init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
@@ -27,7 +27,7 @@ services:
       - "--port=5432"
       - "researchlineage:us-central1:researchlineage-db"
     ports:
-      - "5433:5432"
+      - "5432:5432"
     volumes:
       - ${GCLOUD_CONFIG_DIR}:/gcp/config:ro
     environment:
