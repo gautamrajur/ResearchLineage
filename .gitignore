@@ -98,3 +98,6 @@ cloud-sql-proxy.exe
 Qwen_70B.py
 *.zip
 /timeline_view
+
+# Local documentation artifacts
+MODEL_DEVELOPMENT.md
