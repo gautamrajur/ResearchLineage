@@ -24,13 +24,16 @@ Given a seed paper ID, this pipeline crawls the Semantic Scholar citation graph,
 14. [Notifications & Alerts](#notifications--alerts)
 15. [Error Handling](#error-handling)
 16. [Tracking & Logging](#tracking--logging)
-17. [Running Tests](#running-tests)
-18. [Data Versioning (DVC)](#data-versioning-dvc)
-19. [Project Structure](#project-structure)
-20. [Prerequisites](#prerequisites)
-21. [Setup & Reproducibility](#setup--reproducibility)
-22. [Running the Pipeline](#running-the-pipeline)
-23. [Configuration Reference](#configuration-reference)
+17. [Monitoring & Drift Detection](#monitoring--drift-detection)
+18. [Running Tests](#running-tests)
+19. [Load Testing](#load-testing)
+20. [Data Versioning (DVC)](#data-versioning-dvc)
+21. [Project Structure](#project-structure)
+22. [Prerequisites](#prerequisites)
+23. [Setup & Reproducibility](#setup--reproducibility)
+24. [Deploying to a New Environment](#deploying-to-a-new-environment)
+25. [Running the Pipeline](#running-the-pipeline)
+26. [Configuration Reference](#configuration-reference)
 
 ---
 
@@ -706,18 +709,71 @@ from src.utils.logging import get_logger
 logger = get_logger(__name__)
 ```
 
-The root logger is auto-configured on first import with a consistent format:
+Logs are routed differently depending on the runtime environment:
 
-```
-2026-02-23 14:32:01 | INFO     | src.tasks.data_validation | Starting validation
-2026-02-23 14:32:01 | WARNING  | src.tasks.anomaly_detection | Detected 3 anomalies
-```
+| Environment | Handler | Viewer |
+|---|---|---|
+| Cloud Run (production) | Structured JSON to stdout | GCP Cloud Logging (fields indexed: `level`, `logger`, `paper_id`) |
+| Docker / Airflow (local) | NDJSON to file + Filebeat | Kibana at http://localhost:5601 |
+| Local dev | Plain text to stdout | Terminal |
 
 `LOG_LEVEL` in `.env` controls verbosity (default: `INFO`; set to `DEBUG` for verbose output).
 
 **DAG 1** logs per-task progress, validation results, and cache hit rates via Airflow task logs.
 
 **DAG 2** writes dual output: `INFO`+ to Airflow logs and a full `DEBUG`-level trace to `data/tasks/pipeline_output/pipeline.log`.
+
+### ELK Stack (Elasticsearch + Kibana + Filebeat)
+
+Filebeat ships log lines from `logs/app/researchlineage.jsonl` to Elasticsearch. Elasticsearch and Kibana run as Docker Compose services alongside the main stack.
+
+```bash
+# Start ELK services (can be added to the main compose up)
+docker compose up elasticsearch kibana filebeat -d
+```
+
+Import the pre-built Kibana saved objects (dashboards, index patterns, visualizations):
+
+```bash
+./scripts/setup_kibana.sh         # defaults to http://localhost:5601
+./scripts/setup_kibana.sh http://your-kibana-host:5601   # custom URL
+```
+
+Kibana is available at http://localhost:5601. Navigate to **Dashboards** to view the Centralized Log Management dashboard: log level histogram, error count over time, module breakdown, and full log table.
+
+---
+
+## Monitoring & Drift Detection
+
+Two Kibana dashboards track model health over time by syncing live data from Cloud SQL and user feedback into Elasticsearch.
+
+### Data Drift
+
+Compares the training data snapshot (from GCS) against the current live lineage data in Cloud SQL. Differences in citation counts, year distributions, and domain coverage indicate whether the live data has drifted from what the model was trained on.
+
+```bash
+# Sync training snapshot + live data to Elasticsearch
+python scripts/sync_finetuning_elasticsearch.py
+```
+
+This populates two indices:
+- `rl-finetuning-snapshot` - static training snapshot from `gs://researchlineage-gcs/`
+- `rl-finetuning-live` - current state from Cloud SQL (full-refreshed on each run)
+
+The Data Drift dashboard in Kibana overlays both indices to surface divergence.
+
+### Concept Drift
+
+Tracks user predecessor-selection feedback (thumbs up / down) over time. A shift in the thumbs-down rate signals that Gemini's predecessor decisions are drifting from what users consider correct.
+
+```bash
+# Sync feedback table from Cloud SQL to Elasticsearch
+python scripts/sync_feedback_elasticsearch.py
+```
+
+This populates the `rl-feedback` index with a derived `sentiment` field (`positive` / `negative` / `unknown`). The Concept Drift dashboard in Kibana shows sentiment trends, paper-level breakdown, and comment text.
+
+Both scripts require Cloud SQL Auth Proxy running locally and Elasticsearch reachable. See [Configuration Reference](#configuration-reference) for the required env vars (`ELASTICSEARCH_HOST`, `ELASTICSEARCH_PORT`, `CLOUD_SQL_*`).
 
 ---
 
@@ -758,6 +814,35 @@ poetry run pytest tests/ -v
 | `test_anomaly_detection.py` | 14 | Z-score outliers, duplicates, disconnected nodes |
 | `test_pipeline_e2e.py` | 18 | Full Tasks 2–9 chain, data integrity across stages |
 | **Total** | **171** | 153 unit + 18 integration |
+
+---
+
+## Load Testing
+
+Load tests live in `load_tests/` and are driven by `Locustfile.py` at the project root.
+
+The test simulates realistic API traffic against two endpoints:
+
+| Endpoint | Weight | Notes |
+|---|---|---|
+| `GET /analyze/{paper_id}` | 7 | Cached paper IDs only |
+| `POST /chat` | 3 | Random question from a fixed set |
+
+Users wait 0.5-1 second between requests. The pre-run HTML report is at `load_tests/report.html` - open it in a browser to view throughput, response times, and failure rates from the last recorded run.
+
+To run a new load test against a live backend:
+
+```bash
+pip install locust
+locust -f Locustfile.py --host https://your-backend-url --headless -u 50 -r 5 --run-time 60s --html load_tests/report.html
+```
+
+Or use the Locust web UI:
+
+```bash
+locust -f Locustfile.py --host https://your-backend-url
+# open http://localhost:8089
+```
 
 ---
 
@@ -1041,6 +1126,9 @@ This starts:
 - **Airflow scheduler** — DAG execution engine
 - **MLflow** (`:5001`) — Experiment tracking UI (Postgres backend, GCS artifact store)
 - **MLflow DB** (`:5434`) — MLflow metadata database
+- **Elasticsearch** (`:9200`) — Log and drift data store
+- **Kibana** (`:5601`) — Log and drift dashboards
+- **Filebeat** — Ships `logs/app/researchlineage.jsonl` to Elasticsearch
 
 ### 5. Initialise Airflow (first run only)
 
@@ -1053,6 +1141,90 @@ Creates the metadata schema and default admin user:
 - Username: `admin` / Password: `admin`
 
 **Reproducibility:** Poetry lockfile for deterministic installs; fixed random seed in `lineage_pipeline.py`; DVC pointers git-linked to every dataset version; PEP 8 via pre-commit hooks.
+
+---
+
+## Deploying to a New Environment
+
+This section covers how to deploy ResearchLineage from scratch on a new machine or GCP project. The stack has three independently deployable components:
+
+| Component | Platform | Trigger |
+|---|---|---|
+| Backend API | GCP Cloud Run | Push to `main` (auto) or `workflow_dispatch` |
+| Frontend | Vercel | Connected to `main` branch via Vercel GitHub integration |
+| Fine-tuned model | Modal (vLLM) | GitHub Actions `deploy.yml` (manual dispatch) |
+
+### Prerequisites
+
+- GCP project with Cloud Run, Cloud SQL (Postgres), Artifact Registry, and GCS enabled
+- `gcloud` CLI authenticated (`gcloud auth login`)
+- GitHub repository secrets configured (see [Required GitHub Secrets](#required-github-secrets))
+- Modal account (for model serving)
+
+### Step 1 - Provision Cloud SQL
+
+```bash
+# Create a Postgres instance (or use an existing one)
+gcloud sql instances create researchlineage-db \
+  --database-version=POSTGRES_15 \
+  --tier=db-f1-micro \
+  --region=us-central1
+
+gcloud sql databases create researchlineage --instance=researchlineage-db
+gcloud sql users create postgres --instance=researchlineage-db --password=your_password
+```
+
+Then initialise the schema:
+
+```bash
+# Run locally with Cloud SQL Auth Proxy active
+python scripts/init_db.py
+```
+
+### Step 2 - Deploy the Backend API
+
+Push to `main` or trigger manually:
+
+```bash
+gh workflow run deploy-backend.yml
+```
+
+The workflow (`deploy-backend.yml`) builds `docker/backend.Dockerfile`, pushes to Artifact Registry, and deploys to Cloud Run. After deployment it runs a smoke test against `/health`. The deployed URL is printed at the end of the workflow run.
+
+To verify the deployment:
+
+```bash
+URL=$(gcloud run services describe researchlineage-api --region us-central1 --format 'value(status.url)')
+curl "$URL/health"            # should return {"status":"ok"}
+curl "$URL/search?q=attention+is+all+you+need"   # paper search
+```
+
+### Step 3 - Deploy the Frontend
+
+Connect the repository to Vercel. In the Vercel project settings, set the **Root Directory** to `src/frontend`, then add the environment variable:
+
+```
+VITE_API_BASE_URL=https://<your-cloud-run-url>
+```
+
+Vercel auto-deploys on every push to `main`.
+
+### Step 4 - Deploy the Fine-tuned Model
+
+After training completes, trigger the model deployment workflow from GitHub Actions:
+
+```
+Actions -> Deploy Model -> Run workflow -> enter model version
+```
+
+The `deploy.yml` workflow deploys the model to Modal via vLLM serving. The Modal endpoint URL is logged in the workflow output.
+
+### Step 5 - Verify End-to-End
+
+1. Open the Vercel frontend URL
+2. Search for a paper (e.g., `1706.03762`)
+3. Click **Trace** - the timeline and tree views should render
+4. Open the **Lineage Assistant** chat and ask a question about the paper
 
 ---
 
