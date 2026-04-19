@@ -42,13 +42,12 @@ def plot_overall_bar(selection_result: dict, output_dir: str) -> str:
     winner = selection_result["winner"]
 
     metrics = [
-        "predecessor_strict", "predecessor_soft", "mrr", "breakthrough",
-        "secondary_f1", "schema_valid", "composite",
+        "predecessor_strict", "predecessor_soft", "mrr",
+        "secondary_f1", "composite",
     ]
-    # Normalize judge_overall to 0-1 for chart comparability
     metric_labels = [
-        "Pred. Strict", "Pred. Soft", "MRR", "Breakthrough",
-        "F1 (secondary)", "Schema Valid", "Composite",
+        "Pred. Strict", "Pred. Soft", "MRR",
+        "F1 (secondary)", "Composite",
     ]
 
     x = np.arange(len(metrics))
@@ -79,8 +78,8 @@ def plot_radar(selection_result: dict, output_dir: str) -> str:
     scores = selection_result["scores"]
     model_names = list(scores.keys())
 
-    categories = ["Pred. Strict", "Pred. Soft", "MRR", "Breakthrough", "F1", "Judge (norm)"]
-    metric_keys = ["predecessor_strict", "predecessor_soft", "mrr", "breakthrough", "secondary_f1", "judge_overall"]
+    categories = ["Pred. Strict", "Pred. Soft", "MRR", "F1", "Judge (norm)"]
+    metric_keys = ["predecessor_strict", "predecessor_soft", "mrr", "secondary_f1", "judge_overall"]
 
     N = len(categories)
     angles = np.linspace(0, 2 * np.pi, N, endpoint=False).tolist()
